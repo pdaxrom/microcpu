@@ -2,7 +2,10 @@
 <BaliProject version="3.2" title="microcpu" device="LCMXO2-1200HC-4SG32C" default_implementation="impl1">
     <Options/>
     <Implementation title="impl1" dir="impl1" description="impl1" synthesis="synplify" default_strategy="Strategy1">
-        <Options/>
+        <Options def_top="cpu"/>
+        <Source name="cpu.v" type="Verilog" type_short="Verilog">
+            <Options top_module="cpu"/>
+        </Source>
         <Source name="microcpu.lpf" type="Logic Preference" type_short="LPF">
             <Options/>
         </Source>
