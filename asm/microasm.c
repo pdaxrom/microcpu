@@ -66,7 +66,7 @@ static Register regs_table[] = {
 typedef struct Label {
     char	*name;
     unsigned int address;
-    struct Label *next;
+    struct Label *prev;
 } Label;
 
 static int output[65536];
@@ -106,13 +106,9 @@ static Label *add_label(Label **list, char *name, unsigned int address)
     }
     new->name = strdup(name);
     new->address = address;
-    new->next = NULL;
+    new->prev = *list;
 
-    if (*list == NULL) {
-	*list = new;
-    } else {
-	(*list)->next = new;
-    }
+    *list = new;
 
     return new;
 }
@@ -125,7 +121,7 @@ static Label *find_label(Label **list, char *name)
 	if (!strcmp(ptr->name, name)) {
 	    return ptr;
 	}
-	ptr = ptr->next;
+	ptr = ptr->prev;
     }
 
     return NULL;
@@ -135,7 +131,7 @@ static void dump_labels(Label *list)
 {
     while (list) {
 	fprintf(stderr, "[%s] %04X\n", list->name, list->address);
-	list = list->next;
+	list = list->prev;
     }
 }
 
