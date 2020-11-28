@@ -66,16 +66,19 @@ static Register regs_table[] = {
 typedef struct Label {
     char	*name;
     unsigned int address;
+    int		line;
     struct Label *prev;
 } Label;
 
 static int output[65536];
 static unsigned int output_addr = 0;
+static int src_line = 1;
 
 static Label *labels = NULL;
 static Label *refs = NULL;
 
 static int error = 0;
+static int to_second_pass = 0;
 
 #define SKIP_BLANK(s) { \
     while (*(s) && isblank(*(s))) { \
@@ -96,7 +99,9 @@ static int error = 0;
     } \
 }
 
-static Label *add_label(Label **list, char *name, unsigned int address)
+static int exp_(char **str);
+
+static Label *add_label(Label **list, char *name, unsigned int address, int line)
 {
     Label *new = malloc(sizeof(Label));
     if (!new) {
@@ -106,6 +111,7 @@ static Label *add_label(Label **list, char *name, unsigned int address)
     }
     new->name = strdup(name);
     new->address = address;
+    new->line = line;
     new->prev = *list;
 
     *list = new;
@@ -135,6 +141,25 @@ static void dump_labels(Label *list)
     }
 }
 
+static int relink_refs()
+{
+    Label *tmp = refs;
+
+    while (tmp) {
+	char *ptr = tmp->name;
+	int val = exp_(&ptr);
+	if (error == 0 && to_second_pass == 0) {
+	    output[tmp->address] = val;
+	} else {
+	    fprintf(stderr, "Can't resolve %s in %s line %d\n", tmp->name, ptr, tmp->line);
+	    return 1;
+	}
+	tmp = tmp->prev;
+    }
+
+    return 0;
+}
+
 static OpCode *find_opcode(char *name)
 {
     for (int i = 0; i < sizeof(opcode_table) / sizeof(OpCode); i++) {
@@ -157,7 +182,7 @@ static Register *find_register(char *name)
     return NULL;
 }
 
-int match(char **str, char c)
+static int match(char **str, char c)
 {
 	SKIP_BLANK(*str);
 
@@ -298,8 +323,12 @@ static int operand(char **str)
     } else if (isdigit(*(*str))) {
 	return(decimal(str));
     } else {
-	fprintf(stderr, "Illegal expression!\n");
-	error = 1;
+	if (label) {
+	    fprintf(stderr, "Illegal expression!\n");
+	    error = 1;
+	} else {
+	    to_second_pass = 1;
+	}
 	return 0;
     }
 }
@@ -424,7 +453,7 @@ static int do_asm(char *str)
     if (*ptr1 == ':') {
 	*ptr1 = 0;
 	printf("Label %s\n", ptr);
-	add_label(&labels, ptr, output_addr);
+	add_label(&labels, ptr, output_addr, src_line);
     } else {
 	char last = *ptr1;
 	*ptr1 = 0;
@@ -466,7 +495,13 @@ static int do_asm(char *str)
 		str++;
 
 		if (opcode->type == reg_const) {
+		    char *tmp = ptr;
 		    int val = exp_(&ptr);
+		    if (to_second_pass) {
+fprintf(stderr, "[%s] added to second pass\n", tmp);
+			add_label(&refs, tmp, output_addr + 1, src_line);
+			to_second_pass = 0;
+		    }
 		    arg2 = (val & 0xf0) >> 4;
 		    arg3 = val & 0x0f;
 		} else {
@@ -493,7 +528,13 @@ static int do_asm(char *str)
 			str++;
 
 			if (opcode->type == reg_reg_off) {
+			    char *tmp = ptr;
 			    int val = exp_(&ptr);
+			    if (to_second_pass) {
+fprintf(stderr, "[%s] added to second pass\n", tmp);
+				add_label(&refs, tmp, output_addr + 1, src_line);
+				to_second_pass = 0;
+			    }
 			    arg3 = val & 0x0f;
 			} else {
 			    last = *ptr1;
@@ -520,6 +561,8 @@ static int do_asm(char *str)
 	}
     }
 
+    src_line++;
+
     return 0;
 }
 
@@ -537,6 +580,8 @@ int main(int argc, char *argv[])
 		break;
 	    }
 	}
+
+	relink_refs();
 
 	fprintf(stderr, "Labels:\n");
 	dump_labels(labels);
