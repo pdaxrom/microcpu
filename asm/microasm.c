@@ -477,6 +477,7 @@ static int exp_(char **str)
 		return(exp2_(str));
 }
 
+//TODO: second pass for expression
 static int get_bytes(char *str)
 {
 	char delim = 0;
@@ -485,7 +486,7 @@ static int get_bytes(char *str)
 	int old_addr = output_addr;
 
 	SKIP_BLANK(str);
-	while(nbytes < linesize) {
+	while (nbytes < linesize) {
 		if (delim) {
 			if (*str == 0 || *str == '\n' || *str == '\r') {
 				break;
@@ -502,13 +503,34 @@ static int get_bytes(char *str)
 		} else {
 			output[output_addr++] = exp_(&str) & 0xFF;
 		}
-		if (match(&str, ',') == 0)
+		if (match(&str, ',') == 0) {
 			break;
+		}
 		SKIP_BLANK(str);
 	}
 	if (delim) {
 		fprintf(stderr, "Expected close quote.\n");
 		error = 1;
+	}
+
+	return output_addr - old_addr;
+}
+
+//TODO: second pass for expression
+static int get_words(char *str)
+{
+	int word;
+	int nbytes = 0;
+	int linesize = strlen(str);
+	int old_addr = output_addr;
+
+	while (nbytes < linesize) {
+		word = exp_(&str);
+		output[output_addr++] = word >> 8;
+		output[output_addr++] = word & 0xFF;
+		if (match(&str, ',') == 0) {
+			break;
+		}
 	}
 
 	return output_addr - old_addr;
@@ -559,6 +581,8 @@ static int do_asm(char *str)
 
 	    if (opcode->type == pseudo_db) {
 		get_bytes(str);
+	    } else if (opcode->type == pseudo_dw) {
+		get_words(str);
 	    } else if (opcode->type != noargs) {
 		SKIP_BLANK(str);
 		ptr = str;
@@ -661,7 +685,25 @@ static int do_asm(char *str)
 		    }
 		}
 
-		if ((i % 16) != 0) {
+		if ((i % 8) != 0) {
+		    fprintf(stderr, "\n");
+		}
+	    } else if (opcode->type == pseudo_dw) {
+		int i;
+		fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
+		for (i = 0; i < output_addr - old_addr; i += 2) {
+		    if ((i % 8) == 0) {
+			fprintf(stderr, "%04X:", old_addr + i);
+		    }
+
+		    fprintf(stderr, " %02X%02X", output[old_addr + i], output[old_addr + i + 1]);
+
+		    if ((i % 8) == 6) {
+			fprintf(stderr, "\n");
+		    }
+		}
+
+		if ((i % 8) != 0) {
 		    fprintf(stderr, "\n");
 		}
 	    } else {
