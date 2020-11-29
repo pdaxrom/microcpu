@@ -603,7 +603,11 @@ static int do_asm(char *str)
 	    output[output_addr++] = (arg2 << 4) | (arg3 & 0x0f);
 
 	} else {
-	    fprintf(stderr, "Syntax error '%s'!\n", ptr);
+	    if (strlen(ptr)) {
+		fprintf(stderr, "Syntax error '%s'!\n", ptr);
+	    } else {
+		fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
+	    }
 	}
     }
 
