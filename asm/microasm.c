@@ -351,17 +351,19 @@ static int operand(char **str)
 
     if (label) {
 	*str = ptr;
-	return(label->address);
+	return label->address;
     } else if (match(str, '$')) {
-	return(hexnum(str));
+	return hexnum(str);
     } else if (match(str, '@')) {
-	return(octal(str));
+	return octal(str);
     } else if (match(str, '%')) {
-	return(binary(str));
+	return binary(str);
     } else if (match(str, '\'')) {
-	return(character(str));
+	return character(str);
+    } else if (match(str, '*')) {
+	return output_addr;
     } else if (isdigit(*(*str))) {
-	return(decimal(str));
+	return decimal(str);
     } else {
 	if (label) {
 	    fprintf(stderr, "Illegal expression!\n");
@@ -583,6 +585,24 @@ static int do_asm(char *str)
 		get_bytes(str);
 	    } else if (opcode->type == pseudo_dw) {
 		get_words(str);
+	    } else if (opcode->type == pseudo_ds || opcode->type == pseudo_align) {
+		int count,fill;
+
+		fill = 0;
+		count = exp_(&str);
+
+		if (match(&str, ',')) {
+		    fill = exp_(&str) & 0xFF;
+		}
+
+		if (opcode->type == pseudo_align) {
+		    int n = count - 1;
+		    count = ((output_addr + count) & ~n) - output_addr;
+		}
+
+		while (count-- > 0) {
+		    output[output_addr++] = fill;
+		}
 	    } else if (opcode->type != noargs) {
 		SKIP_BLANK(str);
 		ptr = str;
@@ -670,7 +690,7 @@ static int do_asm(char *str)
 		}
 	    }
 
-	    if (opcode->type == pseudo_db) {
+	    if (opcode->type == pseudo_db || opcode->type == pseudo_ds || opcode->type == pseudo_align) {
 		int i;
 		fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
 		for (i = 0; i < output_addr - old_addr; i++) {
