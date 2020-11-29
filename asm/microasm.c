@@ -9,6 +9,10 @@ enum {
     reg_reg,
     reg_reg_off,
     reg_reg_reg,
+    pseudo_db,
+    pseudo_dw,
+    pseudo_ds,
+    pseudo_align,
 };
 
 typedef struct {
@@ -34,6 +38,11 @@ static OpCode opcode_table[] = {
     { "or"	, reg_reg_reg	, 0xd	},
     { "inv"	, reg_reg	, 0xe	},
     { "xor"	, reg_reg_reg	, 0xf	},
+    /* pseudo ops */
+    { "db"	, pseudo_db	, 0x0	},
+    { "dw"	, pseudo_dw	, 0x0	},
+    { "ds"	, pseudo_ds	, 0x0	},
+    { "align"	, pseudo_align	, 0x0	},
 };
 
 typedef struct Register {
@@ -468,6 +477,43 @@ static int exp_(char **str)
 		return(exp2_(str));
 }
 
+static int get_bytes(char *str)
+{
+	char delim = 0;
+	int nbytes = 0;
+	int linesize = strlen(str);
+	int old_addr = output_addr;
+
+	SKIP_BLANK(str);
+	while(nbytes < linesize) {
+		if (delim) {
+			if (*str == 0 || *str == '\n' || *str == '\r') {
+				break;
+			}
+			if (*str != delim) {
+				output[output_addr++] = *str++;
+				continue;
+			}
+			delim = 0;
+			str++;
+		} else if (*str == '"' || *str == '\'') {
+		    delim = *str++;
+		    continue;
+		} else {
+			output[output_addr++] = exp_(&str) & 0xFF;
+		}
+		if (match(&str, ',') == 0)
+			break;
+		SKIP_BLANK(str);
+	}
+	if (delim) {
+		fprintf(stderr, "Expected close quote.\n");
+		error = 1;
+	}
+
+	return output_addr - old_addr;
+}
+
 static int do_asm(char *str)
 {
     char *ptr, *ptr1;
@@ -500,6 +546,7 @@ static int do_asm(char *str)
 	OpCode *opcode = find_opcode(ptr);
 
 	if (opcode) {
+	    unsigned int old_addr = output_addr;
 	    Register *reg;
 	    int arg1 = 0;
 	    int arg2 = 0;
@@ -510,7 +557,9 @@ static int do_asm(char *str)
 		return 1;
 	    }
 
-	    if (opcode->type != noargs) {
+	    if (opcode->type == pseudo_db) {
+		get_bytes(str);
+	    } else if (opcode->type != noargs) {
 		SKIP_BLANK(str);
 		ptr = str;
 		SKIP_TOKEN(str);
@@ -597,10 +646,30 @@ static int do_asm(char *str)
 		}
 	    }
 
-	    fprintf(stderr, "%04X: %X%X%X%X\t%s\n", output_addr, opcode->op & 0x0f, arg1 & 0x0f, arg2 & 0x0f, arg3 & 0x0f, strtmp);
+	    if (opcode->type == pseudo_db) {
+		int i;
+		fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
+		for (i = 0; i < output_addr - old_addr; i++) {
+		    if ((i % 8) == 0) {
+			fprintf(stderr, "%04X:", old_addr + i);
+		    }
 
-	    output[output_addr++] = (opcode->op << 4) | (arg1 & 0x0f);
-	    output[output_addr++] = (arg2 << 4) | (arg3 & 0x0f);
+		    fprintf(stderr, " %02X", output[old_addr + i]);
+
+		    if ((i % 8) == 7) {
+			fprintf(stderr, "\n");
+		    }
+		}
+
+		if ((i % 16) != 0) {
+		    fprintf(stderr, "\n");
+		}
+	    } else {
+		fprintf(stderr, "%04X: %X%X%X%X\t%s\n", output_addr, opcode->op & 0x0f, arg1 & 0x0f, arg2 & 0x0f, arg3 & 0x0f, strtmp);
+
+		output[output_addr++] = (opcode->op << 4) | (arg1 & 0x0f);
+		output[output_addr++] = (arg2 << 4) | (arg3 & 0x0f);
+	    }
 
 	} else {
 	    if (strlen(ptr)) {
