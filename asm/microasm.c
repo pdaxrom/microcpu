@@ -440,9 +440,12 @@ static int exp_(char **str)
 static int do_asm(char *str)
 {
     char *ptr, *ptr1;
+    char strtmp[strlen(str) + 1];
 
     ptr = str;
     REMOVE_ENDLINE(ptr);
+
+    strcpy(strtmp, str);
 
     SKIP_BLANK(str);
     ptr = str;
@@ -452,7 +455,6 @@ static int do_asm(char *str)
 
     if (*ptr1 == ':') {
 	*ptr1 = 0;
-	printf("Label %s\n", ptr);
 	add_label(&labels, ptr, output_addr, src_line);
     } else {
 	char last = *ptr1;
@@ -498,7 +500,6 @@ static int do_asm(char *str)
 		    char *tmp = ptr;
 		    int val = exp_(&ptr);
 		    if (to_second_pass) {
-fprintf(stderr, "[%s] added to second pass\n", tmp);
 			add_label(&refs, tmp, output_addr + 1, src_line);
 			to_second_pass = 0;
 		    }
@@ -531,7 +532,6 @@ fprintf(stderr, "[%s] added to second pass\n", tmp);
 			    char *tmp = ptr;
 			    int val = exp_(&ptr);
 			    if (to_second_pass) {
-fprintf(stderr, "[%s] added to second pass\n", tmp);
 				add_label(&refs, tmp, output_addr + 1, src_line);
 				to_second_pass = 0;
 			    }
@@ -551,7 +551,7 @@ fprintf(stderr, "[%s] added to second pass\n", tmp);
 		}
 	    }
 
-	    printf("%04X: %X %X %X %X\n", output_addr, opcode->op & 0x0f, arg1 & 0x0f, arg2 & 0x0f, arg3 & 0x0f);
+	    fprintf(stderr, "%04X: %X%X%X%X\t%s\n", output_addr, opcode->op & 0x0f, arg1 & 0x0f, arg2 & 0x0f, arg3 & 0x0f, strtmp);
 
 	    output[output_addr++] = (opcode->op << 4) | (arg1 & 0x0f);
 	    output[output_addr++] = (arg2 << 4) | (arg3 & 0x0f);
@@ -564,6 +564,21 @@ fprintf(stderr, "[%s] added to second pass\n", tmp);
     src_line++;
 
     return 0;
+}
+
+static void output_hex()
+{
+    for (int i = 0; i < output_addr; i++) {
+	if ((i % 16) == 0) {
+	    printf("%04X:", i);
+	}
+
+	printf(" %02X", output[i]);
+
+	if ((i % 16) == 15) {
+	    printf("\n");
+	}
+    }
 }
 
 int main(int argc, char *argv[])
@@ -587,6 +602,8 @@ int main(int argc, char *argv[])
 	dump_labels(labels);
 	fprintf(stderr, "Refs:\n");
 	dump_labels(refs);
+
+	output_hex();
 
 	fclose(inf);
     } else {
