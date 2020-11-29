@@ -99,6 +99,37 @@ static int to_second_pass = 0;
     } \
 }
 
+#define STRING_TOLOWER(s) { \
+    while (*(s)) { \
+	*(s) = tolower(*(s)); \
+	(s)++; \
+    } \
+}
+
+static void remove_comment(char *str)
+{
+    int q = 0, dq = 0;
+    while (*str) {
+	if (*str == '\'') {
+	    q = !q;
+	}
+	if (*str == '"') {
+	    dq = !dq;
+	}
+
+	if (*str == ';' && (q == 0 || dq == 0)) {
+	    *str = 0;
+	    break;
+	}
+
+	if (*str == '/' && *(str + 1) && *(str + 1) == '/' && (q == 0 || dq == 0)) {
+	    *str = 0;
+	    break;
+	}
+	str++;
+    }
+}
+
 static int exp_(char **str);
 
 static Label *add_label(Label **list, char *name, unsigned int address, int line)
@@ -447,6 +478,8 @@ static int do_asm(char *str)
 
     strcpy(strtmp, str);
 
+    remove_comment(str);
+
     SKIP_BLANK(str);
     ptr = str;
     SKIP_TOKEN(str);
@@ -456,9 +489,13 @@ static int do_asm(char *str)
     if (*ptr1 == ':') {
 	*ptr1 = 0;
 	add_label(&labels, ptr, output_addr, src_line);
+	fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
     } else {
 	char last = *ptr1;
 	*ptr1 = 0;
+
+	ptr1 = ptr;
+	STRING_TOLOWER(ptr1);
 
 	OpCode *opcode = find_opcode(ptr);
 
@@ -482,6 +519,9 @@ static int do_asm(char *str)
 
 		last = *ptr1;
 		*ptr1 = 0;
+
+		ptr1 = ptr;
+		STRING_TOLOWER(ptr1);
 
 		reg = find_register(ptr);
 		if (!reg) {
@@ -514,6 +554,9 @@ static int do_asm(char *str)
 			return 1;
 		    }
 
+		    ptr1 = ptr;
+		    STRING_TOLOWER(ptr1);
+
 		    reg = find_register(ptr);
 		    if (!reg) {
 			fprintf(stderr, "Missed register arg2!\n");
@@ -539,6 +582,9 @@ static int do_asm(char *str)
 			} else {
 			    last = *ptr1;
 			    *ptr1 = 0;
+
+			    ptr1 = ptr;
+			    STRING_TOLOWER(ptr1);
 
 			    reg = find_register(ptr);
 			    if (!reg) {
@@ -568,7 +614,9 @@ static int do_asm(char *str)
 
 static void output_hex()
 {
-    for (int i = 0; i < output_addr; i++) {
+    int i;
+
+    for (i = 0; i < output_addr; i++) {
 	if ((i % 16) == 0) {
 	    printf("%04X:", i);
 	}
@@ -578,6 +626,10 @@ static void output_hex()
 	if ((i % 16) == 15) {
 	    printf("\n");
 	}
+    }
+
+    if ((i % 16) != 0) {
+	printf("\n");
     }
 }
 
