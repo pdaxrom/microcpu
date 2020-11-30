@@ -30,7 +30,7 @@ module cpu (
 	wire [3:0] arg1;      // first arg
 	wire [3:0] arg2;      // second arg
 	wire [7:0] constant;  // constant arg
-	reg  [7:0] r[7:0];
+	reg  [7:0] r[0:15];
 	reg  [7:0] addrtmp;
 	
 	reg memio;			   // memory io operation
