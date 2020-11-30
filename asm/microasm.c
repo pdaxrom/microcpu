@@ -768,9 +768,50 @@ static void output_hex()
     }
 }
 
+static void output_verilog()
+{
+    printf(
+"module sram(\n"					\
+"    input	[7:0]	ADDR,\n"			\
+"    input	[7:0]	DI,\n"				\
+"    output	[7:0]	DO,\n"				\
+"    input			RW,\n"			\
+"    input			CS\n"			\
+");\n"							\
+"    parameter		AddressSize = 8;\n"		\
+"    reg		[7:0]	Mem[(1 << AddressSize) - 1:0];\n"\
+"\n"							\
+"    initial begin\n"					\
+	);
+
+    for (int i = 0; i < output_addr; i++) {
+	printf("        Mem[%d] = 8'h%02x;\n", i, output[i]);
+    }
+
+    printf(
+"    end\n"						\
+"\n"
+"    assign DO = RW ? Mem[ADDR] : 8'hFF;\n"		\
+"\n"
+"    always @(CS || RW) begin\n"			\
+"	if (~CS && ~RW) begin\n"			\
+"	    Mem[ADDR] <= DI;\n"				\
+"	end\n"						\
+"    end\n"						\
+"\n"							\
+"endmodule\n"						\
+	);
+}
+
 int main(int argc, char *argv[])
 {
+    int out_type = 0;
     FILE *inf;
+
+    if (!strcmp(argv[1], "-verilog")) {
+	out_type = 1;
+	argv++;
+    }
 
     inf = fopen(argv[1], "rb");
     if (inf) {
@@ -790,7 +831,11 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "Refs:\n");
 	dump_labels(refs);
 
-	output_hex();
+	if (out_type) {
+	    output_verilog();
+	} else {
+	    output_hex();
+	}
 
 	fclose(inf);
     } else {
