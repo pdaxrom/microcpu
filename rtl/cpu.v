@@ -5,7 +5,12 @@ module cpu (
     output wire  read,          // CPU read request
     output wire [7:0] address, // read/write address
     output reg  [7:0] dout,    // write data
-    input  wire [7:0] din      // read data
+    input  wire [7:0] din,      // read data
+	
+	output wire [3:0] d_op,
+	output wire [3:0] d_dest,
+	output wire [3:0] d_arg1,
+	output wire [3:0] d_arg2
 );
 
 	localparam Inst_NOP   = 0;  // 0 filled
@@ -41,6 +46,11 @@ module cpu (
 	assign arg2 = din[3:0];
 	assign constant = din[7:0];
 
+	assign d_op = op;
+	assign d_dest = dest;
+	assign d_arg1 = arg1;
+	assign d_arg2 = arg2;
+
 	always @(posedge clk) begin
 		if (rst) begin
 			r[15] <= 0;
@@ -49,7 +59,7 @@ module cpu (
 		end else begin
 			if (memio == 0) begin
 				r[15] <= r[15] + 1;   // increment PC by default
-				if (r[15][0]) begin
+				if (~r[15][0]) begin
 					op <= din[7:4];
 					dest <= din[3:0];
 				end else begin
