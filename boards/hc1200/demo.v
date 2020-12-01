@@ -14,7 +14,7 @@ module demo (
 
 	reg		[1:0]	dig_counter;
 //	reg		[7:0]	led_mem[1:0];
-	reg		[7:0]	led_mem;
+//	reg		[7:0]	led_mem;
 	
 	assign	dig = dig_counter == 3 ? 4'b1000 :
 				  dig_counter == 2 ? 4'b0100 :
@@ -82,24 +82,27 @@ module demo (
 	end
 
 	wire SRAM_CS = ADDR[7] ? 0 : 1;
+	wire sram_en = SRAM_CS;
+	wire [7:0] sramd;
 	sram sram1(
 		.Clock(CLK),
 		.ClockEn(SRAM_CS),
 		.Reset(RESET),
 		.WE(~RW),
-		.Address(ADDR[7:0]),
+		.Address(ADDR),
 		.Data(DO),
-		.Q(DI)
+		.Q(sramd)
 	);
 
-
-	wire LEDS_CS = ADDR[7] ? 1 : 0;
-	always @(posedge CLK) begin
+//	wire LEDS_CS = ADDR[7] ? 1 : 0;
+//	always @(posedge CLK) begin
 //		if (LEDS_CS && ~RW) begin
-		if (~RW) begin
-			led_mem <= DO;
-		end
-	end
+//		if (~RW) begin
+//			led_mem <= DO;
+//		end
+//	end
+
+	assign DI = sram_en ? sramd : 8'b11111111;
 
 	cpu cpu1 (
 		.clk(CLK),

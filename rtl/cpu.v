@@ -78,6 +78,30 @@ module cpu (
 						Inst_SET: begin
 							r[dest] <= constant;						// set the reg to constant
 							end
+						Inst_ADD: begin
+							r[dest] <= r[arg1] + r[arg2];				// addition
+							end
+						Inst_SUB: begin
+							r[dest] <= r[arg1] - r[arg2];				// subtraction
+							end
+						Inst_SHL: begin
+							r[dest] <= r[arg1] << r[arg2];				// shift left
+							end
+						Inst_SHR: begin
+							r[dest] <= r[arg1] >> r[arg2];				// shift right
+							end
+						Inst_AND: begin
+							r[dest] <= r[arg1] & r[arg2];				// and
+							end
+						Inst_OR: begin
+							r[dest] <= r[arg1] | r[arg2];				// or
+							end
+						Inst_INV: begin
+							r[dest] <= ~r[arg1];						// inv
+							end
+						Inst_XOR: begin
+							r[dest] <= r[arg1] ^ r[arg2];				// xor
+							end
 					endcase
 				end
 			end else begin
