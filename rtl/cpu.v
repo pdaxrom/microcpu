@@ -66,41 +66,57 @@ module cpu (
 					// Perform the operation
 					case (op)
 						Inst_LOAD: begin
-							memio <= 1;									// switch address to data
-							addrtmp <= r[arg1] + arg2;					// set the address
+								memio <= 1;									// switch address to data
+								addrtmp <= r[arg1] + arg2;					// set the address
 							end
 						Inst_STORE: begin
-							memio <= 1;									// switch address to data
-							write <= 1;                             	// request a write
-							dout <= r[dest];                        	// output the data
-							addrtmp <= r[arg1] + arg2;              	// set the address
+								memio <= 1;									// switch address to data
+								write <= 1;                             	// request a write
+								dout <= r[dest];                        	// output the data
+								addrtmp <= r[arg1] + arg2;              	// set the address
 							end
 						Inst_SET: begin
-							r[dest] <= constant;						// set the reg to constant
+								r[dest] <= constant;						// set the reg to constant
+							end
+						Inst_LT: begin
+								r[dest] <= r[arg1] < r[arg2];				// less-than comparison
+							end
+						Inst_EQ: begin
+								r[dest] <= r[arg1] == r[arg2];				// equals comparison
+							end
+						Inst_BEQ: begin
+								if (r[dest] == constant) begin				// if r[dest] == constant
+									r[15] <= r[15] + 2;					// skip next instruction
+								end
+							end
+						Inst_BNEQ: begin
+								if (r[dest] != constant) begin				// if r[dest] != constant
+									r[15] <= r[15] + 2;					// skip next instruction
+								end
 							end
 						Inst_ADD: begin
-							r[dest] <= r[arg1] + r[arg2];				// addition
+								r[dest] <= r[arg1] + r[arg2];				// addition
 							end
 						Inst_SUB: begin
-							r[dest] <= r[arg1] - r[arg2];				// subtraction
+								r[dest] <= r[arg1] - r[arg2];				// subtraction
 							end
 						Inst_SHL: begin
-							r[dest] <= r[arg1] << r[arg2];				// shift left
+								r[dest] <= r[arg1] << r[arg2];				// shift left
 							end
 						Inst_SHR: begin
-							r[dest] <= r[arg1] >> r[arg2];				// shift right
+								r[dest] <= r[arg1] >> r[arg2];				// shift right
 							end
 						Inst_AND: begin
-							r[dest] <= r[arg1] & r[arg2];				// and
+								r[dest] <= r[arg1] & r[arg2];				// and
 							end
 						Inst_OR: begin
-							r[dest] <= r[arg1] | r[arg2];				// or
+								r[dest] <= r[arg1] | r[arg2];				// or
 							end
 						Inst_INV: begin
-							r[dest] <= ~r[arg1];						// inv
+								r[dest] <= ~r[arg1];						// inv
 							end
 						Inst_XOR: begin
-							r[dest] <= r[arg1] ^ r[arg2];				// xor
+								r[dest] <= r[arg1] ^ r[arg2];				// xor
 							end
 					endcase
 				end
