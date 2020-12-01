@@ -51,7 +51,7 @@ module cpu (
 	assign d_arg1 = arg1;
 	assign d_arg2 = arg2;
 
-	always @(posedge clk) begin
+	always @(negedge clk) begin
 		if (rst) begin
 			r[15] <= 0;
 			memio <= 0;
