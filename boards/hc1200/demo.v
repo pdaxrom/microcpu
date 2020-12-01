@@ -14,27 +14,24 @@ module demo (
 
 	reg		[1:0]	dig_counter;
 //	reg		[7:0]	led_mem[1:0];
-//	reg		[7:0]	led_mem;
+	reg		[7:0]	led_mem;
 	
 	assign	dig = dig_counter == 3 ? 4'b1000 :
 				  dig_counter == 2 ? 4'b0100 :
 				  dig_counter == 1 ? 4'b0010 :
 				  4'b0001;
-//	assign	seg = led_mem[dig_counter];
-
 
 	wire	[3:0] hexin;
 	
-//	assign hexin = dig_counter == 0 ? ADDR[7:4] :
-//					dig_counter == 1 ? ADDR[3:0] :
-//					dig_counter == 2 ? led_mem[7:4] :
-//					led_mem[3:0];
-
-
 	assign hexin = dig_counter == 0 ? ADDR[7:4] :
 					dig_counter == 1 ? ADDR[3:0] :
-					dig_counter == 2 ? DI[7:4] :
-					DI[3:0];
+					dig_counter == 2 ? led_mem[7:4] :
+					led_mem[3:0];
+
+//	assign hexin = dig_counter == 0 ? ADDR[7:4] :
+//					dig_counter == 1 ? ADDR[3:0] :
+//					dig_counter == 2 ? DI[7:4] :
+//					DI[3:0];
 
 //	assign hexin = dig_counter == 0 ? ADDR[15:12] :
 //					dig_counter == 1 ? ADDR[11:8] :
@@ -94,15 +91,17 @@ module demo (
 		.Q(sramd)
 	);
 
-//	wire LEDS_CS = ADDR[7] ? 1 : 0;
-//	always @(posedge CLK) begin
-//		if (LEDS_CS && ~RW) begin
-//		if (~RW) begin
-//			led_mem <= DO;
-//		end
-//	end
+	wire LEDS_CS = ADDR[7] ? 1 : 0;
+	wire leds_en = LEDS_CS;
+	always @(posedge CLK) begin
+		if (LEDS_CS && ~RW) begin
+			led_mem <= DO;
+		end
+	end
 
-	assign DI = sram_en ? sramd : 8'b11111111;
+	assign DI = sram_en ? sramd :
+				leds_en ? led_mem :
+				8'b11111111;
 
 	cpu cpu1 (
 		.clk(CLK),
