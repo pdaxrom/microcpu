@@ -16,10 +16,10 @@ loop:
 
     add		r5, r5, r1
     beq		r5, $0a
-    set		pc, loop
+    b		loop
     set		r5, 0
     add		r6, r6, r1
-    set		pc, loop
+    b		loop
 
 counter:
     db		0
