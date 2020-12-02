@@ -7,7 +7,7 @@ module demo (
 	reg				CLK;
 	reg				RESET;
 
-	wire	[7:0]	ADDR;
+	wire	[15:0]	ADDR;
 	wire	[7:0]	DI;
 	wire	[7:0]	DO;
 	wire			RW;
@@ -39,7 +39,13 @@ module demo (
 //					ADDR[3:0];
 
 
-	assign seg[7] = 1;
+//	assign seg[7] = 1;
+
+	assign seg[7] = ~(dig_counter == 0 ? ADDR[11] :
+					 dig_counter == 1 ? ADDR[10] :
+					 dig_counter == 2 ? ADDR[9] :
+					 ADDR[8]);
+
 
 	segled segled1(
 		.x(hexin),
@@ -78,7 +84,7 @@ module demo (
 		end
 	end
 
-	wire SRAM_CS = ADDR[7] ? 0 : 1;
+	wire SRAM_CS = ADDR[15] ? 0 : 1;
 	wire sram_en = SRAM_CS;
 	wire [7:0] sramd;
 	sram sram1(
@@ -86,12 +92,12 @@ module demo (
 		.ClockEn(SRAM_CS),
 		.Reset(RESET),
 		.WE(~RW),
-		.Address(ADDR),
+		.Address(ADDR[8:0]),
 		.Data(DO),
 		.Q(sramd)
 	);
 
-	wire LEDS_CS = ADDR[7] ? 1 : 0;
+	wire LEDS_CS = ADDR[15] ? 1 : 0;
 	wire leds_en = LEDS_CS;
 	always @(posedge CLK) begin
 		if (LEDS_CS && ~RW) begin

@@ -3,7 +3,7 @@ module cpu (
     input  wire rst,           // reset
     output reg  write,         // CPU write request
     output wire  read,          // CPU read request
-    output wire [7:0] address, // read/write address
+    output wire [15:0] address, // read/write address
     output reg  [7:0] dout,    // write data
     input  wire [7:0] din,      // read data
 	
@@ -38,13 +38,13 @@ module cpu (
 	wire [3:0] arg1;      // first arg
 	wire [3:0] arg2;      // second arg
 	wire [7:0] constant;  // constant arg
-	reg  [7:0] r[0:15];
-	reg  [7:0] addrtmp;
+	reg  [15:0] r[0:7];
+	reg  [15:0] addrtmp;
 	
 	reg memio;			   // memory io operation
 
 	assign read = write ? 0: 1;
-	assign address = memio ? addrtmp : r[15];
+	assign address = memio ? addrtmp : r[0];
 	assign arg1 = din[7:4];
 	assign arg2 = din[3:0];
 	assign constant = din[7:0];
@@ -56,13 +56,13 @@ module cpu (
 
 	always @(negedge clk) begin
 		if (rst) begin
-			r[15] <= 0;
+			r[0] <= 0;
 			memio <= 0;
 			write <= 0;
 		end else begin
 			if (memio == 0) begin
-				r[15] <= r[15] + 1;   // increment PC by default
-				if (~r[15][0]) begin
+				r[0] <= r[0] + 1;   // increment PC by default
+				if (~r[0][0]) begin
 					op <= din[7:4];
 					dest <= din[3:0];
 				end else begin
@@ -71,9 +71,11 @@ module cpu (
 						Inst_NOP: begin
 								case (dest)
 									Inst_Ext_B: begin
-											//r[15] <= {r[15][7:1],1'b0} + constant;
-											r[15] <= r[15] + constant;
-											//r[15] <= {r[15][7:1] + constant[7:1], 1'b0};
+											//r[0] <= {r[0][7:1],1'b0} + constant;
+											r[0] <= r[0] + 
+											{constant[7], constant[7], constant[7], constant[7],
+											 constant[7], constant[7], constant[7], constant[7], constant };
+											//r[0] <= {r[0][7:1] + constant[7:1], 1'b0};
 										end
 								endcase
 							end
@@ -84,11 +86,11 @@ module cpu (
 						Inst_STORE: begin
 								memio <= 1;									// switch address to data
 								write <= 1;                             	// request a write
-								dout <= r[dest];                        	// output the data
+								dout <= r[dest][7:0];                        	// output the data
 								addrtmp <= r[arg1] + arg2;              	// set the address
 							end
 						Inst_SET: begin
-								r[dest] <= constant;						// set the reg to constant
+								r[dest][7:0] <= constant;						// set the reg to constant
 							end
 						Inst_LT: begin
 								r[dest] <= r[arg1] < r[arg2];				// less-than comparison
@@ -98,12 +100,12 @@ module cpu (
 							end
 						Inst_BEQ: begin
 								if (r[dest] == constant) begin				// if r[dest] == constant
-									r[15] <= r[15] + 2;					// skip next instruction
+									r[0] <= r[0] + 2;					// skip next instruction
 								end
 							end
 						Inst_BNEQ: begin
 								if (r[dest] != constant) begin				// if r[dest] != constant
-									r[15] <= r[15] + 2;					// skip next instruction
+									r[0] <= r[0] + 2;					// skip next instruction
 								end
 							end
 						Inst_ADD: begin
@@ -135,7 +137,7 @@ module cpu (
 			end else begin
 				case (op)
 					Inst_LOAD: begin
-						r[dest] <= din;								// read the data
+						r[dest][7:0] <= din;								// read the data
 						memio <= 0;										// switch address to programm
 						end
 					Inst_STORE: begin

@@ -64,17 +64,14 @@ static Register regs_table[] = {
 		{ "r5" ,  5 },
 		{ "r6" ,  6 },
 		{ "r7" ,  7 },
-		{ "r8" ,  8 },
-		{ "r9" ,  9 },
-		{ "r10", 10 },
-		{ "r11", 11 },
-		{ "r12", 12 },
-		{ "r13", 13 },
-		{ "r14", 14 },
-		{ "r15", 15 },
-		{ "lr" , 13 },
-		{ "sp" , 14 },
-		{ "pc" , 15 },
+		{ "pc" ,  0 },
+		{ "sp" ,  1 },
+		{ "lr" ,  2 },
+		{ "v0" ,  3 },
+		{ "v1" ,  4 },
+		{ "v2" ,  5 },
+		{ "v3" ,  6 },
+		{ "v4" ,  7 },
 };
 
 typedef struct Label {
@@ -462,7 +459,6 @@ static int exp_(char **str) {
 		return (exp2_(str));
 }
 
-//TODO: second pass for expression
 static int get_bytes(char *str) {
 	char delim = 0;
 	int nbytes = 0;
@@ -513,7 +509,6 @@ static int get_bytes(char *str) {
 	return output_addr - old_addr;
 }
 
-//TODO: second pass for expression
 static int get_words(char *str) {
 	int word;
 	int nbytes = 0;
@@ -580,6 +575,8 @@ static int do_asm(char *str) {
 		STRING_TOLOWER(ptr1);
 
 		OpCode *opcode = find_opcode(ptr);
+
+//fprintf(stderr, "OPCODE: %s %d %X %X\n", opcode->name, opcode->type, opcode->op, opcode->ext_op);
 
 		if (opcode) {
 			unsigned int old_addr = output_addr;
