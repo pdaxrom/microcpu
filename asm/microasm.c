@@ -724,7 +724,8 @@ static int do_asm(char *str)
 		}
 	    }
 
-	    if (src_pass == 2 && (opcode->type == pseudo_db || opcode->type == pseudo_ds || opcode->type == pseudo_align)) {
+	    if (opcode->type == pseudo_db || opcode->type == pseudo_ds || opcode->type == pseudo_align) {
+		if (src_pass == 2) {
 		int i;
 		fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
 		for (i = 0; i < output_addr - old_addr; i++) {
@@ -742,7 +743,9 @@ static int do_asm(char *str)
 		if ((i % 8) != 0) {
 		    fprintf(stderr, "\n");
 		}
-	    } else if (src_pass == 2 && (opcode->type == pseudo_dw)) {
+		}
+	    } else if (opcode->type == pseudo_dw) {
+		if (src_pass == 2) {
 		int i;
 		fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
 		for (i = 0; i < output_addr - old_addr; i += 2) {
@@ -759,6 +762,7 @@ static int do_asm(char *str)
 
 		if ((i % 8) != 0) {
 		    fprintf(stderr, "\n");
+		}
 		}
 	    } else {
 		if (src_pass == 2) {
@@ -868,6 +872,7 @@ int main(int argc, char *argv[])
 
 	while (fgets(str, sizeof(str), inf)) {
 	    if ((err = do_asm(str))) {
+		fprintf(stderr, "ERROR assembly string\n");
 		break;
 	    }
 	}
