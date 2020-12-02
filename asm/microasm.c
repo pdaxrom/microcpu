@@ -9,6 +9,9 @@ enum {
 	reg_reg,
 	reg_reg_off,
 	reg_reg_reg,
+	extop_noargs,
+	extop_const,
+	extop_rel,
 	pseudo_db,
 	pseudo_dw,
 	pseudo_ds,
@@ -19,30 +22,32 @@ typedef struct {
 	char *name;
 	int type;
 	int op;
+	int ext_op;
 } OpCode;
 
 static OpCode opcode_table[] = {
-		{ "nop"  , noargs       , 0x0 },
-		{ "load" , reg_reg_off  , 0x1 },
-		{ "store", reg_reg_off  , 0x2 },
-		{ "set"  , reg_const    , 0x3 },
-		{ "lt"   , reg_reg_reg  , 0x4 },
-		{ "eq"   , reg_reg_reg  , 0x5 },
-		{ "beq"  , reg_const    , 0x6 },
-		{ "bneq" , reg_const    , 0x7 },
-		{ "add"  , reg_reg_reg  , 0x8 },
-		{ "sub"  , reg_reg_reg  , 0x9 },
-		{ "shl"  , reg_reg_reg  , 0xa },
-		{ "shr"  , reg_reg_reg  , 0xb },
-		{ "and"  , reg_reg_reg  , 0xc },
-		{ "or"   , reg_reg_reg  , 0xd },
-		{ "inv"  , reg_reg      , 0xe },
-		{ "xor"  , reg_reg_reg  , 0xf },
+		{ "nop"  , extop_noargs , 0x0, 0x0  },
+		{ "b"    , extop_rel    , 0x0, 0x1  },
+		{ "load" , reg_reg_off  , 0x1, 0x0  },
+		{ "store", reg_reg_off  , 0x2, 0x0  },
+		{ "set"  , reg_const    , 0x3, 0x0  },
+		{ "lt"   , reg_reg_reg  , 0x4, 0x0  },
+		{ "eq"   , reg_reg_reg  , 0x5, 0x0  },
+		{ "beq"  , reg_const    , 0x6, 0x0  },
+		{ "bneq" , reg_const    , 0x7, 0x0  },
+		{ "add"  , reg_reg_reg  , 0x8, 0x0  },
+		{ "sub"  , reg_reg_reg  , 0x9, 0x0  },
+		{ "shl"  , reg_reg_reg  , 0xa, 0x0  },
+		{ "shr"  , reg_reg_reg  , 0xb, 0x0  },
+		{ "and"  , reg_reg_reg  , 0xc, 0x0  },
+		{ "or"   , reg_reg_reg  , 0xd, 0x0  },
+		{ "inv"  , reg_reg      , 0xe, 0x0  },
+		{ "xor"  , reg_reg_reg  , 0xf, 0x0  },
 		/* pseudo ops */
-		{ "db"   , pseudo_db    , 0x0 },
-		{ "dw"   , pseudo_dw    , 0x0 },
-		{ "ds"   , pseudo_ds    , 0x0 },
-		{ "align", pseudo_align , 0x0 },
+		{ "db"   , pseudo_db    , 0x0, 0x0  },
+		{ "dw"   , pseudo_dw    , 0x0, 0x0  },
+		{ "ds"   , pseudo_ds    , 0x0, 0x0  },
+		{ "align", pseudo_align , 0x0, 0x0  },
 };
 
 typedef struct Register {
@@ -332,7 +337,7 @@ static int operand(char **str) {
 	char tmp[strlen(*str) + 1];
 	char *ptr1 = tmp;
 
-	while (*ptr && !isblank(*ptr) && *ptr != ',') {
+	while (*ptr && (isalnum(*ptr) || *ptr == '_')) {
 		*ptr1++ = *ptr++;
 	}
 	*ptr1 = 0;
@@ -583,7 +588,7 @@ static int do_asm(char *str) {
 			int arg2 = 0;
 			int arg3 = 0;
 
-			if (opcode->type != noargs && last == 0) {
+			if ((opcode->type != noargs && opcode->type != extop_noargs) && last == 0) {
 				fprintf(stderr, "Missed opcode parameters!\n");
 				return 1;
 			}
@@ -611,6 +616,29 @@ static int do_asm(char *str) {
 				while (count-- > 0) {
 					output[output_addr++] = fill;
 				}
+			} else if (opcode->type == extop_noargs) {
+				arg1 = opcode->ext_op;
+			} else if (opcode->type == extop_rel) {
+				arg1 = opcode->ext_op;
+
+				SKIP_BLANK(str);
+				ptr = str;
+				SKIP_TOKEN(str);
+				ptr1 = str;
+				str++;
+
+				char *tmp = ptr;
+				int val = exp_(&ptr);
+
+				if (to_second_pass && src_pass == 2) {
+					add_label(&refs, tmp, output_addr + 1, src_line);
+				} else if (src_pass == 2) {
+					val = val - output_addr - 1;
+				}
+				to_second_pass = 0;
+
+				arg2 = (val & 0xf0) >> 4;
+				arg3 = val & 0x0f;
 			} else if (opcode->type != noargs) {
 				SKIP_BLANK(str);
 				ptr = str;

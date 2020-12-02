@@ -30,6 +30,9 @@ module cpu (
 	localparam Inst_INV   = 14; // dest, op1          : R[dest] = ~R[op1]
 	localparam Inst_XOR   = 15; // dest, op1, op2     : R[dest] = R[op1] ^ R[op2]
 
+	localparam Inst_Ext_NOP = 0;  // No operation
+	localparam Inst_Ext_B   = 1;  // rel
+
 	reg  [3:0] op;        // opcode
 	reg  [3:0] dest;      // destination arg
 	wire [3:0] arg1;      // first arg
@@ -65,6 +68,15 @@ module cpu (
 				end else begin
 					// Perform the operation
 					case (op)
+						Inst_NOP: begin
+								case (dest)
+									Inst_Ext_B: begin
+											//r[15] <= {r[15][7:1],1'b0} + constant;
+											r[15] <= r[15] + constant;
+											//r[15] <= {r[15][7:1] + constant[7:1], 1'b0};
+										end
+								endcase
+							end
 						Inst_LOAD: begin
 								memio <= 1;									// switch address to data
 								addrtmp <= r[arg1] + arg2;					// set the address
