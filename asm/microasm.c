@@ -81,6 +81,8 @@ typedef struct Label {
 
 static int output[65536];
 static unsigned int output_addr = 0;
+
+static int src_pass = 1;
 static int src_line = 1;
 
 static Label *labels = NULL;
@@ -192,7 +194,7 @@ static int relink_refs()
 	    output[tmp->address] = val;
 	} else {
 	    fprintf(stderr, "Can't resolve %s in %s line %d\n", tmp->name, ptr, tmp->line);
-	    return 1;
+	    error++;
 	}
 	tmp = tmp->prev;
     }
@@ -342,7 +344,7 @@ static int operand(char **str)
     char tmp[strlen(*str) + 1];
     char *ptr1 = tmp;
 
-    while (*ptr && !isblank(*ptr)) {
+    while (*ptr && !isblank(*ptr) && *ptr != ',') {
 	*ptr1++ = *ptr++;
     }
     *ptr1 = 0;
@@ -365,12 +367,8 @@ static int operand(char **str)
     } else if (isdigit(*(*str))) {
 	return decimal(str);
     } else {
-	if (label) {
-	    fprintf(stderr, "Illegal expression!\n");
-	    error = 1;
-	} else {
-	    to_second_pass = 1;
-	}
+	*str = ptr;
+	to_second_pass = 1;
 	return 0;
     }
 }
@@ -503,7 +501,20 @@ static int get_bytes(char *str)
 		    delim = *str++;
 		    continue;
 		} else {
+			char *tmp = str;
 			output[output_addr++] = exp_(&str) & 0xFF;
+
+			if (to_second_pass && src_pass == 2) {
+			    char tmp1[strlen(tmp) + 1];
+			    strcpy(tmp1, tmp);
+			    tmp = tmp1;
+			    while(*tmp && !isblank(*tmp) && *tmp != ',') {
+				tmp++;
+			    }
+			    *tmp = 0;
+			    add_label(&refs, tmp1, output_addr - 1, src_line);
+			}
+			to_second_pass = 0;
 		}
 		if (match(&str, ',') == 0) {
 			break;
@@ -527,12 +538,27 @@ static int get_words(char *str)
 	int old_addr = output_addr;
 
 	while (nbytes < linesize) {
+		char *tmp = str;
 		word = exp_(&str);
+
+		if (to_second_pass && src_pass == 2) {
+			char tmp1[strlen(tmp) + 1];
+			strcpy(tmp1, tmp);
+			tmp = tmp1;
+			while(*tmp && !isblank(*tmp) && *tmp != ',') {
+			    tmp++;
+			}
+			*tmp = 0;
+			add_label(&refs, tmp1, output_addr, src_line);
+		}
+		to_second_pass = 0;
+
 		output[output_addr++] = word >> 8;
 		output[output_addr++] = word & 0xFF;
 		if (match(&str, ',') == 0) {
 			break;
 		}
+
 	}
 
 	return output_addr - old_addr;
@@ -558,8 +584,12 @@ static int do_asm(char *str)
 
     if (*ptr1 == ':') {
 	*ptr1 = 0;
-	add_label(&labels, ptr, output_addr, src_line);
-	fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
+	if (src_pass == 1) {
+	    add_label(&labels, ptr, output_addr, src_line);
+	}
+	if (src_pass == 2) {
+	    fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
+	}
     } else {
 	char last = *ptr1;
 	*ptr1 = 0;
@@ -632,10 +662,12 @@ static int do_asm(char *str)
 		if (opcode->type == reg_const) {
 		    char *tmp = ptr;
 		    int val = exp_(&ptr);
-		    if (to_second_pass) {
+
+		    if (to_second_pass && src_pass == 2) {
 			add_label(&refs, tmp, output_addr + 1, src_line);
-			to_second_pass = 0;
 		    }
+		    to_second_pass = 0;
+
 		    arg2 = (val & 0xf0) >> 4;
 		    arg3 = val & 0x0f;
 		} else {
@@ -667,10 +699,12 @@ static int do_asm(char *str)
 			if (opcode->type == reg_reg_off) {
 			    char *tmp = ptr;
 			    int val = exp_(&ptr);
-			    if (to_second_pass) {
+
+			    if (to_second_pass && src_pass == 2) {
 				add_label(&refs, tmp, output_addr + 1, src_line);
-				to_second_pass = 0;
 			    }
+			    to_second_pass = 0;
+
 			    arg3 = val & 0x0f;
 			} else {
 			    last = *ptr1;
@@ -690,7 +724,7 @@ static int do_asm(char *str)
 		}
 	    }
 
-	    if (opcode->type == pseudo_db || opcode->type == pseudo_ds || opcode->type == pseudo_align) {
+	    if (src_pass == 2 && (opcode->type == pseudo_db || opcode->type == pseudo_ds || opcode->type == pseudo_align)) {
 		int i;
 		fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
 		for (i = 0; i < output_addr - old_addr; i++) {
@@ -708,7 +742,7 @@ static int do_asm(char *str)
 		if ((i % 8) != 0) {
 		    fprintf(stderr, "\n");
 		}
-	    } else if (opcode->type == pseudo_dw) {
+	    } else if (src_pass == 2 && (opcode->type == pseudo_dw)) {
 		int i;
 		fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
 		for (i = 0; i < output_addr - old_addr; i += 2) {
@@ -727,7 +761,9 @@ static int do_asm(char *str)
 		    fprintf(stderr, "\n");
 		}
 	    } else {
-		fprintf(stderr, "%04X: %X%X%X%X\t%s\n", output_addr, opcode->op & 0x0f, arg1 & 0x0f, arg2 & 0x0f, arg3 & 0x0f, strtmp);
+		if (src_pass == 2) {
+		    fprintf(stderr, "%04X: %X%X%X%X\t%s\n", output_addr, opcode->op & 0x0f, arg1 & 0x0f, arg2 & 0x0f, arg3 & 0x0f, strtmp);
+		}
 
 		output[output_addr++] = (opcode->op << 4) | (arg1 & 0x0f);
 		output[output_addr++] = (arg2 << 4) | (arg3 & 0x0f);
@@ -736,10 +772,14 @@ static int do_asm(char *str)
 	} else {
 	    if (strlen(ptr)) {
 		fprintf(stderr, "Syntax error '%s'!\n", ptr);
-	    } else {
+	    } else if (src_pass == 2) {
 		fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
 	    }
 	}
+    }
+
+    if (src_pass == 1) {
+	fprintf(stderr, "Line: %d\r", src_line);
     }
 
     src_line++;
@@ -818,23 +858,53 @@ int main(int argc, char *argv[])
 	int err;
 	char str[512];
 
+	output_addr = 0;
+	src_pass = 1;
+	src_line = 1;
+
+	// Pass 1
+
+	fprintf(stderr, "\nPass 1\n");
+
 	while (fgets(str, sizeof(str), inf)) {
 	    if ((err = do_asm(str))) {
 		break;
 	    }
 	}
 
-	relink_refs();
+	output_addr = 0;
+	src_pass = 2;
+	src_line = 1;
 
-	fprintf(stderr, "Labels:\n");
-	dump_labels(labels);
-	fprintf(stderr, "Refs:\n");
-	dump_labels(refs);
+	if (fseek(inf, 0, SEEK_SET) == 0) {
 
-	if (out_type) {
-	    output_verilog();
+
+	    // Pass 2
+
+	    fprintf(stderr, "\n\nPass 2\n\n");
+
+	    while (fgets(str, sizeof(str), inf)) {
+		if ((err = do_asm(str))) {
+		    break;
+		}
+	    }
+
+	    relink_refs();
+
+	    fprintf(stderr, "\nLabels:\n");
+	    dump_labels(labels);
+	    fprintf(stderr, "\nRefs:\n");
+	    dump_labels(refs);
+
+	    fprintf(stderr, "\nErrors: %d\n\n", error);
+
+	    if (out_type) {
+		output_verilog();
+	    } else {
+		output_hex();
+	    }
 	} else {
-	    output_hex();
+	    fprintf(stderr, "Source file IO error!\n");
 	}
 
 	fclose(inf);

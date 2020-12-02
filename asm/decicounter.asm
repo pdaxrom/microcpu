@@ -19,7 +19,6 @@ loop:
     set		pc, loop
     set		r5, 0
     add		r6, r6, r1
-loop1:
     set		pc, loop
 
 counter:

@@ -24,3 +24,10 @@ delay_loop:
   SET R0, delay_loop  // goto delay_loop
   SET R1, 0           // R1 = 0
   ADD R0, R15, R1     // R0 = R15 (return)
+
+  DB 1,2,3,4,5, 6, 7, 8, "Hello world!", 0
+
+  DW delay1, $f000, $abcd, 15623, 12, 0, *, begin, end
+
+  align $20, $ff
+end:
