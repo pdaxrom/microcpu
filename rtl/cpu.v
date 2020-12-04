@@ -32,6 +32,9 @@ module cpu (
 
 	localparam Inst_Ext_NOP = 0;  // No operation
 	localparam Inst_Ext_B   = 1;  // rel
+	localparam Inst_Ext_MOV = 2;  // R[dest] = R[op1]
+	localparam Inst_Ext_MOVL= 3;  // RL[dest] = RH[op1]
+	localparam Inst_Ext_MOVH= 4;  // RH[dest] = RL[op1]
 
 	reg  [3:0] op;        // opcode
 	reg  [3:0] dest;      // destination arg
@@ -71,11 +74,18 @@ module cpu (
 						Inst_NOP: begin
 								case (dest)
 									Inst_Ext_B: begin
-											//r[0] <= {r[0][7:1],1'b0} + constant;
 											r[0] <= r[0] + 
 											{constant[7], constant[7], constant[7], constant[7],
 											 constant[7], constant[7], constant[7], constant[7], constant };
-											//r[0] <= {r[0][7:1] + constant[7:1], 1'b0};
+										end
+//									Inst_Ext_MOV: begin
+//											r[arg1] <= r[arg2];
+//										end
+									Inst_Ext_MOVL: begin
+											r[arg1][7:0] <= r[arg2][7:0];
+										end
+									Inst_Ext_MOVH: begin
+											r[arg1][7:0] <= r[arg2][15:8];
 										end
 								endcase
 							end
