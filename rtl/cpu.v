@@ -16,10 +16,10 @@ module cpu (
 	// NO ALU OPS
 	localparam Inst_LDRL  = 5'b00000; // dest, op1, offset  : RL[dest] = M[R[op1] + offset]
 	localparam Inst_STRL  = 5'b00010; // src,  op1, offset  : M[R[op1] + offset] = RL[src]
-//	localparam Inst_LDRH  = 5'b00100; // dest, op1, offset  : RH[dest] = M[R[op1] + offset]
-//	localparam Inst_STRH  = 5'b00110; // src,  op1, offset  : M[R[op1] + offset] = RH[src]
+	localparam Inst_LDRH  = 5'b00100; // dest, op1, offset  : RH[dest] = M[R[op1] + offset]
+	localparam Inst_STRH  = 5'b00110; // src,  op1, offset  : M[R[op1] + offset] = RH[src]
 	localparam Inst_SETL  = 5'b01000; // dest, const        : RL[dest] = const
-//	localparam Inst_SETH  = 5'b01010; // dest, const        : RH[dest] = const
+	localparam Inst_SETH  = 5'b01010; // dest, const        : RH[dest] = const
 	localparam Inst_MOVL  = 5'b01100; // dest, src          : RL[dest] = RL[src]
 	localparam Inst_MOVH  = 5'b01110; // dest, src          : RH[dest] = RL[src]
 	
@@ -147,16 +147,25 @@ module cpu (
 					// Perform the operation
 					case (op)
 						Inst_LDRL,
-						Inst_STRL: begin
+						Inst_STRL,
+						Inst_LDRH,
+						Inst_STRH: begin
 								memio <= 1;							// switch address to data
 								addrtmp <= r[arg1] + val2u;// set data address
 								if (op == Inst_STRL) begin
 									write <= 1;                    // request a write
 									dout <= r[dest][7:0];          // output the data
 								end
+								if (op == Inst_STRH) begin
+									write <= 1;
+									dout <= r[dest][15:8];
+								end
 							end
 						Inst_SETL: begin
 								r[dest][7:0] <= constant;			// set the reg to constant
+							end
+						Inst_SETH: begin
+								r[dest][15:8] <= constant;
 							end
 						Inst_MOVL: begin
 								r[dest][7:0] <= r[arg1][7:0];
@@ -196,9 +205,13 @@ module cpu (
 			end else begin
 				case (op)
 					Inst_LDRL: begin
-						r[dest][7:0] <= din;								// read the data
+							r[dest][7:0] <= din;								// read the data
 						end
-					Inst_STRL: begin
+					Inst_LDRH: begin
+							r[dest][15:8] <= din;
+						end
+					Inst_STRL,
+					Inst_STRH: begin
 						write <= 0;										// finish a write
 						end
 				endcase
