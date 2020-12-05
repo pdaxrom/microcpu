@@ -15,6 +15,7 @@ enum {
 	pseudo_dw,
 	pseudo_ds,
 	pseudo_align,
+	pseudo_macro,
 };
 
 typedef struct {
@@ -61,6 +62,8 @@ static OpCode opcode_table[] = {
 		{ "dw"   , pseudo_dw    , 0x0, 0x0  },
 		{ "ds"   , pseudo_ds    , 0x0, 0x0  },
 		{ "align", pseudo_align , 0x0, 0x0  },
+		{ "macro", pseudo_macro , 0x0, 0x0  },
+		{ "endm" , pseudo_macro , 0x0, 0x0  },
 };
 
 typedef struct Register {
@@ -87,6 +90,14 @@ static Register regs_table[] = {
 		{ "v4" ,  7 },
 };
 
+typedef struct Macro {
+	char *name;
+	char **line;
+	int lines;
+	int args;
+	struct Macro *prev;
+} Macro;
+
 typedef struct Label {
 	char *name;
 	unsigned int address;
@@ -102,6 +113,8 @@ static int src_line = 1;
 
 static Label *labels = NULL;
 static Label *refs = NULL;
+
+static Macro *macros = NULL;
 
 static int error = 0;
 static int to_second_pass = 0;
@@ -283,6 +296,57 @@ static Register* find_register_in_string(char **str) {
 	}
 
 	return reg;
+}
+
+static int add_macro(FILE *inf, char *name) {
+	char str[512];
+	Macro *mac = malloc(sizeof(Macro));
+
+	mac->name = strdup(name);
+	mac->lines = 0;
+	mac->prev = macros;
+
+	while(fgets(str, sizeof(str), inf)) {
+	    char tmp[512];
+	    char *ptr = str;
+	    REMOVE_ENDLINE(ptr);
+
+	    if (src_pass == 2) {
+		fprintf(stderr, "%04X:     \t%s\n", output_addr, str);
+	    }
+
+	    strcpy(tmp, str);
+	    ptr = tmp;
+	    SKIP_BLANK(ptr);
+	    char *ptr1 = ptr;
+	    REMOVE_ENDLINE(ptr1);
+	    ptr1 = ptr;
+	    SKIP_TOKEN(ptr1);
+	    *ptr1 = 0;
+	    ptr1 = ptr;
+	    if (!strcasecmp(ptr, "endm")) {
+		break;
+	    }
+
+	    mac->line = realloc(mac->line, sizeof(mac->line) * (mac->lines + 1));
+	    mac->line[mac->lines] = strdup(str);
+	    mac->lines++;
+	}
+
+	macros = mac;
+
+	return 0;
+}
+
+static Macro* find_macro(char *name) {
+	Macro *tmp = macros;
+	while (tmp) {
+	    if (!strcmp(tmp->name, name)) {
+		return tmp;
+	    }
+	    tmp = tmp->prev;
+	}
+	return NULL;
 }
 
 static int match(char **str, char c) {
@@ -605,7 +669,20 @@ static int get_words(char *str) {
 	return output_addr - old_addr;
 }
 
-static int do_asm(char *str) {
+static int do_asm(FILE *inf, char *str);
+
+static int expand_macro(FILE *inf, Macro *mac, char *args) {
+	for (int i = 0; i < mac->lines; i++) {
+fprintf(stderr, ">>%s\n", mac->line[i]);
+		int ret = do_asm(inf, mac->line[i]);
+	    if (ret) {
+		return ret;
+	    }
+	}
+	return 0;
+}
+
+static int do_asm(FILE *inf, char *str) {
 	char *ptr, *ptr1;
 	char strtmp[strlen(str) + 1];
 
@@ -637,6 +714,12 @@ static int do_asm(char *str) {
 		ptr1 = ptr;
 		STRING_TOLOWER(ptr1);
 
+		Macro *mac = find_macro(ptr);
+
+		if (mac) {
+			return expand_macro(inf, mac, str);
+		}
+
 		OpCode *opcode = find_opcode(ptr);
 
 //fprintf(stderr, "OPCODE: %s %d %X %X\n", opcode->name, opcode->type, opcode->op, opcode->ext_op);
@@ -647,6 +730,17 @@ static int do_asm(char *str) {
 			int arg1 = 0;
 			int arg2 = 0;
 			int arg3 = 0;
+
+			if (!strcmp(opcode->name, "macro")) {
+			    SKIP_BLANK(str);
+			    char *name = str;
+			    SKIP_TOKEN(str);
+			    *str = 0;
+			    if (src_pass == 2) {
+				fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
+			    }
+			    return add_macro(inf, name);
+			}
 
 			if ((opcode->type != op_noargs ) && last == 0) {
 				fprintf(stderr, "Missed opcode parameters!\n");
@@ -760,7 +854,7 @@ static int do_asm(char *str) {
 										src_line);
 								}
 								to_second_pass = 0;
-								
+
 								if (val > 16) {
 									fprintf(stderr, "Constant value too big (> 16)\n");
 									error = 1;
@@ -919,7 +1013,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "\nPass 1\n");
 
 		while (fgets(str, sizeof(str), inf)) {
-			if ((err = do_asm(str))) {
+			if ((err = do_asm(inf, str))) {
 				fprintf(stderr, "ERROR assembly string\n");
 				break;
 			}
@@ -936,7 +1030,7 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "\n\nPass 2\n\n");
 
 			while (fgets(str, sizeof(str), inf)) {
-				if ((err = do_asm(str))) {
+				if ((err = do_asm(inf, str))) {
 					break;
 				}
 			}
