@@ -4,14 +4,13 @@
 #include <ctype.h>
 
 enum {
-	noargs = 0,
-	reg_const,
-	reg_reg,
-	reg_reg_off,
-	reg_reg_reg,
-	extop_noargs,
-	extop_const,
-	extop_rel,
+	op_noargs = 0,
+	op_reg_const,
+	op_rel,
+	op_reg_reg,
+	op_no_reg_reg,
+	op_reg_reg_reg,
+
 	pseudo_db,
 	pseudo_dw,
 	pseudo_ds,
@@ -26,23 +25,37 @@ typedef struct {
 } OpCode;
 
 static OpCode opcode_table[] = {
-		{ "nop"  , extop_noargs , 0x0, 0x0  },
-		{ "b"    , extop_rel    , 0x0, 0x1  },
-		{ "load" , reg_reg_off  , 0x1, 0x0  },
-		{ "store", reg_reg_off  , 0x2, 0x0  },
-		{ "set"  , reg_const    , 0x3, 0x0  },
-		{ "lt"   , reg_reg_reg  , 0x4, 0x0  },
-		{ "eq"   , reg_reg_reg  , 0x5, 0x0  },
-		{ "beq"  , reg_const    , 0x6, 0x0  },
-		{ "bneq" , reg_const    , 0x7, 0x0  },
-		{ "add"  , reg_reg_reg  , 0x8, 0x0  },
-		{ "sub"  , reg_reg_reg  , 0x9, 0x0  },
-		{ "shl"  , reg_reg_reg  , 0xa, 0x0  },
-		{ "shr"  , reg_reg_reg  , 0xb, 0x0  },
-		{ "and"  , reg_reg_reg  , 0xc, 0x0  },
-		{ "or"   , reg_reg_reg  , 0xd, 0x0  },
-		{ "inv"  , reg_reg      , 0xe, 0x0  },
-		{ "xor"  , reg_reg_reg  , 0xf, 0x0  },
+		{ "ldrl" , op_reg_reg_reg  , 0x00, 0x0  },
+		{ "strl" , op_reg_reg_reg  , 0x02, 0x0  },
+//		{ "ldrh" , op_reg_reg_reg  , 0x04, 0x0  },
+//		{ "strh" , op_reg_reg_reg  , 0x06, 0x0  },
+		{ "setl" , op_reg_const    , 0x08, 0x0  },
+//		{ "seth" , op_reg_const    , 0x0a, 0x0  },
+		{ "movl" , op_reg_reg      , 0x0c, 0x0  },
+		{ "movh" , op_reg_reg      , 0x0e, 0x0  },
+
+		{ "mov"  , op_reg_reg      , 0x10, 0x0  },
+
+		{ "b"    , op_rel          , 0x16, 0x0  },
+		{ "ble"  , op_rel          , 0x18, 0x0  },
+		{ "bge"  , op_rel          , 0x1a, 0x0  },
+		{ "beq"  , op_rel          , 0x1c, 0x0  },
+		{ "bcs"  , op_rel          , 0x1e, 0x0  },
+
+		{ "cmp"  , op_no_reg_reg   , 0x01, 0x0  },
+
+//		{ "addc" , op_reg_reg_reg  , 0x09, 0x0  },
+//		{ "subc" , op_reg_reg_reg  , 0x0b, 0x0  },
+
+		{ "add"  , op_reg_reg_reg  , 0x11, 0x0  },
+		{ "sub"  , op_reg_reg_reg  , 0x13, 0x0  },
+		{ "shl"  , op_reg_reg_reg  , 0x15, 0x0  },
+		{ "shr"  , op_reg_reg_reg  , 0x17, 0x0  },
+		{ "and"  , op_reg_reg_reg  , 0x19, 0x0  },
+		{ "or"   , op_reg_reg_reg  , 0x1b, 0x0  },
+		{ "inv"  , op_reg_reg      , 0x1d, 0x0  },
+		{ "xor"  , op_reg_reg_reg  , 0x1f, 0x0  },
+
 		/* pseudo ops */
 		{ "db"   , pseudo_db    , 0x0, 0x0  },
 		{ "dw"   , pseudo_dw    , 0x0, 0x0  },
@@ -220,6 +233,56 @@ static Register* find_register(char *name) {
 	}
 
 	return NULL;
+}
+
+static OpCode* find_opcode_in_string(char **str) {
+	char tmp[strlen(*str) + 1];
+	char *ptr = tmp;
+	char *ptr_str = *str;
+
+	SKIP_BLANK(ptr_str);
+
+	while(*ptr_str && isalnum(*ptr_str)) {
+	    *ptr++ = *ptr_str++;
+	}
+
+	*ptr = 0;
+	ptr = tmp;
+
+	STRING_TOLOWER(ptr);
+
+	OpCode* op = find_opcode(tmp);
+
+	if (op) {
+	    *str = ptr_str;
+	}
+
+	return op;
+}
+
+static Register* find_register_in_string(char **str) {
+	char tmp[strlen(*str) + 1];
+	char *ptr = tmp;
+	char *ptr_str = *str;
+
+	SKIP_BLANK(ptr_str);
+
+	while(*ptr_str && isalnum(*ptr_str)) {
+	    *ptr++ = *ptr_str++;
+	}
+
+	*ptr = 0;
+	ptr = tmp;
+
+	STRING_TOLOWER(ptr);
+
+	Register *reg = find_register(tmp);
+
+	if (reg) {
+	    *str = ptr_str;
+	}
+
+	return reg;
 }
 
 static int match(char **str, char c) {
@@ -585,7 +648,7 @@ static int do_asm(char *str) {
 			int arg2 = 0;
 			int arg3 = 0;
 
-			if ((opcode->type != noargs && opcode->type != extop_noargs) && last == 0) {
+			if ((opcode->type != op_noargs ) && last == 0) {
 				fprintf(stderr, "Missed opcode parameters!\n");
 				return 1;
 			}
@@ -613,19 +676,12 @@ static int do_asm(char *str) {
 				while (count-- > 0) {
 					output[output_addr++] = fill;
 				}
-			} else if (opcode->type == extop_noargs) {
-				arg1 = opcode->ext_op;
-			} else if (opcode->type == extop_rel) {
-				arg1 = opcode->ext_op;
-
+			} else if (opcode->type == op_rel) {
 				SKIP_BLANK(str);
-				ptr = str;
-				SKIP_TOKEN(str);
-				ptr1 = str;
-				str++;
 
-				char *tmp = ptr;
-				int val = exp_(&ptr);
+				char *tmp = str;
+
+				int val = exp_(&str);
 
 				if (to_second_pass && src_pass == 2) {
 					add_label(&refs, tmp, output_addr + 1, src_line);
@@ -634,95 +690,84 @@ static int do_asm(char *str) {
 				}
 				to_second_pass = 0;
 
-				arg2 = (val & 0xf0) >> 4;
-				arg3 = val & 0x0f;
-			} else if (opcode->type != noargs) {
-				SKIP_BLANK(str);
-				ptr = str;
-				SKIP_TOKEN(str);
-				ptr1 = str;
-				str++;
-
-				last = *ptr1;
-				*ptr1 = 0;
-
-				ptr1 = ptr;
-				STRING_TOLOWER(ptr1);
-
-				reg = find_register(ptr);
-				if (!reg) {
-					fprintf(stderr, "Missed register arg1!\n");
-					return 1;
+				if (val < -0x3ff || val > 0x1ff) {
+				    fprintf(stderr, "ERROR: Related branch overflow!\n");
+				    error = 1;
 				}
-				arg1 = reg->n;
+
+				arg1 = (val & 0x300) >> 8;
+				arg2 = (val & 0xe0) >> 5;
+				arg3 =  val & 0x1f;
+			} else if (opcode->type != op_noargs) {
+				if (opcode->type == op_no_reg_reg) {
+					arg1 = 0;
+				} else {
+					SKIP_BLANK(str);
+					reg = find_register_in_string(&str);
+					if (!reg) {
+						fprintf(stderr, "Missed register arg1!\n");
+						return 1;
+					}
+					arg1 = reg->n;
+
+					if (match(&str, ',') == 0) {
+						fprintf(stderr, "parameter 2 expected!\n");
+						error = 1;
+						return 1;
+					}
+				}
 
 				SKIP_BLANK(str);
-				ptr = str;
-				SKIP_TOKEN(str);
-				ptr1 = str;
-				str++;
 
-				if (opcode->type == reg_const) {
-					char *tmp = ptr;
-					int val = exp_(&ptr);
+				if (opcode->type == op_reg_const) {
+					char *tmp = str;
+					int val = exp_(&str);
 
 					if (to_second_pass && src_pass == 2) {
 						add_label(&refs, tmp, output_addr + 1, src_line);
 					}
 					to_second_pass = 0;
 
-					arg2 = (val & 0xf0) >> 4;
-					arg3 = val & 0x0f;
+					arg2 = (val & 0xe0) >> 5;
+					arg3 =  val & 0x1f;
 				} else {
-					last = *ptr1;
-					*ptr1 = 0;
-
-					if (last == 0) {
-						fprintf(stderr, "Missed opcode parameters!\n");
-						return 1;
-					}
-
-					ptr1 = ptr;
-					STRING_TOLOWER(ptr1);
-
-					reg = find_register(ptr);
+					reg = find_register(str);
 					if (!reg) {
 						fprintf(stderr, "Missed register arg2!\n");
 						return 1;
 					}
 					arg2 = reg->n;
 
-					if (opcode->type != reg_reg) {
+					if (opcode->type != op_reg_reg) {
+						if (match(&str, ',') == 0) {
+							fprintf(stderr, "parameter 3 expected!\n");
+							error = 1;
+							return 1;
+						}
+
 						SKIP_BLANK(str);
-						ptr = str;
-						SKIP_TOKEN(str);
-						ptr1 = str;
-						str++;
 
-						if (opcode->type == reg_reg_off) {
-							char *tmp = ptr;
-							int val = exp_(&ptr);
+						if (opcode->type == op_reg_reg_reg) {
+							reg = find_register_in_string(&str);
+							if (reg) {
+								arg3 = reg->n << 1;
+							} else {
+								char *tmp = ptr;
+								int val = exp_(&ptr);
 
-							if (to_second_pass && src_pass == 2) {
-								add_label(&refs, tmp, output_addr + 1,
+								if (to_second_pass && src_pass == 2) {
+									add_label(&refs, tmp, output_addr + 1,
 										src_line);
+								}
+								to_second_pass = 0;
+								
+								if (val > 16) {
+									fprintf(stderr, "Constant value too big (> 16)\n");
+									error = 1;
+									return 1;
+								}
+								arg3 = ((val & 0x0f) << 1) | 0x01;
 							}
-							to_second_pass = 0;
-
-							arg3 = val & 0x0f;
-						} else {
-							last = *ptr1;
-							*ptr1 = 0;
-
-							ptr1 = ptr;
-							STRING_TOLOWER(ptr1);
-
-							reg = find_register(ptr);
-							if (!reg) {
-								fprintf(stderr, "Missed register arg2!\n");
-								return 1;
-							}
-							arg3 = reg->n;
 						}
 					}
 				}
@@ -772,13 +817,15 @@ static int do_asm(char *str) {
 				}
 			} else {
 				if (src_pass == 2) {
-					fprintf(stderr, "%04X: %X%X%X%X\t%s\n", output_addr,
-							opcode->op & 0x0f, arg1 & 0x0f, arg2 & 0x0f,
-							arg3 & 0x0f, strtmp);
+//fprintf(stderr, "%02X %02X %02X %02X\n", opcode->op, arg1, arg2, arg3);
+					fprintf(stderr, "%04X: %02X%02X\t%s\n", output_addr,
+							(opcode->op << 2) | (arg1 & 0x03),
+							((arg2 << 5) & 0xe0) | (arg3 & 0x1f),
+							strtmp);
 				}
 
-				output[output_addr++] = (opcode->op << 4) | (arg1 & 0x0f);
-				output[output_addr++] = (arg2 << 4) | (arg3 & 0x0f);
+				output[output_addr++] = (opcode->op << 2) | (arg1 & 0x03);
+				output[output_addr++] = ((arg2 << 5) & 0xe0) | (arg3 & 0x1f);
 			}
 
 		} else {
