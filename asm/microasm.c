@@ -28,10 +28,10 @@ typedef struct {
 static OpCode opcode_table[] = {
 		{ "ldrl" , op_reg_reg_reg  , 0x00, 0x0  },
 		{ "strl" , op_reg_reg_reg  , 0x02, 0x0  },
-//		{ "ldrh" , op_reg_reg_reg  , 0x04, 0x0  },
-//		{ "strh" , op_reg_reg_reg  , 0x06, 0x0  },
+		{ "ldrh" , op_reg_reg_reg  , 0x04, 0x0  },
+		{ "strh" , op_reg_reg_reg  , 0x06, 0x0  },
 		{ "setl" , op_reg_const    , 0x08, 0x0  },
-//		{ "seth" , op_reg_const    , 0x0a, 0x0  },
+		{ "seth" , op_reg_const    , 0x0a, 0x0  },
 		{ "movl" , op_reg_reg      , 0x0c, 0x0  },
 		{ "movh" , op_reg_reg      , 0x0e, 0x0  },
 
@@ -672,9 +672,12 @@ static int get_words(char *str) {
 static int do_asm(FILE *inf, char *str);
 
 static int expand_macro(FILE *inf, Macro *mac, char *args) {
+fprintf(stderr, "[%s]\n", args);
 	for (int i = 0; i < mac->lines; i++) {
 fprintf(stderr, ">>%s\n", mac->line[i]);
-		int ret = do_asm(inf, mac->line[i]);
+		char line[strlen(mac->line[i] + 1)];
+		strcpy(line, mac->line[i]);
+		int ret = do_asm(inf, line);
 	    if (ret) {
 		return ret;
 	    }
@@ -793,10 +796,11 @@ static int do_asm(FILE *inf, char *str) {
 				arg2 = (val & 0xe0) >> 5;
 				arg3 =  val & 0x1f;
 			} else if (opcode->type != op_noargs) {
+				SKIP_BLANK(str);
+
 				if (opcode->type == op_no_reg_reg) {
 					arg1 = 0;
 				} else {
-					SKIP_BLANK(str);
 					reg = find_register_in_string(&str);
 					if (!reg) {
 						fprintf(stderr, "Missed register arg1!\n");
@@ -809,9 +813,9 @@ static int do_asm(FILE *inf, char *str) {
 						error = 1;
 						return 1;
 					}
-				}
 
-				SKIP_BLANK(str);
+					SKIP_BLANK(str);
+				}
 
 				if (opcode->type == op_reg_const) {
 					char *tmp = str;
@@ -825,7 +829,7 @@ static int do_asm(FILE *inf, char *str) {
 					arg2 = (val & 0xe0) >> 5;
 					arg3 =  val & 0x1f;
 				} else {
-					reg = find_register(str);
+					reg = find_register_in_string(&str);
 					if (!reg) {
 						fprintf(stderr, "Missed register arg2!\n");
 						return 1;
@@ -840,14 +844,13 @@ static int do_asm(FILE *inf, char *str) {
 						}
 
 						SKIP_BLANK(str);
-
-						if (opcode->type == op_reg_reg_reg) {
+						if (opcode->type == op_reg_reg_reg || opcode->type == op_no_reg_reg) {
 							reg = find_register_in_string(&str);
 							if (reg) {
 								arg3 = reg->n << 1;
 							} else {
-								char *tmp = ptr;
-								int val = exp_(&ptr);
+								char *tmp = str;
+								int val = exp_(&str);
 
 								if (to_second_pass && src_pass == 2) {
 									add_label(&refs, tmp, output_addr + 1,
