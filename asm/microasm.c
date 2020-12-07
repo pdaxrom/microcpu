@@ -4,6 +4,28 @@
 #include <ctype.h>
 
 enum {
+    NO_ERROR = 0,
+    NO_MEMORY_FOR_LABEL,
+    CANNOT_RESOLVE_REF,
+    NO_MEMORY_FOR_MACRO,
+    INVALID_NUMBER,
+    INVALID_HEX_NUMBER,
+    INVALID_DECIMAL_NUMBER,
+    INVALID_OCTAL_NUMBER,
+    INVALID_BINARY_NUMBER,
+    MISSED_BRACKET,
+    EXPECTED_CLOSE_QUOTE,
+    MISSED_OPCODE_PARAM_1,
+    LONG_RELATED_OFFSET,
+    MISSED_OPCODE_ARG_1,
+    EXPECTED_ARG_2,
+    MISSED_REGISTER_ARG_2,
+    EXPECTED_ARG_3,
+    CONSTAND_VALUE_TOO_BIG,
+    SYNTAX_ERROR
+};
+
+enum {
 	op_noargs = 0,
 	op_reg_const,
 	op_rel,
@@ -119,6 +141,8 @@ static Macro *macros = NULL;
 static int error = 0;
 static int to_second_pass = 0;
 
+static int in_macro = 0;
+
 #define SKIP_BLANK(s) { \
     while (*(s) && isblank(*(s))) { \
 	(s)++; \
@@ -175,8 +199,7 @@ static Label* add_label(Label **list, char *name, unsigned int address,
 		int line) {
 	Label *new = malloc(sizeof(Label));
 	if (!new) {
-		fprintf(stderr, "Cannot allocate memory for label entry!\n");
-		error = 1;
+		error = NO_MEMORY_FOR_LABEL;
 		return NULL;
 	}
 	new->name = strdup(name);
@@ -220,7 +243,8 @@ static int relink_refs() {
 		} else {
 			fprintf(stderr, "Can't resolve %s in %s line %d\n", tmp->name, ptr,
 					tmp->line);
-			error++;
+			error = CANNOT_RESOLVE_REF;
+			return 1;
 		}
 		tmp = tmp->prev;
 	}
@@ -301,6 +325,10 @@ static Register* find_register_in_string(char **str) {
 static int add_macro(FILE *inf, char *name) {
 	char str[512];
 	Macro *mac = malloc(sizeof(Macro));
+	if (!mac) {
+		error = NO_MEMORY_FOR_MACRO;
+		return 1;
+	}
 
 	mac->name = strdup(name);
 	mac->lines = 0;
@@ -372,8 +400,7 @@ static int toint(char c) {
 			return (c - 'a' + 10);
 		}
 	} else {
-		fprintf(stderr, "Invalid number!\n");
-		error = 1;
+		error = INVALID_NUMBER;
 		return 0;
 	}
 }
@@ -382,8 +409,7 @@ static int hexnum(char **str) {
 	int n;
 
 	if (!isxdigit(*(*str))) {
-		fprintf(stderr, "Invalid hex number!\n");
-		error = 1;
+		error = INVALID_HEX_NUMBER;
 		return 0;
 	} else {
 		n = 0;
@@ -398,8 +424,7 @@ static int decimal(char **str) {
 	int n;
 
 	if (isdigit(*(*str)) == 0) {
-		fprintf(stderr, "Invalid number!\n");
-		error = 1;
+		error = INVALID_DECIMAL_NUMBER;
 		return 0;
 	} else {
 		n = 0;
@@ -414,8 +439,7 @@ static int octal(char **str) {
 	int n;
 
 	if (*(*str) < '0' || *(*str) > '7') {
-		fprintf(stderr, "Invalid octal number!\n");
-		error = 1;
+		error = INVALID_OCTAL_NUMBER;
 		return 0;
 	} else {
 		n = 0;
@@ -430,8 +454,7 @@ static int binary(char **str) {
 	int n;
 
 	if (*(*str) != '0' && *(*str) != '1') {
-		fprintf(stderr, "Invalid binary number!\n");
-		error = 1;
+		error = INVALID_BINARY_NUMBER;
 		return 0;
 	} else {
 		n = 0;
@@ -497,8 +520,7 @@ static int exp8(char **str) {
 		if (match(str, ')'))
 			return n;
 		else {
-			fprintf(stderr, "Missing bracket!");
-			error = 1;
+			error = MISSED_BRACKET;
 			return 0;
 		}
 	}
@@ -629,8 +651,7 @@ static int get_bytes(char *str) {
 		SKIP_BLANK(str);
 	}
 	if (delim) {
-		fprintf(stderr, "Expected close quote.\n");
-		error = 1;
+		error = EXPECTED_CLOSE_QUOTE;
 	}
 
 	return output_addr - old_addr;
@@ -674,6 +695,8 @@ static int do_asm(FILE *inf, char *str);
 static int expand_macro(FILE *inf, Macro *mac, char *args) {
 	int i = 0;
 	char *arg[10];
+
+	in_macro++;
 
 	// parse args
 	while (args && *args) {
@@ -724,20 +747,25 @@ static int expand_macro(FILE *inf, Macro *mac, char *args) {
 
 		int ret = do_asm(inf, line);
 	    if (ret) {
+		fprintf(stderr, "[%s]:%d %s\n", mac->name, i + 1, line);
 		return ret;
 	    }
 	}
+
+	in_macro--;
+
 	return 0;
 }
 
-static int do_asm(FILE *inf, char *str) {
+static int do_asm(FILE *inf, char *line) {
 	char *ptr, *ptr1;
-	char strtmp[strlen(str) + 1];
+	char linetmp[strlen(line) + 1];
+	char *str = linetmp;
 
-	ptr = str;
-	REMOVE_ENDLINE(ptr);
+//	ptr = str;
+//	REMOVE_ENDLINE(ptr);
 
-	strcpy(strtmp, str);
+	strcpy(linetmp, line);
 
 	remove_comment(str);
 
@@ -753,7 +781,7 @@ static int do_asm(FILE *inf, char *str) {
 			add_label(&labels, ptr, output_addr, src_line);
 		}
 		if (src_pass == 2) {
-			fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
+			fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
 		}
 	} else {
 		char last = *ptr1;
@@ -765,6 +793,9 @@ static int do_asm(FILE *inf, char *str) {
 		Macro *mac = find_macro(ptr);
 
 		if (mac) {
+			if (src_pass == 2) {
+				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+			}
 			SKIP_BLANK(str);
 			return expand_macro(inf, mac, last ? str : NULL);
 		}
@@ -786,13 +817,13 @@ static int do_asm(FILE *inf, char *str) {
 			    SKIP_TOKEN(str);
 			    *str = 0;
 			    if (src_pass == 2) {
-				fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
+				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
 			    }
 			    return add_macro(inf, name);
 			}
 
 			if ((opcode->type != op_noargs ) && last == 0) {
-				fprintf(stderr, "Missed opcode parameters!\n");
+				error = MISSED_OPCODE_PARAM_1;
 				return 1;
 			}
 
@@ -834,8 +865,8 @@ static int do_asm(FILE *inf, char *str) {
 				to_second_pass = 0;
 
 				if (val < -0x3ff || val > 0x1ff) {
-				    fprintf(stderr, "ERROR: Related branch overflow!\n");
-				    error = 1;
+				    error = LONG_RELATED_OFFSET;
+				    return 1;
 				}
 
 				arg1 = (val & 0x300) >> 8;
@@ -849,14 +880,13 @@ static int do_asm(FILE *inf, char *str) {
 				} else {
 					reg = find_register_in_string(&str);
 					if (!reg) {
-						fprintf(stderr, "Missed register arg1!\n");
+						error = MISSED_OPCODE_ARG_1;
 						return 1;
 					}
 					arg1 = reg->n;
 
 					if (match(&str, ',') == 0) {
-						fprintf(stderr, "parameter 2 expected!\n");
-						error = 1;
+						error = EXPECTED_ARG_2;
 						return 1;
 					}
 
@@ -877,15 +907,14 @@ static int do_asm(FILE *inf, char *str) {
 				} else {
 					reg = find_register_in_string(&str);
 					if (!reg) {
-						fprintf(stderr, "Missed register arg2!\n");
+						error = MISSED_REGISTER_ARG_2;
 						return 1;
 					}
 					arg2 = reg->n;
 
 					if (opcode->type != op_reg_reg) {
 						if (match(&str, ',') == 0) {
-							fprintf(stderr, "parameter 3 expected!\n");
-							error = 1;
+							error = EXPECTED_ARG_3;
 							return 1;
 						}
 
@@ -905,8 +934,7 @@ static int do_asm(FILE *inf, char *str) {
 								to_second_pass = 0;
 
 								if (val > 16) {
-									fprintf(stderr, "Constant value too big (> 16)\n");
-									error = 1;
+									error = CONSTAND_VALUE_TOO_BIG;
 									return 1;
 								}
 								arg3 = ((val & 0x0f) << 1) | 0x01;
@@ -920,7 +948,7 @@ static int do_asm(FILE *inf, char *str) {
 					|| opcode->type == pseudo_align) {
 				if (src_pass == 2) {
 					int i;
-					fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
+					fprintf(stderr, "%04X:     \t%s\n", old_addr, line);
 					for (i = 0; i < output_addr - old_addr; i++) {
 						if ((i % 8) == 0) {
 							fprintf(stderr, "%04X:", old_addr + i);
@@ -940,7 +968,7 @@ static int do_asm(FILE *inf, char *str) {
 			} else if (opcode->type == pseudo_dw) {
 				if (src_pass == 2) {
 					int i;
-					fprintf(stderr, "%04X:     \t%s\n", old_addr, strtmp);
+					fprintf(stderr, "%04X:     \t%s\n", old_addr, line);
 					for (i = 0; i < output_addr - old_addr; i += 2) {
 						if ((i % 8) == 0) {
 							fprintf(stderr, "%04X:", old_addr + i);
@@ -964,7 +992,7 @@ static int do_asm(FILE *inf, char *str) {
 					fprintf(stderr, "%04X: %02X%02X\t%s\n", output_addr,
 							(opcode->op << 3) | (arg1 & 0x07),
 							((arg2 << 5) & 0xe0) | (arg3 & 0x1f),
-							strtmp);
+							line);
 				}
 
 				output[output_addr++] = (opcode->op << 3) | (arg1 & 0x07);
@@ -973,9 +1001,10 @@ static int do_asm(FILE *inf, char *str) {
 
 		} else {
 			if (strlen(ptr)) {
-				fprintf(stderr, "Syntax error '%s'!\n", ptr);
+				error = SYNTAX_ERROR;
+				return 1;
 			} else if (src_pass == 2) {
-				fprintf(stderr, "%04X:     \t%s\n", output_addr, strtmp);
+				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
 			}
 		}
 	}
@@ -984,7 +1013,9 @@ static int do_asm(FILE *inf, char *str) {
 		fprintf(stderr, "Line: %d\r", src_line);
 	}
 
-	src_line++;
+	if (!in_macro) {
+	    src_line++;
+	}
 
 	return 0;
 }
@@ -1039,6 +1070,30 @@ static void output_verilog() {
 			"endmodule\n");
 }
 
+static char *get_error_string(int error) {
+    switch(error) {
+    case NO_MEMORY_FOR_LABEL:	return "No memory for labels";
+    case CANNOT_RESOLVE_REF:	return "Cannot resolve reference";
+    case NO_MEMORY_FOR_MACRO:	return "No memory for macro";
+    case INVALID_NUMBER:	return "Invalid number";
+    case INVALID_HEX_NUMBER:	return "Invalid hex number";
+    case INVALID_DECIMAL_NUMBER: return "Invalid decimal number";
+    case INVALID_OCTAL_NUMBER:	return "Invalid octal number";
+    case INVALID_BINARY_NUMBER:	return "Invalid binary number";
+    case MISSED_BRACKET:	return "Missed bracket";
+    case EXPECTED_CLOSE_QUOTE:	return "Expected close quote";
+    case MISSED_OPCODE_PARAM_1:	return "Missed parameter";
+    case LONG_RELATED_OFFSET:	return "Related offset too long";
+    case MISSED_OPCODE_ARG_1:	return "Missed argument 1";
+    case EXPECTED_ARG_2:	return "Expected argument 2";
+    case MISSED_REGISTER_ARG_2:	return "Missed register 2";
+    case EXPECTED_ARG_3:	return "Expected argument 3";
+    case CONSTAND_VALUE_TOO_BIG: return "Constand value too big (> 16)";
+    case SYNTAX_ERROR:		return "Syntax error";
+    default: return "No error";
+    }
+}
+
 int main(int argc, char *argv[]) {
 	int out_type = 0;
 	FILE *inf;
@@ -1056,21 +1111,26 @@ int main(int argc, char *argv[]) {
 		output_addr = 0;
 		src_pass = 1;
 		src_line = 1;
+		in_macro = 0;
 
 		// Pass 1
 
 		fprintf(stderr, "\nPass 1\n");
 
 		while (fgets(str, sizeof(str), inf)) {
-			if ((err = do_asm(inf, str))) {
-				fprintf(stderr, "ERROR assembly string\n");
-				break;
+			char *ptr = str;
+			REMOVE_ENDLINE(ptr);
+			if ((err = do_asm(inf, str)) || error != NO_ERROR) {
+				fprintf(stderr, "%d:%s\n", src_line, str);
+				fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
+				return 1;
 			}
 		}
 
 		output_addr = 0;
 		src_pass = 2;
 		src_line = 1;
+		in_macro = 0;
 
 		if (fseek(inf, 0, SEEK_SET) == 0) {
 
@@ -1079,8 +1139,12 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "\n\nPass 2\n\n");
 
 			while (fgets(str, sizeof(str), inf)) {
-				if ((err = do_asm(inf, str))) {
-					break;
+				char *ptr = str;
+				REMOVE_ENDLINE(ptr);
+				if ((err = do_asm(inf, str)) || error != NO_ERROR) {
+					fprintf(stderr, "%d:%s\n", src_line, str);
+					fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
+					return 1;
 				}
 			}
 

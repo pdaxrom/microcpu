@@ -1,4 +1,4 @@
-    mov		v0, v1
+    mov		v1, v2
     add		v0, v1, v2
     add		v0, v2, 7
     cmp		v0, v1
