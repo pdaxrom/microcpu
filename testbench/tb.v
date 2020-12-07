@@ -1,6 +1,6 @@
 module test_bench;
 
-	wire	[7:0]	ADDR;
+	wire	[15:0]	ADDR;
 	wire	[7:0]	DI;
 	wire	[7:0]	DO;
 	wire			RW;
@@ -8,10 +8,10 @@ module test_bench;
 	reg				CLK;
 	reg				RST;
 
-	wire	[3:0]	d_op;
-	wire	[3:0]	d_dest;
-	wire	[3:0]	d_arg1;
-	wire	[3:0]	d_arg2;
+	wire	[4:0]	d_op;
+	wire	[2:0]	d_dest;
+	wire	[2:0]	d_arg1;
+	wire	[4:0]	d_arg2;
 
 	initial begin
 		CLK <= 0;

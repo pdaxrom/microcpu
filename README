@@ -1,3 +1,24 @@
 For correct work with ftdi jtag, remove ftdi_sio module:
 
 sudo rmmod  ftdi_sio
+
+Opcodes
+
+	localparam Inst_NOP   = 000; // 0 filled
+	localparam Inst_LOAD  = 001; // dest, op1, offset  : R[dest] = M[R[op1] + offset]
+	localparam Inst_STORE = 010; // src, op1, offset   : M[R[op1] + offset] = R[src]
+	localparam Inst_SET   = 011; // dest, const        : R[dest] = const
+	localparam Inst_LT    = 100; // dest, op1, op2     : R[dest] = R[op1] < R[op2]
+	localparam Inst_EQ    = 101; // dest, op1, op2     : R[dest] = R[op1] == R[op2]
+	localparam Inst_BEQ   = 110; // op1, const         : R[0] = R[0] + (R[op1] == const ? 2 : 1)
+	localparam Inst_BNEQ  = 111; // op1, const         : R[0] = R[0] + (R[op1] != const ? 2 : 1)
+
+	localparam Inst_ADD   = 000; // dest, op1, op2     : R[dest] = R[op1] + R[op2]
+	localparam Inst_SUB   = 001; // dest, op1, op2     : R[dest] = R[op1] - R[op2]
+	localparam Inst_SHL   = 010; // dest, op1, op2     : R[dest] = R[op1] << R[op2]
+	localparam Inst_SHR   = 011; // dest, op1, op2     : R[dest] = R[op1] >> R[op2]
+	localparam Inst_AND   = 100; // dest, op1, op2     : R[dest] = R[op1] & R[op2]
+	localparam Inst_OR    = 101; // dest, op1, op2     : R[dest] = R[op1] | R[op2]
+	localparam Inst_INV   = 110; // dest, op1          : R[dest] = ~R[op1]
+	localparam Inst_XOR   = 111; // dest, op1, op2     : R[dest] = R[op1] ^ R[op2]
+

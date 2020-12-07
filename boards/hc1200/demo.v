@@ -23,15 +23,15 @@ module demo (
 
 	wire	[3:0] hexin;
 	
-	assign hexin = dig_counter == 0 ? ADDR[7:4] :
-					dig_counter == 1 ? ADDR[3:0] :
-					dig_counter == 2 ? led_mem[7:4] :
-					led_mem[3:0];
-
 //	assign hexin = dig_counter == 0 ? ADDR[7:4] :
 //					dig_counter == 1 ? ADDR[3:0] :
-//					dig_counter == 2 ? DI[7:4] :
-//					DI[3:0];
+//					dig_counter == 2 ? led_mem[7:4] :
+//					led_mem[3:0];
+
+	assign hexin = dig_counter == 0 ? ADDR[7:4] :
+					dig_counter == 1 ? ADDR[3:0] :
+					dig_counter == 2 ? DI[7:4] :
+					DI[3:0];
 
 //	assign hexin = dig_counter == 0 ? ADDR[15:12] :
 //					dig_counter == 1 ? ADDR[11:8] :

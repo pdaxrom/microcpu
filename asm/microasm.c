@@ -672,9 +672,9 @@ static int get_words(char *str) {
 static int do_asm(FILE *inf, char *str);
 
 static int expand_macro(FILE *inf, Macro *mac, char *args) {
-fprintf(stderr, "[%s]\n", args);
+//fprintf(stderr, "[%s]\n", args);
 	for (int i = 0; i < mac->lines; i++) {
-fprintf(stderr, ">>%s\n", mac->line[i]);
+//fprintf(stderr, ">>%s\n", mac->line[i]);
 		char line[strlen(mac->line[i] + 1)];
 		strcpy(line, mac->line[i]);
 		int ret = do_asm(inf, line);

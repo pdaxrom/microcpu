@@ -1,3 +1,7 @@
+    macro nop
+    mov v0,v0
+    endm
+
 begin:
     nop
     nop
@@ -14,9 +18,5 @@ next:
     nop
     nop
     b	begin
-halt:
-    b halt
 
-    dw	next+2,1,2,3
-
-    ds	$100-*, $ff
+    ds	$100-*

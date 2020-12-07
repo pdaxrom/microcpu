@@ -7,10 +7,10 @@ module cpu (
     output reg  [7:0] dout,    // write data
     input  wire [7:0] din,      // read data
 	
-	output wire [3:0] d_op,
-	output wire [3:0] d_dest,
-	output wire [3:0] d_arg1,
-	output wire [3:0] d_arg2
+	output wire [4:0] d_op,
+	output wire [2:0] d_dest,
+	output wire [2:0] d_arg1,
+	output wire [4:0] d_arg2
 );
 
 	// NO ALU OPS
@@ -95,7 +95,7 @@ module cpu (
 	assign d_op = op;
 	assign d_dest = dest;
 	assign d_arg1 = arg1;
-	assign d_arg2 = arg2;
+	assign d_arg2 = {const4, is_const4};
 
 	always @(negedge clk) begin
 		if (rst) begin
@@ -141,9 +141,9 @@ module cpu (
 				r[0] <= r[0] + 1;   // increment PC by default
 				if (~r[0][0]) begin
 					op <= din[7:3];
-					aluop <= { 1'b0, din[3]};
 					dest <= din[2:0];
 				end else begin
+					aluop <= { 1'b0, op[0]};
 					// Perform the operation
 					case (op)
 						Inst_LDRL,

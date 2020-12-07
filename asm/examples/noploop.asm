@@ -1,9 +1,13 @@
+    macro nop
+    mov v0,v0
+    endm
+
 begin:
     nop
     nop
     nop
     nop
-    set	pc, next
+    setl	pc, next
     nop
     nop
     nop
@@ -13,6 +17,6 @@ next:
     nop
     nop
     nop
-    set	pc, begin
+    setl	pc, begin
 
     ds	$100-*
