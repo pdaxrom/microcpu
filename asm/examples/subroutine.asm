@@ -23,7 +23,13 @@
     ldrl	#1, sp, 1
     endm
 
+    macro set
+    seth	#1, /#2
+    setl	#1, #2
+    endm
+
 begin:
+    set		v0, $abcd
     nop
     bsr		subr
     nop
@@ -32,7 +38,8 @@ begin:
     b		begin
 
 subr:
-    nop
+    push	lr
+    pop		lr
     rts
 
     ds	$100-*

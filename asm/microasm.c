@@ -672,11 +672,56 @@ static int get_words(char *str) {
 static int do_asm(FILE *inf, char *str);
 
 static int expand_macro(FILE *inf, Macro *mac, char *args) {
-//fprintf(stderr, "[%s]\n", args);
-	for (int i = 0; i < mac->lines; i++) {
-//fprintf(stderr, ">>%s\n", mac->line[i]);
-		char line[strlen(mac->line[i] + 1)];
-		strcpy(line, mac->line[i]);
+	int i = 0;
+	char *arg[10];
+
+	// parse args
+	while (args && *args) {
+	    SKIP_BLANK(args);
+	    arg[i++] = args;
+	    while (*args && *args != ',') {
+		args++;
+	    }
+
+	    if (*args == ',') {
+		*args++ = 0;
+		continue;
+	    }
+	}
+
+	arg[i] = NULL;
+
+//	for (i = 0; arg[i]; i++) {
+//	    fprintf(stderr, "[%s]\n", arg[i]);
+//	}
+
+	for (i = 0; i < mac->lines; i++) {
+		char line[1024];
+		char *ptr_tmp;
+		char *ptr_src = mac->line[i];
+		char *ptr_dst = line;
+
+		if (!strchr(ptr_src, '#')) {
+		    strcpy(line, ptr_src);
+		} else {
+		while ((ptr_tmp = strchr(ptr_src, '#'))) {
+		    if (isdigit(*(ptr_tmp + 1))) {
+			int len = (ptr_tmp - ptr_src);
+			int n = *(ptr_tmp + 1) - '0' - 1;
+
+			strncpy(ptr_dst, ptr_src, len);
+			strcpy(ptr_dst + len, arg[n]);
+			ptr_dst += strlen(ptr_dst);
+			ptr_src = ptr_tmp + 2;
+		    } else {
+			break;
+		    }
+		}
+		if (*ptr_src) {
+		    strcpy(ptr_dst, ptr_src);
+		}
+		}
+
 		int ret = do_asm(inf, line);
 	    if (ret) {
 		return ret;
@@ -720,7 +765,8 @@ static int do_asm(FILE *inf, char *str) {
 		Macro *mac = find_macro(ptr);
 
 		if (mac) {
-			return expand_macro(inf, mac, str);
+			SKIP_BLANK(str);
+			return expand_macro(inf, mac, last ? str : NULL);
 		}
 
 		OpCode *opcode = find_opcode(ptr);
