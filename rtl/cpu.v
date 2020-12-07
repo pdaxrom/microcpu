@@ -100,6 +100,7 @@ module cpu (
 			r[0] <= 0;
 			memio <= 0;
 			read <= 1;
+			aluop <= 2'b11;
 		end else begin
 			if (aluop != 0) begin
 				aluop <= aluop + 1;
