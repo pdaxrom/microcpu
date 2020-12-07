@@ -1,16 +1,15 @@
 module cpu (
     input  wire clk,           // clock
     input  wire rst,           // reset
-    output reg  write,         // CPU write request
-    output wire  read,          // CPU read request
+    output reg  read,          // CPU read request
     output wire [15:0] address, // read/write address
     output reg  [7:0] dout,    // write data
-    input  wire [7:0] din,      // read data
+    input  wire [7:0] din      // read data
 	
-	output wire [4:0] d_op,
-	output wire [2:0] d_dest,
-	output wire [2:0] d_arg1,
-	output wire [4:0] d_arg2
+//	output wire [4:0] d_op,
+//	output wire [2:0] d_dest,
+//	output wire [2:0] d_arg1,
+//	output wire [4:0] d_arg2
 );
 
 	// NO ALU OPS
@@ -74,7 +73,6 @@ module cpu (
 	reg memio;			   // memory io operation
 	reg [1:0] aluop;	   // ALU operation in progress;
 
-	assign read = write ? 0: 1;
 	assign address = memio ? addrtmp : r[0];
 	assign arg1 = din[7:5];
 	assign arg2 = din[4:2];
@@ -92,16 +90,16 @@ module cpu (
 								const4[3], const4[3], const4[3], const4[3],
 								const4} : r[arg2];
 
-	assign d_op = op;
-	assign d_dest = dest;
-	assign d_arg1 = arg1;
-	assign d_arg2 = {const4, is_const4};
+//	assign d_op = op;
+//	assign d_dest = dest;
+//	assign d_arg1 = arg1;
+//	assign d_arg2 = {const4, is_const4};
 
 	always @(negedge clk) begin
 		if (rst) begin
 			r[0] <= 0;
 			memio <= 0;
-			write <= 0;
+			read <= 1;
 		end else begin
 			if (aluop != 0) begin
 				aluop <= aluop + 1;
@@ -124,12 +122,9 @@ module cpu (
 					flag_C <= aluacc[16];
 					flag_N <= aluacc[15];
 
-					case (op)
-						Inst_ADD: flag_V <= ((aluval1 ^ ~aluval2) & (aluval1 ^ aluacc[15:0]) & 16'h8000) != 0;
-						Inst_CMP,
-						Inst_SUB: flag_V <= ((aluval1 ^ aluval2) & (aluval1 ^ aluacc[15:0]) & 16'h8000) != 0;
-						default: flag_V <= 0;
-					endcase
+					if (op == Inst_ADD) flag_V <= ((aluval1 ^ ~aluval2) & (aluval1 ^ aluacc[15:0]) & 16'h8000) != 0;
+					else if (op == Inst_CMP || op == Inst_SUB) flag_V <= ((aluval1 ^ aluval2) & (aluval1 ^ aluacc[15:0]) & 16'h8000) != 0;
+					else flag_V <= 0;
 					
 					if (op != Inst_CMP) begin
 						r[dest] <= aluacc[15:0];
@@ -150,14 +145,14 @@ module cpu (
 						Inst_STRL,
 						Inst_LDRH,
 						Inst_STRH: begin
-								memio <= 1;							// switch address to data
+								memio <= ~memio;							// switch address to data
 								addrtmp <= r[arg1] + val2u;// set data address
 								if (op == Inst_STRL) begin
-									write <= 1;                    // request a write
+									read <= ~read;                    // request a write
 									dout <= r[dest][7:0];          // output the data
 								end
 								if (op == Inst_STRH) begin
-									write <= 1;
+									read <= ~read;
 									dout <= r[dest][15:8];
 								end
 							end
@@ -176,46 +171,39 @@ module cpu (
 						Inst_MOV: begin
 								r[dest] <= val1;
 							end
-							
-						Inst_CMP,
+						default:	
+//						Inst_CMP,
 //						Inst_ADDC,
 //						Inst_SUBC,
-						Inst_ADD,
-						Inst_SUB,
-						Inst_SHL,
-						Inst_SHR,
-						Inst_AND,
-						Inst_OR,
-						Inst_INV,
-						Inst_XOR: begin
-								aluval1 <= r[arg1];
-								aluval2 <= val2u;
-							end
-					endcase
-					
-					if ((op == Inst_B) ||
+//						Inst_ADD,
+//						Inst_SUB,
+//						Inst_SHL,
+//						Inst_SHR,
+//						Inst_AND,
+//						Inst_OR,
+//						Inst_INV,
+//						Inst_XOR:
+							begin
+								if ((op == Inst_B) ||
 						(op == Inst_BCS && flag_C) ||
 						(op == Inst_BLE && (flag_Z |(flag_N ^ flag_V))) ||
 						(op == Inst_BGE && ~(flag_N ^ flag_V))) begin
-						r[0] <= r[0] + 
-							{constant[7], constant[7], constant[7], constant[7],
-							 constant[7], constant[7], constant[7], constant[7], constant };
-					end
+								r[0] <= r[0] + 
+									{constant[7], constant[7], constant[7], constant[7],
+									constant[7], constant[7], constant[7], constant[7], constant };
+								end else begin
+									aluval1 <= r[arg1];
+									aluval2 <= val2u;
+								end
+							end
+					endcase
+					
 				end
 			end else begin
-				case (op)
-					Inst_LDRL: begin
-							r[dest][7:0] <= din;								// read the data
-						end
-					Inst_LDRH: begin
-							r[dest][15:8] <= din;
-						end
-					Inst_STRL,
-					Inst_STRH: begin
-						write <= 0;										// finish a write
-						end
-				endcase
-				memio <= 0;										// switch address to programm
+				if (op == Inst_LDRL) r[dest][7:0] <= din;								// read the data
+				else if (op == Inst_LDRH) r[dest][15:8] <= din;
+				else read <= ~read;
+				memio <= ~memio;										// switch address to programm
 			end
 		end
 	end

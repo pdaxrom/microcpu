@@ -916,12 +916,12 @@ static int do_asm(FILE *inf, char *str) {
 				if (src_pass == 2) {
 //fprintf(stderr, "%02X %02X %02X %02X\n", opcode->op, arg1, arg2, arg3);
 					fprintf(stderr, "%04X: %02X%02X\t%s\n", output_addr,
-							(opcode->op << 2) | (arg1 & 0x03),
+							(opcode->op << 3) | (arg1 & 0x07),
 							((arg2 << 5) & 0xe0) | (arg3 & 0x1f),
 							strtmp);
 				}
 
-				output[output_addr++] = (opcode->op << 2) | (arg1 & 0x03);
+				output[output_addr++] = (opcode->op << 3) | (arg1 & 0x07);
 				output[output_addr++] = ((arg2 << 5) & 0xe0) | (arg3 & 0x1f);
 			}
 

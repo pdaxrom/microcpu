@@ -3,6 +3,7 @@
     endm
 
 begin:
+    mov		r7, r6
     nop
     nop
     nop
