@@ -29,6 +29,7 @@
     endm
 
 begin:
+    set		sp, $00fe
     set		v1, numbers
     seth	v0, 0
 loop:
@@ -49,6 +50,6 @@ printnum:
     rts
 
 numbers:
-    db	1, 2, 3, 4, 5, 6, 7, 8, 9, $a, $b, $c, $d, $e, $f, 0
+    db	3, 2, 1, 0, 4, 5, 6, 7, 8, 9, $a, $b, $c, $d, $e, $f, 0
 
     ds	$100-*

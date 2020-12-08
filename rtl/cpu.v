@@ -186,12 +186,13 @@ module cpu (
 //						Inst_XOR:
 							begin
 								if ((op == Inst_B) ||
-						(op == Inst_BCS && flag_C) ||
-						(op == Inst_BLE && (flag_Z |(flag_N ^ flag_V))) ||
-						(op == Inst_BGE && ~(flag_N ^ flag_V))) begin
-								r[0] <= r[0] + 
-									{constant[7], constant[7], constant[7], constant[7],
-									constant[7], constant[7], constant[7], constant[7], constant };
+									(op == Inst_BEQ && flag_Z) ||
+									(op == Inst_BCS && flag_C) ||
+									(op == Inst_BLE && (flag_Z |(flag_N ^ flag_V))) ||
+									(op == Inst_BGE && ~(flag_N ^ flag_V))) begin
+									r[0] <= r[0] + 
+										{constant[7], constant[7], constant[7], constant[7],
+										 constant[7], constant[7], constant[7], constant[7], constant };
 								end else begin
 									aluval1 <= r[arg1];
 									aluval2 <= val2u;
