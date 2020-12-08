@@ -33,9 +33,10 @@ module cpu (
 	// ALU OPS
 	
 	localparam Inst_CMP   = 5'b00001; // op1, op2
+	localparam Inst_SEXT  = 5'b00011; // op1, op2			 : R[dest] = (signed) R[op1][7:0]
 	
-//	localparam Inst_ADDC  = 5'b01001; // dest, op1, op2     : R[dest] = R[op1] + R[op2] + C
-//	localparam Inst_SUBC  = 5'b01011; // dest, op1, op2     : R[dest] = R[op1] - R[op2] - C
+	localparam Inst_ADDC  = 5'b01001; // dest, op1, op2     : R[dest] = R[op1] + R[op2] + C
+	localparam Inst_SUBC  = 5'b01011; // dest, op1, op2     : R[dest] = R[op1] - R[op2] - C
 	
 	localparam Inst_ADD   = 5'b10001; // dest, op1, op2     : R[dest] = R[op1] + R[op2]
 	localparam Inst_SUB   = 5'b10011; // dest, op1, op2     : R[dest] = R[op1] - R[op2]
@@ -100,14 +101,17 @@ module cpu (
 			r[0] <= 0;
 			memio <= 0;
 			read <= 1;
-			aluop <= 2'b11;
+			aluop <= 3;
 		end else begin
 			if (aluop != 0) begin
 				aluop <= aluop + 1;
 				if (aluop == 2'b01) begin
 					case (op)
-//						Inst_ADDC:aluacc <= {1'b0, aluval1} + {1'b0, aluval2} + {15'b0000000000000000, flag_C};
-//						Inst_SUBC:aluacc <= {1'b0, aluval1} - {1'b0, aluval2} - {15'b0000000000000000, flag_C};
+						Inst_ADDC:aluacc <= {1'b0, aluval1} + {1'b0, aluval2} + {15'b0000000000000000, flag_C};
+						Inst_SUBC:aluacc <= {1'b0, aluval1} - {1'b0, aluval2} - {15'b0000000000000000, flag_C};
+						Inst_SEXT: aluacc <= {1'b0, aluval1[7], aluval1[7], aluval1[7], aluval1[7],
+												aluval1[7], aluval1[7], aluval1[7], aluval1[7],
+												aluval1[7:0]};
 						Inst_ADD: aluacc <= {1'b0, aluval1} + {1'b0, aluval2};
 						Inst_CMP,
 						Inst_SUB: aluacc <= {1'b0, aluval1} - {1'b0, aluval2};
@@ -139,7 +143,11 @@ module cpu (
 					op <= din[7:3];
 					dest <= din[2:0];
 				end else begin
-					aluop <= { 1'b0, op[0]};
+					aluop <= {1'b0, op[0]};
+					if (op[0]) begin
+						aluval1 <= r[arg1];
+						aluval2 <= val2u;
+					end
 					// Perform the operation
 					case (op)
 						Inst_LDRL,
@@ -173,17 +181,6 @@ module cpu (
 								r[dest] <= val1;
 							end
 						default:	
-//						Inst_CMP,
-//						Inst_ADDC,
-//						Inst_SUBC,
-//						Inst_ADD,
-//						Inst_SUB,
-//						Inst_SHL,
-//						Inst_SHR,
-//						Inst_AND,
-//						Inst_OR,
-//						Inst_INV,
-//						Inst_XOR:
 							begin
 								if ((op == Inst_B) ||
 									(op == Inst_BEQ && flag_Z) ||
@@ -193,13 +190,9 @@ module cpu (
 									r[0] <= r[0] + 
 										{constant[7], constant[7], constant[7], constant[7],
 										 constant[7], constant[7], constant[7], constant[7], constant };
-								end else begin
-									aluval1 <= r[arg1];
-									aluval2 <= val2u;
 								end
 							end
 					endcase
-					
 				end
 			end else begin
 				if (op == Inst_LDRL) r[dest][7:0] <= din;								// read the data

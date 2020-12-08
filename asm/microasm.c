@@ -66,9 +66,10 @@ static OpCode opcode_table[] = {
 		{ "bcs"  , op_rel          , 0x1e, 0x0  },
 
 		{ "cmp"  , op_no_reg_reg   , 0x01, 0x0  },
+		{ "sext" , op_reg_reg      , 0x03, 0x0  },
 
-//		{ "addc" , op_reg_reg_reg  , 0x09, 0x0  },
-//		{ "subc" , op_reg_reg_reg  , 0x0b, 0x0  },
+		{ "addc" , op_reg_reg_reg  , 0x09, 0x0  },
+		{ "subc" , op_reg_reg_reg  , 0x0b, 0x0  },
 
 		{ "add"  , op_reg_reg_reg  , 0x11, 0x0  },
 		{ "sub"  , op_reg_reg_reg  , 0x13, 0x0  },
@@ -745,9 +746,15 @@ static int expand_macro(FILE *inf, Macro *mac, char *args) {
 		}
 		}
 
+		if (src_pass == 2) {
+		    fprintf(stderr, "[%s]:%d ", mac->name, i + 1);
+		}
+
 		int ret = do_asm(inf, line);
 	    if (ret) {
-		fprintf(stderr, "[%s]:%d %s\n", mac->name, i + 1, line);
+		if (src_pass == 1) {
+		    fprintf(stderr, "[%s]:%d %s\n", mac->name, i + 1, line);
+		}
 		return ret;
 	    }
 	}
