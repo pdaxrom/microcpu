@@ -66,10 +66,13 @@ static OpCode opcode_table[] = {
 		{ "bcs"  , op_rel          , 0x1e, 0x0  },
 
 		{ "cmp"  , op_no_reg_reg   , 0x01, 0x0  },
-		{ "sext" , op_reg_reg      , 0x03, 0x0  },
+		{ "sxt"  , op_reg_reg      , 0x03, 0x0  },
+		{ "sets" , op_no_reg_reg   , 0x05, 0x0  },
+		{ "gets" , op_reg_reg      , 0x07, 0x0  },
 
 		{ "addc" , op_reg_reg_reg  , 0x09, 0x0  },
 		{ "subc" , op_reg_reg_reg  , 0x0b, 0x0  },
+		{ "tst"  , op_no_reg_reg   , 0x0d, 0x0  },
 
 		{ "add"  , op_reg_reg_reg  , 0x11, 0x0  },
 		{ "sub"  , op_reg_reg_reg  , 0x13, 0x0  },
