@@ -16,9 +16,15 @@ endif
 
 all: hc1200/sram.v
 
+microcomp: hc1200-microcomp/sram.v
+
 hc1200/sram.v: sram.mem
 	cd hc1200 && \
 	$(SCUBA) -w -n sram -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 9 -data_width 8 -num_words 512 -cascade -1 -memfile ../sram.mem -memformat orca -writemode NORMAL
 
+hc1200-microcomp/sram.v: sram.mem
+	cd hc1200-microcomp && \
+	$(SCUBA) -w -n sram -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 9 -data_width 8 -num_words 512 -cascade -1 -memfile ../sram.mem -memformat orca -writemode NORMAL
+
 clean:
-	rm -f *.mem hc1200/sram.v
+	rm -f *.mem hc1200/sram.v hc1200-microcomp/sram.v
