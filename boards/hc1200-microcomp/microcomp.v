@@ -57,6 +57,8 @@ module demo (
 	wire GPIO_EN = GPIO_CS;
 	wire [7:0] GPIO_D;
 	
+	//wire gpio15;
+	
 	gpio gpio1(
 		.clk(CLK),
 		.rst(RESET),

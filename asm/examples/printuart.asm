@@ -45,7 +45,7 @@ loopexit:
 printnum:
     push	v1
     push	v2
-    set		v1, $ff00
+    set		v1, $e6b0
 printnum1:
     ldrl	v2, v1, 0
     and		v2, v2, 2

@@ -60,7 +60,7 @@ printstr2:
 putchar:
     push	v1
     push	v2
-    set		v1, $ff00
+    set		v1, $e6b0
 putchar1:
     ldrl	v2, v1, 0
     and		v2, v2, 2
@@ -74,7 +74,7 @@ putchar2:
 
 getchar:
     push	v1
-    set		v1, $ff00
+    set		v1, $e6b0
     seth	v0, 0
 getchar1:
     ldrl	v0, v1, 0
@@ -85,6 +85,6 @@ getchar1:
     rts
 
 banner:
-    db	"Wellcome to uCPU!", 10, 13, 0
+    db	"Welcome to pdaXrom ucpu board!", 10, 13, 0
 
     ds	$100-*
