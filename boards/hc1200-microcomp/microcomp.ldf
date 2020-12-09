@@ -9,10 +9,13 @@
         <Source name="../../rtl/cpu.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
-        <Source name="simpleuart.v" type="Verilog" type_short="Verilog">
+        <Source name="simpleuart.v" type="Verilog" type_short="Verilog" excluded="TRUE">
             <Options/>
         </Source>
         <Source name="sram.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="uart.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
         <Source name="microcomp.lpf" type="Logic Preference" type_short="LPF">

@@ -109,17 +109,29 @@ module demo (
 	wire UART_EN = UART_CS;
 	wire [7:0] UART_D;
 	
-	simpleuart uart1(
-		.CLK(CLK),
-		.RESET(RESET),
-		.ADDR(ADDR[0]),
-		.DI(DO),
-		.DO(UART_D),
-		.CS(UART_CS),
-		.RW(RW),
-		.ser_tx(tx),
-		.ser_rx(rx)
-	);	
+//	simpleuart uart1(
+//		.CLK(CLK),
+//		.RESET(RESET),
+//		.ADDR(ADDR[0]),
+//		.DI(DO),
+//		.DO(UART_D),
+//		.CS(UART_CS),
+//		.RW(RW),
+//		.ser_tx(tx),
+//		.ser_rx(rx)
+//	);
+
+	uart uart1(
+		.clk(CLK),
+		.reset(RESET),
+		.a0(ADDR[0]),
+		.din(DO),
+		.dout(UART_D),
+		.rnw(RW),
+		.cs(UART_CS),
+		.rxd(rx),
+		.txd(tx)
+	);
 
 	assign DI = sram_en ? sramd :
 				UART_EN ? UART_D :

@@ -17,7 +17,7 @@
  *
  */
 
-module simpleuart #(parameter integer DEFAULT_DIV = 27) (
+module simpleuart #(parameter integer DEFAULT_DIV = 18) (
 	input wire CLK,
 	input wire RESET,
 
