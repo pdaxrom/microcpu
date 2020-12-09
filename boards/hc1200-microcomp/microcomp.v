@@ -1,7 +1,8 @@
 module demo (
 	input			res,
 	input			rx,
-	output			tx
+	output			tx,
+	inout	[14:0]	gpio
 );
 
 	wire				CLK;
@@ -12,69 +13,12 @@ module demo (
 	wire	[7:0]	DO;
 	wire			RW;
 
-//	reg		[1:0]	dig_counter;
-//	reg		[7:0]	led_mem[1:0];
-//	reg		[7:0]	led_mem;
-	
-//	assign	dig = dig_counter == 3 ? 4'b1000 :
-//				  dig_counter == 2 ? 4'b0100 :
-//				  dig_counter == 1 ? 4'b0010 :
-//				  4'b0001;
-
-//	wire	[3:0] hexin;
-	
-//	assign hexin = dig_counter == 0 ? ADDR[7:4] :
-//					dig_counter == 1 ? ADDR[3:0] :
-//					dig_counter == 2 ? led_mem[7:4] :
-//					led_mem[3:0];
-
-//	assign hexin = dig_counter == 0 ? ADDR[7:4] :
-//					dig_counter == 1 ? ADDR[3:0] :
-//					dig_counter == 2 ? DI[7:4] :
-//					DI[3:0];
-
-//	assign hexin = dig_counter == 0 ? ADDR[15:12] :
-//					dig_counter == 1 ? ADDR[11:8] :
-//					dig_counter == 2 ? ADDR[7:4] :
-//					ADDR[3:0];
-
-
-//	assign seg[7] = 1;
-
-//	assign seg[7] = ~(dig_counter == 0 ? ADDR[11] :
-//					 dig_counter == 1 ? ADDR[10] :
-//					 dig_counter == 2 ? ADDR[9] :
-//					 ADDR[8]);
-
-
-//	segled segled1(
-//		.x(hexin),
-//		.z(seg[6:0])
-//	);
-
-
-//	wire xCLK;
-//	reg		[31:0] clk_divider;
-
 	OSCH #(
 		.NOM_FREQ("2.08")
 	) internal_oscillator_inst (
 		.STDBY(1'b0), 
 		.OSC(CLK)
 	);
-
-//	always @(posedge xCLK) begin
-//		if (dig_counter == 3) dig_counter <= 0;
-//		else dig_counter <= dig_counter + 1;				
-
-//		if (clk_divider == 1000000) begin
-//			clk_divider <= 0;
-//			CLK <= ~CLK;
-//		end else begin
-//			clk_divider <= clk_divider + 1;
-//		end
-
-//	end	
 
 	always @(posedge CLK) begin
 		if (res) begin
@@ -84,43 +28,19 @@ module demo (
 		end
 	end
 
-	wire SRAM_CS = ADDR[15] ? 0 : 1;
-	wire sram_en = SRAM_CS;
-	wire [7:0] sramd;
-	sram sram1(
-		.Clock(CLK),
-		.ClockEn(SRAM_CS),
-		.Reset(RESET),
-		.WE(~RW),
-		.Address(ADDR[8:0]),
-		.Data(DO),
-		.Q(sramd)
-	);
+//	wire DS0 = (ADDR[15:5] == 11'b11100110000); // $E600
+//	wire DS1 = (ADDR[15:5] == 11'b11100110001); // $E620
+//	wire DS2 = (ADDR[15:5] == 11'b11100110010); // $E640
+//	wire DS3 = (ADDR[15:5] == 11'b11100110011); // $E660
+//	wire DS4 = (ADDR[15:5] == 11'b11100110100); // $E680
+	wire DS5 = (ADDR[15:5] == 11'b11100110101); // $E6A0
+	wire DS6 = (ADDR[15:5] == 11'b11100110110); // $E6C0
+//	wire DS7 = (ADDR[15:5] == 11'b11100110111); // $E6E0
 
-//	wire LEDS_CS = ADDR[15] ? 1 : 0;
-//	wire leds_en = LEDS_CS;
-//	always @(posedge CLK) begin
-//		if (LEDS_CS && ~RW) begin
-//			led_mem <= DO;
-//		end
-//	end
-
-	wire UART_CS = ADDR[15] ? 1 : 0;
+	wire UART_CS = DS5 && (ADDR[4] == 1'b1); // $E6B0
 	wire UART_EN = UART_CS;
 	wire [7:0] UART_D;
 	
-//	simpleuart uart1(
-//		.CLK(CLK),
-//		.RESET(RESET),
-//		.ADDR(ADDR[0]),
-//		.DI(DO),
-//		.DO(UART_D),
-//		.CS(UART_CS),
-//		.RW(RW),
-//		.ser_tx(tx),
-//		.ser_rx(rx)
-//	);
-
 	uart uart1(
 		.clk(CLK),
 		.reset(RESET),
@@ -133,9 +53,37 @@ module demo (
 		.txd(tx)
 	);
 
-	assign DI = sram_en ? sramd :
+	wire GPIO_CS = DS6 && (ADDR[4] == 1'b1); // $E6D0
+	wire GPIO_EN = GPIO_CS;
+	wire [7:0] GPIO_D;
+	
+	gpio gpio1(
+		.clk(CLK),
+		.rst(RESET),
+		.AD(ADDR[1:0]),
+		.DI(DO),
+		.DO(GPIO_D),
+		.rw(RW),
+		.cs(GPIO_CS),
+		.gpio({res, gpio[14:0]})
+	);
+
+	wire SRAM_CS = ~(UART_CS | GPIO_CS);
+	wire SRAM_EN = SRAM_CS;
+	wire [7:0] SRAM_D;
+	sram sram1(
+		.Clock(CLK),
+		.ClockEn(SRAM_CS),
+		.Reset(RESET),
+		.WE(~RW),
+		.Address(ADDR[8:0]),
+		.Data(DO),
+		.Q(SRAM_D)
+	);
+
+	assign DI = SRAM_EN ? SRAM_D :
 				UART_EN ? UART_D :
-//				leds_en ? led_mem :
+				GPIO_EN ? GPIO_D :
 				8'b11111111;
 
 	cpu cpu1 (
