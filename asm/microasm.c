@@ -38,6 +38,8 @@ enum {
 	pseudo_ds,
 	pseudo_align,
 	pseudo_macro,
+	pseudo_equ,
+	pseudo_proc,
 };
 
 typedef struct {
@@ -90,6 +92,9 @@ static OpCode opcode_table[] = {
 		{ "align", pseudo_align , 0x0, 0x0  },
 		{ "macro", pseudo_macro , 0x0, 0x0  },
 		{ "endm" , pseudo_macro , 0x0, 0x0  },
+		{ "equ"  , pseudo_equ   , 0x0, 0x0  },
+		{ "proc" , pseudo_proc  , 0x0, 0x0  },
+		{ "endp" , pseudo_proc  , 0x0, 0x0  },
 };
 
 typedef struct Register {
@@ -138,6 +143,7 @@ static int src_pass = 1;
 static int src_line = 1;
 
 static Label *labels = NULL;
+static Label *equs = NULL;
 static Label *refs = NULL;
 
 static Macro *macros = NULL;
@@ -258,7 +264,7 @@ static int relink_refs() {
 
 static OpCode* find_opcode(char *name) {
 	for (int i = 0; i < sizeof(opcode_table) / sizeof(OpCode); i++) {
-		if (!strcmp(name, opcode_table[i].name)) {
+		if (!strcasecmp(name, opcode_table[i].name)) {
 			return &opcode_table[i];
 		}
 	}
@@ -268,7 +274,7 @@ static OpCode* find_opcode(char *name) {
 
 static Register* find_register(char *name) {
 	for (int i = 0; i < sizeof(regs_table) / sizeof(Register); i++) {
-		if (!strcmp(name, regs_table[i].name)) {
+		if (!strcasecmp(name, regs_table[i].name)) {
 			return &regs_table[i];
 		}
 	}
@@ -288,9 +294,6 @@ static OpCode* find_opcode_in_string(char **str) {
 	}
 
 	*ptr = 0;
-	ptr = tmp;
-
-	STRING_TOLOWER(ptr);
 
 	OpCode* op = find_opcode(tmp);
 
@@ -313,9 +316,6 @@ static Register* find_register_in_string(char **str) {
 	}
 
 	*ptr = 0;
-	ptr = tmp;
-
-	STRING_TOLOWER(ptr);
 
 	Register *reg = find_register(tmp);
 
@@ -373,7 +373,7 @@ static int add_macro(FILE *inf, char *name) {
 static Macro* find_macro(char *name) {
 	Macro *tmp = macros;
 	while (tmp) {
-	    if (!strcmp(tmp->name, name)) {
+	    if (!strcasecmp(tmp->name, name)) {
 		return tmp;
 	    }
 	    tmp = tmp->prev;
@@ -494,6 +494,10 @@ static int operand(char **str) {
 	*ptr1 = 0;
 
 	Label *label = find_label(&labels, tmp);
+
+	if (!label) {
+	    label = find_label(&equs, tmp);
+	}
 
 	if (label) {
 		*str = ptr;
@@ -768,39 +772,64 @@ static int expand_macro(FILE *inf, Macro *mac, char *args) {
 }
 
 static int do_asm(FILE *inf, char *line) {
+	char last;
 	char *ptr, *ptr1;
 	char linetmp[strlen(line) + 1];
 	char *str = linetmp;
-
-//	ptr = str;
-//	REMOVE_ENDLINE(ptr);
 
 	strcpy(linetmp, line);
 
 	remove_comment(str);
 
 	SKIP_BLANK(str);
+
 	ptr = str;
 	SKIP_TOKEN(str);
 	ptr1 = str;
-	str++;
 
-	if (*ptr1 == ':') {
-		*ptr1 = 0;
-		if (src_pass == 1) {
-			add_label(&labels, ptr, output_addr, src_line);
+	if ((last = *ptr1)) {
+		str++;
+	}
+	*ptr1 = 0;
+
+	char *first_tok;
+	if (ptr1 - ptr > 0) {
+		first_tok = alloca(ptr1 - ptr + 1);
+		strncpy(first_tok, ptr, ptr1 - ptr);
+		first_tok[ptr1 - ptr] = 0;
+
+		OpCode *opcode = NULL;
+		Macro *mac = find_macro(first_tok);
+		if (!mac) {
+			opcode = find_opcode(first_tok);
 		}
-		if (src_pass == 2) {
-			fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+
+		if (!mac && !opcode) {
+			if (last) {
+				SKIP_BLANK(str);
+
+				ptr = str;
+				SKIP_TOKEN(str);
+				ptr1 = str;
+
+				if ((last = *ptr1)) {
+				    str++;
+				}
+				*ptr1 = 0;
+
+				mac = find_macro(ptr);
+				if (!mac) {
+					opcode = find_opcode(ptr);
+				}
+			} else {
+				ptr = str;
+			}
+
+			if (src_pass == 1 &&
+			    (mac || !(opcode && !strcasecmp(opcode->name, "equ")))) {
+				add_label(&labels, first_tok, output_addr, src_line);
+			}
 		}
-	} else {
-		char last = *ptr1;
-		*ptr1 = 0;
-
-		ptr1 = ptr;
-		STRING_TOLOWER(ptr1);
-
-		Macro *mac = find_macro(ptr);
 
 		if (mac) {
 			if (src_pass == 2) {
@@ -810,11 +839,20 @@ static int do_asm(FILE *inf, char *line) {
 			return expand_macro(inf, mac, last ? str : NULL);
 		}
 
-		OpCode *opcode = find_opcode(ptr);
-
 //fprintf(stderr, "OPCODE: %s %d %X %X\n", opcode->name, opcode->type, opcode->op, opcode->ext_op);
 
-		if (opcode) {
+
+		if (opcode && !strcmp(opcode->name, "equ")) {
+			SKIP_BLANK(str);
+			unsigned int val = exp_(&str);
+			if (src_pass == 2) {
+			    add_label(&equs, first_tok, val, src_line);
+			}
+
+			if (src_pass == 2) {
+				fprintf(stderr, "%04X: %04X\t%s\n", output_addr, val, line);
+			}
+		} else if (opcode) {
 			unsigned int old_addr = output_addr;
 			Register *reg;
 			int arg1 = 0;
@@ -1017,6 +1055,10 @@ static int do_asm(FILE *inf, char *line) {
 				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
 			}
 		}
+	} else {
+		if (src_pass == 2) {
+			fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+		}
 	}
 
 	if (src_pass == 1) {
@@ -1160,6 +1202,8 @@ int main(int argc, char *argv[]) {
 
 			relink_refs();
 
+			fprintf(stderr, "\nConstants:\n");
+			dump_labels(equs);
 			fprintf(stderr, "\nLabels:\n");
 			dump_labels(labels);
 			fprintf(stderr, "\nRefs:\n");
