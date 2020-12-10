@@ -792,11 +792,8 @@ static int do_asm(FILE *inf, char *line) {
 	}
 	*ptr1 = 0;
 
-	char *first_tok;
 	if (ptr1 - ptr > 0) {
-		first_tok = alloca(ptr1 - ptr + 1);
-		strncpy(first_tok, ptr, ptr1 - ptr);
-		first_tok[ptr1 - ptr] = 0;
+		char *first_tok = ptr;
 
 		OpCode *opcode = NULL;
 		Macro *mac = find_macro(first_tok);
