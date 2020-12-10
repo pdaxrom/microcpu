@@ -27,6 +27,9 @@ enum {
     MISSED_NAME_FOR_PROC,
     NESTED_PROC_UNSUPPORTED,
     ONLY_INSIDE_PROC,
+    LABEL_ALREADY_DEFINED,
+    MACRO_ALREADY_DEFINED,
+    PROC_ALREADY_DEFINED,
     SYNTAX_ERROR
 };
 
@@ -225,8 +228,27 @@ static void remove_comment(char *str) {
 
 static int exp_(char **str);
 
+static Label* find_label(Label **list, char *name) {
+	Label *ptr = *list;
+
+	while (ptr) {
+		if (!strcmp(ptr->name, name)) {
+			return ptr;
+		}
+		ptr = ptr->prev;
+	}
+
+	return NULL;
+}
+
 static Label* add_label(Label **list, char *name, unsigned int address,
 		int line) {
+
+	if (find_label(list, name)) {
+		error = LABEL_ALREADY_DEFINED;
+		return NULL;
+	}
+
 	Label *new = malloc(sizeof(Label));
 	if (!new) {
 		error = NO_MEMORY_FOR_LABEL;
@@ -240,19 +262,6 @@ static Label* add_label(Label **list, char *name, unsigned int address,
 	*list = new;
 
 	return new;
-}
-
-static Label* find_label(Label **list, char *name) {
-	Label *ptr = *list;
-
-	while (ptr) {
-		if (!strcmp(ptr->name, name)) {
-			return ptr;
-		}
-		ptr = ptr->prev;
-	}
-
-	return NULL;
 }
 
 static void dump_labels(Label *list) {
@@ -346,17 +355,38 @@ static Register* find_register_in_string(char **str) {
 	return reg;
 }
 
+static Macro* find_macro(char *name) {
+	Macro *tmp = macros;
+	while (tmp) {
+	    if (!strcasecmp(tmp->name, name)) {
+		return tmp;
+	    }
+	    tmp = tmp->prev;
+	}
+	return NULL;
+}
+
 static int add_macro(FILE *inf, char *name) {
 	char str[512];
-	Macro *mac = malloc(sizeof(Macro));
-	if (!mac) {
-		error = NO_MEMORY_FOR_MACRO;
-		return 1;
-	}
+	Macro *mac;
 
-	mac->name = strdup(name);
-	mac->lines = 0;
-	mac->prev = macros;
+
+	if (src_pass == 1) {
+		if (find_macro(name)) {
+			error = MACRO_ALREADY_DEFINED;
+			return 1;
+		}
+
+		mac = malloc(sizeof(Macro));
+		if (!mac) {
+			error = NO_MEMORY_FOR_MACRO;
+			return 1;
+		}
+
+		mac->name = strdup(name);
+		mac->lines = 0;
+		mac->prev = macros;
+	}
 
 	while(fgets(str, sizeof(str), inf)) {
 	    char tmp[512];
@@ -380,31 +410,43 @@ static int add_macro(FILE *inf, char *name) {
 		break;
 	    }
 
-	    mac->line = realloc(mac->line, sizeof(mac->line) * (mac->lines + 1));
-	    mac->line[mac->lines] = strdup(str);
-	    mac->lines++;
+	    if (src_pass == 1) {
+		mac->line = realloc(mac->line, sizeof(mac->line) * (mac->lines + 1));
+		mac->line[mac->lines] = strdup(str);
+		mac->lines++;
+	    }
+
 	    src_line++;
 	}
 
 	src_line += 2;
 
-	macros = mac;
+	if (src_pass == 1) {
+	    macros = mac;
+	}
 
 	return 0;
 }
 
-static Macro* find_macro(char *name) {
-	Macro *tmp = macros;
-	while (tmp) {
-	    if (!strcasecmp(tmp->name, name)) {
-		return tmp;
-	    }
-	    tmp = tmp->prev;
+static Proc* find_proc(Proc **list, char *name) {
+	Proc *ptr = *list;
+
+	while (ptr) {
+		if (!strcmp(ptr->name, name)) {
+			return ptr;
+		}
+		ptr = ptr->prev;
 	}
+
 	return NULL;
 }
 
 static Proc* add_proc(Proc **list, char *name, int line) {
+	if (find_proc(list, name)) {
+		error = PROC_ALREADY_DEFINED;
+		return NULL;
+	}
+
 	Proc *new = malloc(sizeof(Proc));
 	if (!new) {
 		error = NO_MEMORY_FOR_PROC;
@@ -420,19 +462,6 @@ static Proc* add_proc(Proc **list, char *name, int line) {
 	*list = new;
 
 	return new;
-}
-
-static Proc* find_proc(Proc **list, char *name) {
-	Proc *ptr = *list;
-
-	while (ptr) {
-		if (!strcmp(ptr->name, name)) {
-			return ptr;
-		}
-		ptr = ptr->prev;
-	}
-
-	return NULL;
 }
 
 static int match(char **str, char c) {
@@ -1268,6 +1297,9 @@ static char *get_error_string(int error) {
     case MISSED_NAME_FOR_PROC:	return "Missed name for procedure";
     case NESTED_PROC_UNSUPPORTED: return "Nested procedures are not supported";
     case ONLY_INSIDE_PROC:	return "Only onside procedure";
+    case LABEL_ALREADY_DEFINED: return "Label name already used";
+    case MACRO_ALREADY_DEFINED: return "Macro name already used";
+    case PROC_ALREADY_DEFINED: return "Procedure name already used";
     case SYNTAX_ERROR:		return "Syntax error";
     default: return "No error";
     }
@@ -1301,7 +1333,7 @@ int main(int argc, char *argv[]) {
 			char *ptr = str;
 			REMOVE_ENDLINE(ptr);
 			if ((err = do_asm(inf, str)) || error != NO_ERROR) {
-				fprintf(stderr, "%d:%s\n", src_line, str);
+				fprintf(stderr, "Line %d: %s\n", src_line, str);
 				fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
 				return 1;
 			}
@@ -1323,7 +1355,7 @@ int main(int argc, char *argv[]) {
 				char *ptr = str;
 				REMOVE_ENDLINE(ptr);
 				if ((err = do_asm(inf, str)) || error != NO_ERROR) {
-					fprintf(stderr, "%d:%s\n", src_line, str);
+					fprintf(stderr, "Line %d: %s\n", src_line, str);
 					fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
 					return 1;
 				}
@@ -1338,7 +1370,7 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "\nRefs:\n");
 			dump_labels(refs);
 
-			fprintf(stderr, "\nErrors: %d\n\n", error);
+			fprintf(stderr, "\nErrors: %s\n\n", get_error_string(error));
 
 			if (out_type) {
 				output_verilog();
@@ -1355,5 +1387,5 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	return 0;
+	return error ? 1 : 0;
 }
