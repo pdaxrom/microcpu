@@ -8,6 +8,7 @@ enum {
     NO_MEMORY_FOR_LABEL,
     CANNOT_RESOLVE_REF,
     NO_MEMORY_FOR_MACRO,
+    NO_MEMORY_FOR_PROC,
     INVALID_NUMBER,
     INVALID_HEX_NUMBER,
     INVALID_DECIMAL_NUMBER,
@@ -22,6 +23,10 @@ enum {
     MISSED_REGISTER_ARG_2,
     EXPECTED_ARG_3,
     CONSTAND_VALUE_TOO_BIG,
+    MISSED_NAME_FOR_EQU,
+    MISSED_NAME_FOR_PROC,
+    NESTED_PROC_UNSUPPORTED,
+    ONLY_INSIDE_PROC,
     SYNTAX_ERROR
 };
 
@@ -95,6 +100,7 @@ static OpCode opcode_table[] = {
 		{ "equ"  , pseudo_equ   , 0x0, 0x0  },
 		{ "proc" , pseudo_proc  , 0x0, 0x0  },
 		{ "endp" , pseudo_proc  , 0x0, 0x0  },
+		{ "global",pseudo_proc  , 0x0, 0x0  },
 };
 
 typedef struct Register {
@@ -136,6 +142,15 @@ typedef struct Label {
 	struct Label *prev;
 } Label;
 
+typedef struct Proc {
+	char *name;
+	Label *labels;
+	Label *globals;
+	Label *equs;
+	int line;
+	struct Proc *prev;
+} Proc;
+
 static int output[65536];
 static unsigned int output_addr = 0;
 
@@ -145,6 +160,7 @@ static int src_line = 1;
 static Label *labels = NULL;
 static Label *equs = NULL;
 static Label *refs = NULL;
+static Proc *procs = NULL;
 
 static Macro *macros = NULL;
 
@@ -152,6 +168,7 @@ static int error = 0;
 static int to_second_pass = 0;
 
 static int in_macro = 0;
+static Proc *in_proc = NULL;
 
 #define SKIP_BLANK(s) { \
     while (*(s) && isblank(*(s))) { \
@@ -160,8 +177,11 @@ static int in_macro = 0;
 }
 
 #define SKIP_TOKEN(s) { \
-    while (*(s) && (isalnum(*(s)) || *s == '_')) { \
+    if (*(s) || isalpha(*(s)) || *(s) == '_' || *(s) == ':' || *(s) == '.') { \
 	(s)++; \
+	while (*(s) && (isalnum(*(s)) || *(s) == '_')) { \
+	    (s)++; \
+	} \
     } \
 }
 
@@ -363,7 +383,10 @@ static int add_macro(FILE *inf, char *name) {
 	    mac->line = realloc(mac->line, sizeof(mac->line) * (mac->lines + 1));
 	    mac->line[mac->lines] = strdup(str);
 	    mac->lines++;
+	    src_line++;
 	}
+
+	src_line += 2;
 
 	macros = mac;
 
@@ -378,6 +401,37 @@ static Macro* find_macro(char *name) {
 	    }
 	    tmp = tmp->prev;
 	}
+	return NULL;
+}
+
+static Proc* add_proc(Proc **list, char *name, int line) {
+	Proc *new = malloc(sizeof(Proc));
+	if (!new) {
+		error = NO_MEMORY_FOR_PROC;
+		return NULL;
+	}
+	new->name = strdup(name);
+	new->labels = NULL;
+	new->globals = NULL;
+	new->equs = NULL;
+	new->line = line;
+	new->prev = *list;
+
+	*list = new;
+
+	return new;
+}
+
+static Proc* find_proc(Proc **list, char *name) {
+	Proc *ptr = *list;
+
+	while (ptr) {
+		if (!strcmp(ptr->name, name)) {
+			return ptr;
+		}
+		ptr = ptr->prev;
+	}
+
 	return NULL;
 }
 
@@ -488,12 +542,24 @@ static int operand(char **str) {
 	char tmp[strlen(*str) + 1];
 	char *ptr1 = tmp;
 
-	while (*ptr && (isalnum(*ptr) || *ptr == '_')) {
+	while (*ptr && (isalnum(*ptr) || *ptr == '_' || *ptr == ':' || *ptr == '.')) {
 		*ptr1++ = *ptr++;
 	}
 	*ptr1 = 0;
 
-	Label *label = find_label(&labels, tmp);
+	Label *label = NULL;
+
+	if (in_proc) {
+		label = find_label(&in_proc->labels, tmp);
+
+		if (!label) {
+			label = find_label(&in_proc->equs, tmp);
+		}
+	}
+
+	if (!label) {
+	    label = find_label(&labels, tmp);
+	}
 
 	if (!label) {
 	    label = find_label(&equs, tmp);
@@ -704,6 +770,8 @@ static int expand_macro(FILE *inf, Macro *mac, char *args) {
 	int i = 0;
 	char *arg[10];
 
+	src_line++;
+
 	in_macro++;
 
 	// parse args
@@ -793,6 +861,7 @@ static int do_asm(FILE *inf, char *line) {
 	*ptr1 = 0;
 
 	if (ptr1 - ptr > 0) {
+		char *label = NULL;
 		char *first_tok = ptr;
 
 		OpCode *opcode = NULL;
@@ -802,6 +871,7 @@ static int do_asm(FILE *inf, char *line) {
 		}
 
 		if (!mac && !opcode) {
+			label = first_tok;
 			if (last) {
 				SKIP_BLANK(str);
 
@@ -824,7 +894,16 @@ static int do_asm(FILE *inf, char *line) {
 
 			if (src_pass == 1 &&
 			    (mac || !(opcode && !strcasecmp(opcode->name, "equ")))) {
-				add_label(&labels, first_tok, output_addr, src_line);
+				if (in_proc) {
+					Label *global = find_label(&in_proc->globals, label);
+					if (global) {
+						add_label(&labels, label, output_addr, src_line);
+					} else {
+						add_label(&in_proc->labels, label, output_addr, src_line);
+					}
+				} else {
+				    add_label(&labels, label, output_addr, src_line);
+				}
 			}
 		}
 
@@ -840,32 +919,78 @@ static int do_asm(FILE *inf, char *line) {
 
 
 		if (opcode && !strcmp(opcode->name, "equ")) {
-			SKIP_BLANK(str);
-			unsigned int val = exp_(&str);
-			if (src_pass == 2) {
-			    add_label(&equs, first_tok, val, src_line);
+			if (!label) {
+				error = MISSED_NAME_FOR_EQU;
+			} else {
+				SKIP_BLANK(str);
+				unsigned int val = exp_(&str);
+				if (src_pass == 2) {
+					if (in_proc) {
+					    add_label(&in_proc->equs, label, val, src_line);
+					} else {
+					    add_label(&equs, label, val, src_line);
+					}
+				}
+
+				if (src_pass == 2) {
+					fprintf(stderr, "%04X: %04X\t%s\n", output_addr, val, line);
+				}
 			}
+		} else if (opcode && !strcmp(opcode->name, "proc")) {
+			if (!label) {
+				error = MISSED_NAME_FOR_PROC;
+			} else {
+				if (in_proc) {
+					error = NESTED_PROC_UNSUPPORTED;
+				} else {
+					in_proc = find_proc(&procs, label);
+					if (!in_proc) {
+						in_proc = add_proc(&procs, label, src_line);
+					}
+				}
+				if (src_pass == 2) {
+					fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+				}
+			}
+		} else if (opcode && !strcmp(opcode->name, "endp")) {
+			in_proc = NULL;
 
 			if (src_pass == 2) {
-				fprintf(stderr, "%04X: %04X\t%s\n", output_addr, val, line);
+				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
 			}
+		} else if (opcode && !strcmp(opcode->name, "global")) {
+			if (!in_proc) {
+				error = ONLY_INSIDE_PROC;
+			} else if (src_pass == 1) {
+				do {
+					SKIP_BLANK(str);
+					char *name = str;
+					SKIP_TOKEN(str);
+					if ((last = *str)) {
+						*str++ = 0;
+					}
+					add_label(&in_proc->globals, name, output_addr, src_line);
+				} while (*str && (last == ',' || match(&str, ',') == 1));
+
+				if (src_pass == 2) {
+					fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+				}
+			}
+		} else if (opcode && !strcmp(opcode->name, "macro")) {
+			SKIP_BLANK(str);
+			char *name = str;
+			SKIP_TOKEN(str);
+			*str = 0;
+			if (src_pass == 2) {
+				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+			}
+			return add_macro(inf, name);
 		} else if (opcode) {
 			unsigned int old_addr = output_addr;
 			Register *reg;
 			int arg1 = 0;
 			int arg2 = 0;
 			int arg3 = 0;
-
-			if (!strcmp(opcode->name, "macro")) {
-			    SKIP_BLANK(str);
-			    char *name = str;
-			    SKIP_TOKEN(str);
-			    *str = 0;
-			    if (src_pass == 2) {
-				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-			    }
-			    return add_macro(inf, name);
-			}
 
 			if ((opcode->type != op_noargs ) && last == 0) {
 				error = MISSED_OPCODE_PARAM_1;
@@ -1124,6 +1249,7 @@ static char *get_error_string(int error) {
     case NO_MEMORY_FOR_LABEL:	return "No memory for labels";
     case CANNOT_RESOLVE_REF:	return "Cannot resolve reference";
     case NO_MEMORY_FOR_MACRO:	return "No memory for macro";
+    case NO_MEMORY_FOR_PROC:	return "No memory for proc";
     case INVALID_NUMBER:	return "Invalid number";
     case INVALID_HEX_NUMBER:	return "Invalid hex number";
     case INVALID_DECIMAL_NUMBER: return "Invalid decimal number";
@@ -1138,6 +1264,10 @@ static char *get_error_string(int error) {
     case MISSED_REGISTER_ARG_2:	return "Missed register 2";
     case EXPECTED_ARG_3:	return "Expected argument 3";
     case CONSTAND_VALUE_TOO_BIG: return "Constand value too big (> 16)";
+    case MISSED_NAME_FOR_EQU:	return "Missed name for equ";
+    case MISSED_NAME_FOR_PROC:	return "Missed name for procedure";
+    case NESTED_PROC_UNSUPPORTED: return "Nested procedures are not supported";
+    case ONLY_INSIDE_PROC:	return "Only onside procedure";
     case SYNTAX_ERROR:		return "Syntax error";
     default: return "No error";
     }
@@ -1161,6 +1291,7 @@ int main(int argc, char *argv[]) {
 		src_pass = 1;
 		src_line = 1;
 		in_macro = 0;
+		in_proc = NULL;
 
 		// Pass 1
 
@@ -1180,6 +1311,7 @@ int main(int argc, char *argv[]) {
 		src_pass = 2;
 		src_line = 1;
 		in_macro = 0;
+		in_proc = NULL;
 
 		if (fseek(inf, 0, SEEK_SET) == 0) {
 
