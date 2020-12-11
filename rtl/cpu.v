@@ -148,8 +148,8 @@ module cpu (
 										(op[4:1] == Inst_BLE && (flag_Z |(flag_N ^ flag_V))) ||
 										(op[4:1] == Inst_BGE && ~(flag_N ^ flag_V))) begin
 										r[0] <= r[0] + 
-											{constant[7], constant[7], constant[7], constant[7],
-											 constant[7], constant[7], constant[7], constant[7], constant };
+											{dest[2], dest[2], dest[2], dest[2],
+											 dest[2], dest, constant };
 									end
 								end
 						endcase
@@ -186,8 +186,8 @@ module cpu (
 					Inst_TST,
 					Inst_AND: aluacc <= {1'b0, aluval1} & {1'b0, aluval2};
 					Inst_OR:  aluacc <= {1'b0, aluval1} | {1'b0, aluval2};
-					Inst_INV: aluacc[15:0] <= ~aluval1;
-					Inst_XOR: aluacc[15:0] <= {1'b0, aluval1} ^ {1'b0, aluval2};
+					Inst_INV: aluacc <= ~aluval1;
+					Inst_XOR: aluacc <= {1'b0, aluval1} ^ {1'b0, aluval2};
 				endcase
 			end else if (aluop == 2'b10) begin
 				if (op[4:1] != Inst_SETS && op[4:1] != Inst_GETS) begin
