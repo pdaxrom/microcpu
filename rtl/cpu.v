@@ -52,10 +52,10 @@ module cpu (
 
 	reg  [4:0] op;        // opcode
 	reg  [2:0] dest;      // destination arg
-	wire [2:0] arg1;      // first arg
-	wire [2:0] arg2;      // second arg
-	wire [3:0] const4;    // offset
-	wire       is_const4; // second arg is const4
+//	wire [2:0] arg1;      // first arg
+//	wire [2:0] arg2;      // second arg
+//	wire [3:0] const4;    // offset
+//	wire       is_const4; // second arg is const4
 
 	reg  [15:0] r[0:7];   // registers
 	reg  [15:0] addrtmp;  // data address
@@ -69,28 +69,28 @@ module cpu (
 	reg         flag_V;   // flag V
 	reg         flag_N;   // flag N
 	
-	wire [7:0] constant;  // constant arg
-	wire [15:0] constant16;
-	wire [15:0] val1;
-	wire [15:0] val2;
-	wire [15:0] val2u;
+//	wire [7:0] constant;  // constant arg
+//	wire [15:0] constant16;
+//	wire [15:0] val1;
+//	wire [15:0] val2;
+//	wire [15:0] val2u;
 	
 	reg memio;			   // memory io operation
 	reg [1:0] aluop;	   // ALU operation in progress;
 
 	assign address = memio ? addrtmp : r[0];
-	assign arg1 = din[7:5];
-	assign arg2 = din[4:2];
-	assign const4 = din[4:1];
-	assign is_const4 = din[0]; // use constant
+	wire [2:0] arg1 = din[7:5];
+	wire [2:0] arg2 = din[4:2];
+	wire [3:0] const4 = din[4:1];
+	wire is_const4 = din[0]; // use constant
 	
-	assign constant = din[7:0];
-	assign constant16 = {constant[7], constant[7], constant[7], constant[7],
+	wire [ 7:0] constant = din[7:0];
+	wire [15:0] constant16 = {constant[7], constant[7], constant[7], constant[7],
 						  constant[7], constant[7], constant[7], constant[7],
 						  constant};
-	assign val1 = r[arg1];
-	assign val2u = is_const4 ? {12'b000000000000, const4} : r[arg2];
-	assign val2 = is_const4 ? {const4[3], const4[3], const4[3], const4[3],
+	wire [15:0] val1 = r[arg1];
+	wire [15:0] val2u = is_const4 ? {12'b000000000000, const4} : r[arg2];
+	wire [15:0] val2 = is_const4 ? {const4[3], const4[3], const4[3], const4[3],
 								const4[3], const4[3], const4[3], const4[3],
 								const4[3], const4[3], const4[3], const4[3],
 								const4} : r[arg2];
