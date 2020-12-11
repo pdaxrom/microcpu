@@ -1121,7 +1121,7 @@ static int do_asm(FILE *inf, char *line) {
 						if (opcode->type == op_reg_reg_reg || opcode->type == op_no_reg_reg) {
 							reg = find_register_in_string(&str);
 							if (reg) {
-								arg3 = reg->n << 1;
+								arg3 = reg->n << 2;
 							} else {
 								char *tmp = str;
 								int val = exp_(&str);
