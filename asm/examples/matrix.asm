@@ -32,7 +32,7 @@ UART_ADDR	equ	$e6b0
 GPIOPORT	equ	$e6d0
 
 ;
-; MATRIX LED
+; MATRIX LED (MAX7219)
 ;
 ; GPIO 0 - DIN
 ; GPIO 1 - CS
@@ -216,8 +216,6 @@ senddata proc
 	push	v2
 	push	v3
 	push	v4
-
-	bsr	dump
 
 	set	v1, GPIOPORT
 	ldrl	v4, v1, 1
