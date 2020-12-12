@@ -30,12 +30,68 @@
 
 UART_ADDR	equ	$e6b0
 
-begin	set	sp, $01fe
+begin	set	sp, $03fe
 	set	v0, banner
 	bsr	printstr
+	set	v0, $12ab
+	bsr	printhex
+
+	inv	v0, v0
+	bsr	printhex
+
+	set	v0, $ffff
+;	set	v1, $1
+	xor	v0, v0, 2
+	bsr	printhex
+
+	xor	v0, v0, 2
+	bsr	printhex
+
+	set	v0, 16
+
+cccc	bsr	printhex
+	sub	v0, v0, 1
+	beq	cccc1
+	b	cccc
+cccc1
+
 mainloop bsr	getchar
 	bsr	putchar
 	b	mainloop
+
+printhex proc
+	push	lr
+	push	v0
+	shr	v0, v0, 8
+	bsr	printhex8
+	pop	v0
+	bsr	printhex8
+	pop	lr
+	rts
+	endp
+
+printhex8 proc
+	push	lr
+	push	v0
+	push	v1
+	set	v1, nums
+	seth	v0, 0
+	push	v0
+	shr	v0, v0, 4
+	add	v0, v1, v0
+	ldrl	v0, v0, 0
+	bsr	putchar
+	pop	v0
+	and	v0, v0, 15
+	add	v0, v1, v0
+	ldrl	v0, v0, 0
+	bsr	putchar
+	pop	v1
+	pop	v0
+	pop	lr
+	rts
+nums	db	'0123456789ABCDEF'
+	endp
 
 printstr proc
 	push	lr
@@ -81,6 +137,8 @@ getchar	proc
 	rts
 	endp
 
-banner	db	"Welcome to pdaXrom ucpu board!", 10, 13, 0
+banner	db	10, 13, "Welcome to pdaXrom uCPU board!", 10, 13, 0
 
-	ds	$100-*
+nl	db	10, 13, 0
+
+	ds	$400-*

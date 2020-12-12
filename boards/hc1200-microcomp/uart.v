@@ -27,14 +27,14 @@ module uart(
 	reg        rxd1;
 	reg        rxd2;
 
-	wire rx_busy;
-	wire rx_full;
-	wire tx_busy;
+//	wire rx_busy;
+//	wire rx_full;
+//	wire tx_busy;
 
 	// Assignments
-	assign rx_busy = rx_shift_reg != 10'b1111111111;   
-	assign rx_full = !rx_shift_reg[0]; 
-	assign tx_busy = tx_shift_reg != 11'b1;
+	wire rx_busy = rx_shift_reg != 10'b1111111111;   
+	wire rx_full = !rx_shift_reg[0]; 
+	wire tx_busy = tx_shift_reg != 11'b1;
 	assign txd = tx_shift_reg[0];
 	assign dout = a0 ? rx_shift_reg[9:2] : { 6'b0, tx_busy, rx_full };
 

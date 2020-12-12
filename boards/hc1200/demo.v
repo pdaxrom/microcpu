@@ -21,9 +21,9 @@ module demo (
 				  dig_counter == 1 ? 4'b0010 :
 				  4'b0001;
 
-	wire	[3:0] hexin;
+//	wire	[3:0] hexin;
 	
-	assign hexin = dig_counter == 0 ? ADDR[7:4] :
+	wire [3:0] hexin = dig_counter == 0 ? ADDR[7:4] :
 					dig_counter == 1 ? ADDR[3:0] :
 					dig_counter == 2 ? led_mem[7:4] :
 					led_mem[3:0];
@@ -39,12 +39,12 @@ module demo (
 //					ADDR[3:0];
 
 
-//	assign seg[7] = 1;
+	assign seg[7] = 1;
 
-	assign seg[7] = ~(dig_counter == 0 ? ADDR[11] :
-					 dig_counter == 1 ? ADDR[10] :
-					 dig_counter == 2 ? ADDR[9] :
-					 ADDR[8]);
+//	assign seg[7] = ~(dig_counter == 0 ? ADDR[11] :
+//					 dig_counter == 1 ? ADDR[10] :
+//					 dig_counter == 2 ? ADDR[9] :
+//					 ADDR[8]);
 
 
 	segled segled1(
@@ -92,7 +92,7 @@ module demo (
 		.ClockEn(SRAM_CS),
 		.Reset(RESET),
 		.WE(~RW),
-		.Address(ADDR[8:0]),
+		.Address(ADDR[9:0]),
 		.Data(DO),
 		.Q(sramd)
 	);

@@ -1,4 +1,4 @@
-INITVAL	equ	$aa
+INITVAL	equ	$0
 
 	setl	v1, INITVAL
 	seth	v1, 0

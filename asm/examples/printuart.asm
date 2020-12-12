@@ -29,7 +29,8 @@
     endm
 
 begin:
-    set		sp, $00fe
+    set		sp, numbers4+10 ;$00fe
+
     set		v1, numbers
     seth	v0, 0
 loop:
@@ -40,6 +41,40 @@ loop:
     add		v1, v1, 1
     b		loop
 loopexit:
+
+    set		v1, numbers2
+    seth	v0, 0
+loop2:
+    ldrl	v0, v1, 0
+    cmp		v0, 0
+    beq		loopexit2
+    bsr		printnum
+    add		v1, v1, 1
+    b		loop2
+loopexit2:
+
+    set		v1, numbers3
+    seth	v0, 0
+loop3:
+    ldrl	v0, v1, 0
+    cmp		v0, 0
+    beq		loopexit3
+    bsr		printnum
+    add		v1, v1, 1
+    b		loop3
+loopexit3:
+
+    set		v1, numbers4
+    seth	v0, 0
+loop4:
+    ldrl	v0, v1, 0
+    cmp		v0, 0
+    beq		loopexit4
+    bsr		printnum
+    add		v1, v1, 1
+    b		loop4
+loopexit4:
+
     b		begin
 
 printnum:
@@ -60,4 +95,19 @@ printnum2:
 numbers:
     db	"Hello, World!", 10, 13, 0
 
-    ds	$100-*
+    ds  numbers+$100-*
+
+numbers2:
+    db	"Fuck, World!", 10, 13, 0
+
+    ds  numbers2+$100-*
+
+numbers3:
+    db	"Sucks, World!", 10, 13, 0
+
+    ds  numbers3+$100-*
+
+numbers4:
+    db	"Haha, World!", 10, 13, 0
+
+    ds	$400-*
