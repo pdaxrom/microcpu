@@ -1063,12 +1063,12 @@ static int do_asm(FILE *inf, char *line) {
 				}
 				to_second_pass = 0;
 
-				if (val < -0x3ff || val > 0x1ff) {
+				if (val < -0x3ff || val > 0x3ff) {
 				    error = LONG_RELATED_OFFSET;
 				    return 1;
 				}
 
-				arg1 = (val & 0x300) >> 8;
+				arg1 = (val & 0x700) >> 8;
 				arg2 = (val & 0xe0) >> 5;
 				arg3 =  val & 0x1f;
 			} else if (opcode->type != op_noargs) {
