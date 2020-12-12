@@ -63,14 +63,18 @@ begin	set	sp, $03fe
 	setl	v0, $7
 	strl	v0, v1, 3
 	ldrl	v0, v1, 1
+	set	v2, $fff8
+	and	v0, v0, v2
 	or	v0, v0, PIN_CS
 	strl	v0, v1, 1
+
+	set	v0, $2000
+	bsr	delay
 
 	set	v0, t_1
 	bsr	printstr
 
 	bsr	disp_init
-
 	set	v0, heart
 	bsr	disp
 
@@ -101,6 +105,15 @@ nl	db	10, 13, 0
 
 
 	align	2
+
+delay	proc
+	push	v0
+loop	sub	v0, v0, 1
+	beq	exit
+	b	loop
+exit	pop	v0
+	rts
+	endp
 
 disp_init proc
 	push	lr
