@@ -175,7 +175,6 @@ disp	proc
 	push	v1
 	push	v2
 	push	v3
-	push	v4
 	push	v0
 
 	set	v0, REG_SHUTDOWN | $01
@@ -184,24 +183,21 @@ disp	proc
 	bsr	senddata
 	set	v0, REG_SCAN_LIMIT | $07
 	bsr	senddata
-	pop	v4
-	push	v4
-	set	v3, REG_DIGIT_0
+	pop	v3
+	push	v3
+	set	v0, REG_DIGIT_0
 	set	v1, $100
 	set	v2, 8
 
-loop	seth	v0, 0
-	ldrl	v0, v4, 0
-	or	v0, v0, v3
+loop	ldrl	v0, v3, 0
 	bsr	senddata
-	add	v3, v3, v1
-	add	v4, v4, 1
+	add	v0, v0, v1
+	add	v3, v3, 1
 	sub	v2, v2, 1
 	beq	exit
 	b	loop
 
 exit	pop	v0
-	pop	v4
 	pop	v3
 	pop	v2
 	pop	v1
