@@ -30,6 +30,7 @@ enum {
     LABEL_ALREADY_DEFINED,
     MACRO_ALREADY_DEFINED,
     PROC_ALREADY_DEFINED,
+    EXTRA_SYMBOLS,
     SYNTAX_ERROR
 };
 
@@ -77,8 +78,8 @@ static OpCode opcode_table[] = {
 
 		{ "cmp"  , op_no_reg_reg   , 0x01, 0x0  },
 		{ "sxt"  , op_reg_reg      , 0x03, 0x0  },
-		{ "sets" , op_no_reg_reg   , 0x05, 0x0  },
-		{ "gets" , op_reg_reg      , 0x07, 0x0  },
+//		{ "sets" , op_no_reg_reg   , 0x05, 0x0  },
+//		{ "gets" , op_reg_reg      , 0x07, 0x0  },
 
 		{ "addc" , op_reg_reg_reg  , 0x09, 0x0  },
 		{ "subc" , op_reg_reg_reg  , 0x0b, 0x0  },
@@ -1143,6 +1144,10 @@ static int do_asm(FILE *inf, char *line) {
 						}
 					}
 				}
+
+				if (strlen(str) > 0) {
+					error = EXTRA_SYMBOLS;
+				}
 			}
 
 			if (opcode->type == pseudo_db || opcode->type == pseudo_ds
@@ -1302,6 +1307,7 @@ static char *get_error_string(int error) {
     case LABEL_ALREADY_DEFINED: return "Label name already used";
     case MACRO_ALREADY_DEFINED: return "Macro name already used";
     case PROC_ALREADY_DEFINED: return "Procedure name already used";
+    case EXTRA_SYMBOLS:        return "Extra symbols";
     case SYNTAX_ERROR:		return "Syntax error";
     default: return "No error";
     }
