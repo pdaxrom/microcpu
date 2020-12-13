@@ -1,8 +1,10 @@
+(c) 2020 sashz <sashz@pdaXrom.org>
+
 For correct work with ftdi jtag, remove ftdi_sio module:
 
 sudo rmmod  ftdi_sio
 
-microcpu 16 bits processor
+MICROCPU - 16-bit CPU
 
 Registers:
 
@@ -56,13 +58,15 @@ Data Movement Instructions
 
 LDRL <dst>, <src>, <idx> - Load low byte from source address + index
 STRL <dst>, <src>, <idx> - Store low byte to source address + index
-LDRH <dst>, <src>, <idx> - Load high byte from source address + index
-STRH <dst>, <src>, <idx> - Store high byte to source address + index
+LDR  <dst>, <src>, <idx> - Load register (2 bytes) from source address + index
+STR  <dst>, <src>, <idx> - Store register (2 bytes) to source address + index
 SETL <dst>, <imm>        - Copy low byte from constant
 SETH <dst>, <imm>        - Copy high byte from constant
 MOVL <dst>, <src>        - Copy source low byte to destination low byte
 MOVH <dst>, <src>        - Copy source low byte to destination high byte
 MOV  <dst>, <src>        - Copy data from source to destination register
+
+Little endian byte order using for LDR and STR.
 
 Examples:
 	SETL V0, 0
@@ -70,7 +74,7 @@ Examples:
 	LDRL V1, V0, 0
 	SETL V2, 1
 	SELH V2, 0
-	STRL V1, V0, V2
+	STR  V1, V0, V2
 	MOV V3, V2
 
 Arithmetic and Logic Instructions
