@@ -13,30 +13,31 @@ module timer (
 	input wire rw,
 	input wire cs,
 	
-	output reg intr
+	output wire intr
 );
 	reg [16:0]	counter;
+	reg			intr_i;
+
+	assign intr = intr_i;
 
 	assign DO = (AD == 2'b00) ? counter[ 7:0] :
 	            (AD == 2'b01) ? counter[15:8] :
-	            (AD == 2'b10) ? {5'b0, counter[16], intr} :
+	            (AD == 2'b10) ? {5'b0, counter[16], intr_i} :
 	             8'hFF;
 	
 	always @ (posedge clk) begin
-		if (rst) begin
-			counter <= 17'b1;
-			intr <= 0;
-		end else if (~counter[16]) begin
-			counter <= counter - 1;
-//			if (counter == 0) intr <= 1;
-			intr <= counter == 0;
-		end else if (cs && AD[1]) intr <= 0;
+		if (rst) counter[16] <= 1;
+		else if (~counter[16]) counter <= counter - 1;
 
-		if (cs) begin
-			if (~rw && ~AD[1]) begin
-				if (AD[0] == 2'b00) counter[ 7:0] <= DI;
-				else counter[16:8] <= {1'b0, DI};
-			end
+		if (cs && ~rw && ~AD[1]) begin
+			if (AD[0] == 2'b00) counter[ 7:0] <= DI;
+			else counter[16:8] <= {1'b0, DI};
 		end
+	end
+	
+	always @ (negedge clk) begin
+		if (rst) intr_i <= 0;
+		else if (counter == 1) intr_i <= 1;
+		else if (cs && AD[1]) intr_i <= 0;
 	end
 endmodule

@@ -27,6 +27,7 @@
 	endm
 
 UART_ADDR	equ	$e6b0
+TIMER_ADDR	equ	$e6d8
 
 begin	set	sp, $03fe
 	set	v0, banner
@@ -54,6 +55,65 @@ cccc	bsr	printhex
 
 cccc1	set	v0, nl
 	bsr	printstr
+
+; test timer
+
+	set	v1, TIMER_ADDR
+
+	ldr	v0, v1, 0
+	bsr	printhex
+
+	set	v0, nl
+	bsr	printstr
+
+	ldr	v0, v1, 2
+	bsr	printhex
+
+	set	v0, nl
+	bsr	printstr
+
+; start timer
+
+	set	v2, $ffff
+	str	v2, v1, 0
+
+	ldr	v2, v1, 0
+	ldr	v0, v1, 0
+	sub	v0, v0, v2
+	bsr	printhex
+
+	set	v0, nl
+	bsr	printstr
+
+timeloop ldr	v0, v1, 0
+	bsr	printhex
+
+	set	v0, nl
+	bsr	printstr
+
+	ldrl	v0, v1, 2
+	tst	v0, 2
+	beq	timeloop
+
+	bsr	printhex
+
+	set	v0, nl
+	bsr	printstr
+
+	ldr	v0, v1, 0
+	bsr	printhex
+
+	set	v0, nl
+	bsr	printstr
+
+	ldr	v0, v1, 2
+	bsr	printhex
+
+	set	v0, nl
+	bsr	printstr
+
+
+; main loop
 
 mainloop bsr	getchar
 	bsr	putchar
