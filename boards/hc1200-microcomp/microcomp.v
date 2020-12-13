@@ -53,7 +53,7 @@ module demo (
 		.txd(tx)
 	);
 
-	wire GPIO_CS = DS6 && (ADDR[4] == 1'b1); // $E6D0
+	wire GPIO_CS = DS6 && (ADDR[4:3] == 2'b10); // $E6D0
 	wire GPIO_EN = GPIO_CS;
 	wire [7:0] GPIO_D;
 	
@@ -70,7 +70,20 @@ module demo (
 		.gpio({res, gpio[14:0]})
 	);
 
-	wire SRAM_CS = ~(UART_CS | GPIO_CS);
+	wire TIMER_CS = DS6 && (ADDR[4:3] == 2'b11); // $E6D8
+	wire TIMER_EN = TIMER_CS;
+	wire [7:0] TIMER_D;
+	timer timer1(
+		.clk(CLK),
+		.rst(RESET),
+		.AD(ADDR[1:0]),
+		.DI(DO),
+		.DO(TIMER_D),
+		.rw(RW),
+		.cs(TIMER_CS)
+	);
+
+	wire SRAM_CS = ~(UART_CS | GPIO_CS | TIMER_CS);
 	wire SRAM_EN = SRAM_CS;
 	wire [7:0] SRAM_D;
 	sram sram1(
@@ -86,6 +99,7 @@ module demo (
 	assign DI = SRAM_EN ? SRAM_D :
 				UART_EN ? UART_D :
 				GPIO_EN ? GPIO_D :
+				TIMER_EN ? TIMER_D :
 				8'b11111111;
 
 	cpu cpu1 (
