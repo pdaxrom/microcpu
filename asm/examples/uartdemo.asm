@@ -12,20 +12,18 @@
 	endm
 
 	macro push
-	strh	#1, sp, 0
-	strl	#1, sp, 1
+	str	#1, sp, 0
 	sub	sp, sp, 2
 	endm
 
 	macro pop
 	add	sp, sp, 2
-	ldrh	#1, sp, 0
-	ldrl	#1, sp, 1
+	ldr	#1, sp, 0
 	endm
 
 	macro set
-	seth	#1, /#2
 	setl	#1, #2
+	seth	#1, /#2
 	endm
 
 UART_ADDR	equ	$e6b0
@@ -53,7 +51,9 @@ cccc	bsr	printhex
 	sub	v0, v0, 1
 	beq	cccc1
 	b	cccc
-cccc1
+
+cccc1	set	v0, nl
+	bsr	printstr
 
 mainloop bsr	getchar
 	bsr	putchar

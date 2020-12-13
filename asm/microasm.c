@@ -60,8 +60,8 @@ typedef struct {
 static OpCode opcode_table[] = {
 		{ "ldrl" , op_reg_reg_reg  , 0x00, 0x0  },
 		{ "strl" , op_reg_reg_reg  , 0x02, 0x0  },
-		{ "ldrh" , op_reg_reg_reg  , 0x04, 0x0  },
-		{ "strh" , op_reg_reg_reg  , 0x06, 0x0  },
+		{ "ldr"  , op_reg_reg_reg  , 0x04, 0x0  },
+		{ "str"  , op_reg_reg_reg  , 0x06, 0x0  },
 		{ "setl" , op_reg_const    , 0x08, 0x0  },
 		{ "seth" , op_reg_const    , 0x0a, 0x0  },
 		{ "movl" , op_reg_reg      , 0x0c, 0x0  },
@@ -1059,14 +1059,16 @@ static int do_asm(FILE *inf, char *line) {
 				if (to_second_pass && src_pass == 2) {
 					add_label(&refs, tmp, output_addr + 1, src_line);
 				} else if (src_pass == 2) {
-					val = val - output_addr - 1;
+					val = val - output_addr;
 				}
 				to_second_pass = 0;
 
-				if (val < -0x3ff || val > 0x3ff) {
+				if (val < -0x7ff || val > 0x7ff) {
 				    error = LONG_RELATED_OFFSET;
 				    return 1;
 				}
+
+				val = val >> 1;
 
 				arg1 = (val & 0x700) >> 8;
 				arg2 = (val & 0xe0) >> 5;
