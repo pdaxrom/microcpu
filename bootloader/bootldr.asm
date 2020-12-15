@@ -63,20 +63,6 @@ cmd_load proc
 	bsr	get_word
 	mov	v2, v0
 
-;	push	v0
-
-;	setl	v0, 'L'
-;	bsr	putchar
-
-;	mov	v0, v1
-;	bsr	printhex
-
-;	setl	v0, '.'
-;	bsr	putchar
-
-;	pop	v0
-;	bsr	printhex
-
 loop	bsr	getchar
 	strl	v0, v1, 0
 	add	v1, v1, 1
@@ -105,55 +91,62 @@ cmd_go	proc
 	endp
 
 get_word proc
-	push	lr
-	push	v1
+	sub	sp, sp, 4
+	str	lr, sp, 4
+	str	v1, sp, 2
 	bsr	getchar
 	mov	v1, v0
 	bsr	getchar
 	movh	v0, v1
-	pop	v1
-	pop	lr
+	ldr	v1, sp, 2
+	ldr	lr, sp, 4
+	add	sp, sp, 4
 	rts
 	endp
 
 printhex proc
-	push	lr
-	push	v0
+	sub	sp, sp, 4
+	str	lr, sp, 4
+	str	v0, sp, 2
 	shr	v0, v0, 8
 	bsr	printhex8
-	pop	v0
+	ldr	v0, sp, 2
 	bsr	printhex8
-	pop	lr
+	ldr	lr, sp, 4
+	add	sp, sp, 4
 	rts
 	endp
 
 printhex8 proc
-	push	lr
-	push	v0
-	push	v1
+	sub	sp, sp, 8
+	str	lr, sp, 8
+	str	v0, sp, 6
+	str	v1, sp, 4
 	set	v1, nums
 	seth	v0, 0
-	push	v0
+	str	v0, sp, 2
 	shr	v0, v0, 4
 	add	v0, v1, v0
 	ldrl	v0, v0, 0
 	bsr	putchar
-	pop	v0
+	ldr	v0, sp, 2
 	and	v0, v0, 15
 	add	v0, v1, v0
 	ldrl	v0, v0, 0
 	bsr	putchar
-	pop	v1
-	pop	v0
-	pop	lr
+	ldr	v1, sp, 4
+	ldr	v0, sp, 6
+	ldr	lr, sp, 8
+	add	sp, sp, 8
 	rts
 nums	db	'0123456789ABCDEF'
 	endp
 
 printstr proc
-	push	lr
-	push	v0
-	push	v1
+	sub	sp, sp, 6
+	str	lr, sp, 6
+	str	v0, sp, 4
+	str	v1, sp, 2
 	mov	v1, v0
 	seth	v0, 0
 .1	ldrl	v0, v1, 0
@@ -162,40 +155,41 @@ printstr proc
 	bsr	putchar
 	add	v1, v1, 1
 	b	.1
-.2	pop	v1
-	pop	v0
-	pop	lr
+.2	ldr	v1, sp, 2
+	ldr	v0, sp, 4
+	ldr	lr, sp, 6
+	add	sp, sp, 6
 	rts
 	endp
 
 putchar	proc
-	push	v1
-	push	v2
+	sub	sp, sp, 2
+	str	v1, sp, 2
+	str	v2, sp, 0
 	set	v1, UART_ADDR
 .1	ldrl	v2, v1, 0
 	and	v2, v2, 2
 	beq	.2
 	b	.1
 .2	strl	v0, v1, 1
-	pop	v2
-	pop	v1
+	ldr	v2, sp, 0
+	ldr	v1, sp, 2
+	add	sp, sp, 2
 	rts
 	endp
 
 getchar	proc
-	push	v1
+	str	v1, sp, 0
 	set	v1, UART_ADDR
 	seth	v0, 0
 .1	ldrl	v0, v1, 0
 	and	v0, v0, 1
 	beq	.1
 	ldrl	v0, v1, 1
-	pop	v1
+	ldr	v1, sp, 0
 	rts
 	endp
 
-banner	db	10, 13, "Welcome to pdaXrom uCPU board bootloader!", 10, 13, 0
-
-nl	db	10, 13, 0
+banner	db	10, 13, "pdaXrom uCPU UART loader", 10, 13, 0
 
 	ds	$800-*
