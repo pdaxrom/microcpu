@@ -49,6 +49,7 @@ enum {
 	pseudo_macro,
 	pseudo_equ,
 	pseudo_proc,
+	pseudo_org
 };
 
 typedef struct {
@@ -105,6 +106,7 @@ static OpCode opcode_table[] = {
 		{ "proc" , pseudo_proc  , 0x0, 0x0  },
 		{ "endp" , pseudo_proc  , 0x0, 0x0  },
 		{ "global",pseudo_proc  , 0x0, 0x0  },
+		{ "org"  , pseudo_org   , 0x0, 0x0  },
 };
 
 typedef struct Register {
@@ -156,6 +158,7 @@ typedef struct Proc {
 } Proc;
 
 static int output[65536];
+static unsigned int start_addr = 0;
 static unsigned int output_addr = 0;
 
 static int src_pass = 1;
@@ -244,7 +247,6 @@ static Label* find_label(Label **list, char *name) {
 
 static Label* add_label(Label **list, char *name, unsigned int address,
 		int line) {
-
 	if (find_label(list, name)) {
 		error = LABEL_ALREADY_DEFINED;
 		return NULL;
@@ -1015,6 +1017,13 @@ static int do_asm(FILE *inf, char *line) {
 				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
 			}
 			return add_macro(inf, name);
+		} else if (opcode && !strcmp(opcode->name, "org")) {
+			SKIP_BLANK(str);
+			start_addr = exp_(&str);
+			output_addr = start_addr;
+			if (src_pass == 2) {
+				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+			}
 		} else if (opcode) {
 			unsigned int old_addr = output_addr;
 			Register *reg;
@@ -1230,28 +1239,28 @@ static int do_asm(FILE *inf, char *line) {
 	return 0;
 }
 
-static void output_hex() {
+static void output_hex(FILE *outf) {
 	int i;
 
-	for (i = 0; i < output_addr; i++) {
+	for (i = start_addr; i < output_addr; i++) {
 		if ((i % 16) == 0) {
-			printf("%04X:", i);
+			fprintf(outf, "%04X:", i);
 		}
 
-		printf(" %02X", output[i]);
+		fprintf(outf, " %02X", output[i]);
 
 		if ((i % 16) == 15) {
-			printf("\n");
+			fprintf(outf, "\n");
 		}
 	}
 
 	if ((i % 16) != 0) {
-		printf("\n");
+		fprintf(outf, "\n");
 	}
 }
 
-static void output_verilog() {
-	printf( "module sram(\n"											\
+static void output_verilog(FILE *outf) {
+	fprintf(outf, "module sram(\n"											\
 			"    input  [7:0] ADDR,\n"									\
 			"    input  [7:0] DI,\n"									\
 			"    output [7:0] DO,\n"									\
@@ -1263,11 +1272,11 @@ static void output_verilog() {
 			"\n"														\
 			"    initial begin\n");
 
-	for (int i = 0; i < output_addr; i++) {
-		printf("        Mem[%d] = 8'h%02x;\n", i, output[i]);
+	for (int i = start_addr; i < output_addr; i++) {
+		fprintf(outf, "        Mem[%d] = 8'h%02x;\n", i, output[i]);
 	}
 
-	printf( "    end\n"													\
+	fprintf(outf, "    end\n"													\
 			"\n"														\
 			"    assign DO = RW ? Mem[ADDR] : 8'hFF;\n"					\
 			"\n"														\
@@ -1278,6 +1287,12 @@ static void output_verilog() {
 			"    end\n"													\
 			"\n"														\
 			"endmodule\n");
+}
+
+void output_binary(FILE *outf) {
+	for (unsigned int i = start_addr; i < output_addr; i++) {
+	    fwrite(&output[i], 1, 1, outf);
+	}
 }
 
 static char *get_error_string(int error) {
@@ -1320,14 +1335,19 @@ int main(int argc, char *argv[]) {
 	if (!strcmp(argv[1], "-verilog")) {
 		out_type = 1;
 		argv++;
+	} else if (!strcmp(argv[1], "-binary")) {
+		out_type = 2;
+		argv++;
 	}
+
+	start_addr = 0;
 
 	inf = fopen(argv[1], "rb");
 	if (inf) {
 		int err;
 		char str[512];
 
-		output_addr = 0;
+		output_addr = start_addr;
 		src_pass = 1;
 		src_line = 1;
 		in_macro = 0;
@@ -1347,7 +1367,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
-		output_addr = 0;
+		output_addr = start_addr;
 		src_pass = 2;
 		src_line = 1;
 		in_macro = 0;
@@ -1380,10 +1400,20 @@ int main(int argc, char *argv[]) {
 
 			fprintf(stderr, "\nErrors: %s\n\n", get_error_string(error));
 
-			if (out_type) {
-				output_verilog();
-			} else {
-				output_hex();
+			if (error == NO_ERROR) {
+				FILE *outf = fopen(argv[2], "wb");
+				if (!outf) {
+				    fprintf(stderr, "Can't create output file!\n");
+				    return 1;
+				}
+				if (out_type == 2) {
+					output_binary(outf);
+				} else if (out_type) {
+					output_verilog(outf);
+				} else {
+					output_hex(outf);
+				}
+				fclose(outf);
 			}
 		} else {
 			fprintf(stderr, "Source file IO error!\n");
