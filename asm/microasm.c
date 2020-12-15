@@ -561,7 +561,7 @@ static int character(char **str) {
 	char c;
 
 	c = *(*str)++;
-	if (*(*str) == '\\') {
+	if (*(*str) == '\'') {
 		(*str)++;
 	}
 	return c;
