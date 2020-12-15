@@ -91,7 +91,7 @@ module demo (
 		.ClockEn(SRAM_CS),
 		.Reset(RESET),
 		.WE(~RW),
-		.Address(ADDR[9:0]),
+		.Address(ADDR[10:0]),
 		.Data(DO),
 		.Q(SRAM_D)
 	);
