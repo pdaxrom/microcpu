@@ -40,6 +40,8 @@ Each register has high byte and low byte:
         HIGH BYTE       |        LOW BYTE
 ```
 
+[Top](#MICROCPU---16-bit-CPU)
+
 ## Address modes
 
 The processor has 5 addressing modes that can be used by the programmer:
@@ -49,6 +51,8 @@ The processor has 5 addressing modes that can be used by the programmer:
 3. Immediate indexed
 4. Register indexed
 5. Relative
+
+[Top](#MICROCPU---16-bit-CPU)
 
 ## Flags
 
@@ -60,6 +64,8 @@ C|carry flag
 Z|zero flag
 V|2s complement overflow
 N|negative
+
+[Top](#MICROCPU---16-bit-CPU)
 
 ## Instructions
 
@@ -75,6 +81,8 @@ Notation|Description
 `<arg1>`|Any register
 `<arg2>`|Any register or 4-bit unsigned immediate
 `<rel>`|11-bit signed immediate
+
+[Top](#MICROCPU---16-bit-CPU)
 
 ### Data Movement Instructions
 
