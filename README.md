@@ -62,11 +62,11 @@ The processor has 5 addressing modes that can be used by the programmer:
 The processor uses five condition code bits or flags:
 Name|Description
 ----|-----------
-I|interrupt mask
-C|carry flag
-Z|zero flag
-V|2s complement overflow
-N|negative
+`I`|interrupt mask
+`C`|carry flag
+`Z`|zero flag
+`V`|2s complement overflow
+`N`|negative
 
 [Top](#microcpu---16-bit-cpu)
 
