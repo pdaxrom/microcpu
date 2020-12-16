@@ -111,6 +111,8 @@ Examples:
     MOV V3, V2
 ```
 
+[Top](#MICROCPU---16-bit-CPU)
+
 ### Arithmetic and Logic Instructions
 
 Instruction | |Description
@@ -136,6 +138,8 @@ Examples:
     SXT V1, V1
 ```
 
+[Top](#MICROCPU---16-bit-CPU)
+
 ### Control Flow Instructions
 
 Instruction | |Description
@@ -158,7 +162,13 @@ Examples:
     BEQ wait
 ```
 
+[Top](#MICROCPU---16-bit-CPU)
+
 ## MicroAssembler
+
+Assembler has support for macros, procedures. Since the processor has a limited number of instructions, some instructions can be implemented as macros.
+
+[Top](#MICROCPU---16-bit-CPU)
 
 ### Assembler directives
 
@@ -185,6 +195,8 @@ CONST_TWO EQU 2
     ALIGN 4
 ```
 
+[Top](#MICROCPU---16-bit-CPU)
+
 ### Accembler macro definition
 
 Directive|Description
@@ -203,6 +215,8 @@ Example:
 
     SET V0, $1234
 ```
+
+[Top](#MICROCPU---16-bit-CPU)
 
 ### Assembler procedures
 
@@ -228,6 +242,8 @@ get_2 SET V0, 2
     ENDP
 ```
 
+[Top](#MICROCPU---16-bit-CPU)
+
 ### Command line options
 
 `microasm [-verilog|-binary] <input.asm> [output]`
@@ -237,9 +253,13 @@ get_2 SET V0, 2
 
 By default, the output file is hex file.
 
+[Top](#MICROCPU---16-bit-CPU)
+
 ## Bootloader
 
 The bootloader is using to load code and data into RAM, read memory and run the code .
+
+[Top](#MICROCPU---16-bit-CPU)
 
 ### Bootloader options
 
@@ -247,11 +267,13 @@ The bootloader is using to load code and data into RAM, read memory and run the 
 * `bootloader <uart port> load <file.bin> <start address> <end address>`
 * `bootloader <uart port> go [<address>]`
 
-load - load a binary file to RAM
+**load** - load a binary file to RAM
 
-save - save RAM to a binary file
+**save** - save RAM to a binary file
 
-go - execute code
+**go** - execute code
+
+[Top](#MICROCPU---16-bit-CPU)
 
 ## Lattice Diamond programmer and ftdi jtag dual channel board
 
@@ -263,3 +285,4 @@ Open the Programmer, reconnect the FTDI board and disconnect the JTAG port:
 
 `./ft2232d-util/ft2232d-ctl`
 
+[Top](#MICROCPU---16-bit-CPU)
