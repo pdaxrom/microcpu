@@ -1,9 +1,5 @@
 (c) 2020 sashz <sashz@pdaXrom.org>
 
-For correct work with ftdi jtag, remove ftdi_sio module:
-
-sudo rmmod  ftdi_sio
-
 MICROCPU - 16-bit CPU
 
 Registers:
@@ -199,3 +195,12 @@ save - save RAM to a binary file
 
 go - execute code
 
+Lattice Diamond programmer and ftdi jtag dual channel board
+
+To work correctly with ftdi jtag, remove the ftdi_sio module:
+
+sudo rmmod  ftdi_sio
+
+Open the Programmer, reconnect the FTDI board and disconnect the JTAG port:
+
+./ft2232d-util/ft2232d-ctl
