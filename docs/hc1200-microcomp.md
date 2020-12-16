@@ -19,7 +19,7 @@ The system uses a [microfpga board](https://github.com/pdaxrom/microfpga-demo)
 
 Implemented 15 bit I/O port, UART and RESET signal. The default configuration includes 2KB of RAM, pre-initialized with [bootloader](#bootloader) code.
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
 
 ### UART
 
@@ -35,7 +35,7 @@ Status bit | Description
 0|Byte received
 1|Byte transmitting
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
 
 ### GPIO
 
@@ -50,7 +50,7 @@ $E6D3|Direction bits 7..0
 
 Direction bits 1 - output, 0 - input. By default, all bits are input.
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
 
 ## Bootloader
 
@@ -73,13 +73,13 @@ Address | Description
 `$0008`|Put char to UART from register V0
 `$000A`|Put string to UART (V0 is pointer to null-terminated string)
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
 
 ## Examples
 
 The examples are compiled by a microassembler and loaded by the bootloader via UART.
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
 
 ### UART I/O
 
@@ -87,7 +87,7 @@ Example of use UART [printuart.asm](../asm/examples/microcomp/printuart.asm)
 
 <img src="uart.jpg" width="320" />
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
 
 ### Led Matrix
 
@@ -95,7 +95,7 @@ Example of use with led matrix (MAX7219) [matrix.asm](../asm/examples/microcomp/
 
 <img src="matrix.jpg" width="320" />
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
 
 ### Led Display
 
@@ -103,4 +103,4 @@ Example of use with led matrix display [hcms.asm](../asm/examples/microcomp/hcms
 
 <img src="hcms.jpg" width="320" />
 
-[Top](#microcomputer-with-lattice-machxO2-1200)
+[Top](#microcomputer-with-lattice-machxo2-1200)
