@@ -2,24 +2,24 @@
 
 # MICROCPU - 16-bit CPU
 
-* [Registers](#Registers)
-* [Address modes](#Address-modes)
-* [Flags](#Flags)
-* [Instructions](#Instructions)
-  * [Data Movement Instructions](#Data-Movement-Instructions)
-  * [Arithmetic and Logic Instructions](#Arithmetic-and-Logic-Instructions)
-  * [Control Flow Instructions](#Control-Flow-Instructions)
-* [MicroAssembler](#MicroAssembler)
-  * [Assembler directives](#Assembler-directives)
-  * [Accembler macro definition](#Accembler-macro-definition)
-  * [Assembler procedures](#Assembler-procedures)
-  * [Command line options](#Command-line-options)
-* [Bootloader](#Bootloader)
-  * [Bootloader options](#Bootloader-options)
-* [Lattice Diamond programmer and ftdi jtag dual channel board](#Lattice-Diamond-programmer-and-ftdi-jtag-dual-channel-board)
+* [Registers](#registers)
+* [Address modes](#address-modes)
+* [Flags](#flags)
+* [Instructions](#instructions)
+  * [Data Movement Instructions](#data-movement-instructions)
+  * [Arithmetic and Logic Instructions](#arithmetic-and-logic-instructions)
+  * [Control Flow Instructions](#control-flow-instructions)
+* [MicroAssembler](#microassembler)
+  * [Assembler directives](#assembler-directives)
+  * [Accembler macro definition](#accembler-macro-definition)
+  * [Assembler procedures](#assembler-procedures)
+  * [Command line options](#command-line-options)
+* [Bootloader](#bootloader)
+  * [Bootloader options](#bootloader-options)
+* [Lattice Diamond programmer and ftdi jtag dual channel board](#lattice-diamond-programmer-and-ftdi-jtag-dual-channel-board)
 * [Microcomputer with MachXO2-1200](docs/hc1200-microcomp.md)
 
-## Registers:
+## Registers
 
 The processor has eight 16-bit registers. The register 0 (PC) using as program counter.
 
