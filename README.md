@@ -19,7 +19,7 @@
 * [Bootloader](#bootloader)
   * [Bootloader options](#bootloader-options)
 * [Lattice Diamond programmer and ftdi jtag dual channel board](#lattice-diamond-programmer-and-ftdi-jtag-dual-channel-board)
-* [Microcomputer with MachXO2-1200](docs/hc1200-microcomp.md)
+* [Microcomputer with Lattice MachXO2-1200 board](docs/hc1200-microcomp.md)
 
 ## Registers
 
