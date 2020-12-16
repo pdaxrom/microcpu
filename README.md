@@ -75,7 +75,8 @@ Name | Description
 
 Machine instructions generally fall into three categories: data movement, arithmetic/logic, and control-flow.
 We use the following notation:
-Notation|Description
+
+Notation | Description
 --------|-----------------------
 `<dst>`|Any destination register
 `<src>`|Any source register
