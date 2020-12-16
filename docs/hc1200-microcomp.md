@@ -5,7 +5,7 @@
   * [UART](#uart)
 * [Bootloader](#bootloader)
 * [Examples](#examples)
-  * [UART I/O](#uart-i/o)
+  * [UART I/O](#uart-io)
   * [LED Matrix](#led-matrix)
   * [LED Display](#led-display)
   
