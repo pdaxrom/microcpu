@@ -5,7 +5,7 @@
   * [UART](#uart)
 * [Bootloader](#bootloader)
 * [Examples](#examples)
-  * [UART](#uart)
+  * [UART I/O](#uart-i/o)
   * [LED Matrix](#led-matrix)
   * [LED Display](#led-display)
   
@@ -81,7 +81,7 @@ The examples are compiled by a microassembler and loaded by the bootloader via U
 
 [Top](#microcomputer-with-lattice-machxO2-1200)
 
-### UART
+### UART I/O
 
 Example of use UART [printuart.asm](../asm/examples/microcomp/printuart.asm)
 
