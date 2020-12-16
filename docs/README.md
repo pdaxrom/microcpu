@@ -18,10 +18,11 @@ Numeric|Name|Alias
 7|R7|V4
 
 Each register has high byte and low byte:
-
+```
 15 14 13 12 11 10 09 08 | 07 06 05 04 03 02 01 00
 ------------------------|------------------------
         HIGH BYTE       |        LOW BYTE
+```
 
 The processor has 5 addressing modes that can be used by the programmer:
 
@@ -72,7 +73,8 @@ Instruction | |Description
 Little endian byte order using for LDR and STR.
 
 Examples:
-```    SETL V0, 0
+```
+    SETL V0, 0
     SETH V0, $10
     LDRL V1, V0, 0
     SETL V2, 1
@@ -98,7 +100,8 @@ Instruction | |Description
 `SXT  <dst>, <arg1>`|`<dst> = sign <arg1>`|Sign extend
 
 Examples:
-```    ADD V0, V1, V2
+```
+    ADD V0, V1, V2
     ADDC V1, V2, 5
     SUB V0, V2, V1
     SHR V0, V0, 1
@@ -118,7 +121,8 @@ Instruction | |Description
 `BCS <rel>`|`PC = PC + <rel> If C = 1`|Branch If Carry Set
 
 Examples:
-```    CMP V0, 0
+```
+    CMP V0, 0
     BEQ exit
     CMP V0, V1
     BLE loop
@@ -140,7 +144,8 @@ Directive |Description
 `ORG <imm16>`|Set location address counter
 
 Examples:
-```CONST_ONE EQU 1
+```
+CONST_ONE EQU 1
 CONST_TWO EQU 2
     ORG $100
     DB 1, $2, $3, 4, 5
@@ -162,7 +167,8 @@ Directive|Description
 macro parameters start with # and are numbered from 1.
 
 Example:
-```    MACRO SET
+```    
+    MACRO SET
     SETH	#1, /#2
     SETL	#1, #2
     ENDM
@@ -179,7 +185,8 @@ Directive|Description
 `ENDP`|End procedure
 
 Example:
-```get_one PROC
+```
+get_one PROC
     SET V0, 1
     ADD PC, LR, 3
     ENDP
