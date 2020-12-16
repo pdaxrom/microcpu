@@ -1,3 +1,8 @@
+;
+; BOOTROM for microcpu
+; (c) sashz <sashz@pdaXrom.org>, 2020
+;
+
 	macro nop
 	mov	v0,v0
 	endm
@@ -29,12 +34,16 @@
 UART_ADDR	equ	$e6b0
 TIMER_ADDR	equ	$e6d8
 
+	org	$0
+
 	b	begin
+	b	begin		; reserved for external interrupt
+	b	begin		; reserved for memory access error
 	b	getchar
 	b	putchar
 	b	printstr
-	b	printhex8
-	b	printhex
+;	b	printhex8
+;	b	printhex
 
 begin	set	sp, $07fe
 	set	v0, banner
@@ -104,43 +113,43 @@ get_word proc
 	rts
 	endp
 
-printhex proc
-	sub	sp, sp, 4
-	str	lr, sp, 4
-	str	v0, sp, 2
-	shr	v0, v0, 8
-	bsr	printhex8
-	ldr	v0, sp, 2
-	bsr	printhex8
-	ldr	lr, sp, 4
-	add	sp, sp, 4
-	rts
-	endp
+;printhex proc
+;	sub	sp, sp, 4
+;	str	lr, sp, 4
+;	str	v0, sp, 2
+;	shr	v0, v0, 8
+;	bsr	printhex8
+;	ldr	v0, sp, 2
+;	bsr	printhex8
+;	ldr	lr, sp, 4
+;	add	sp, sp, 4
+;	rts
+;	endp
 
-printhex8 proc
-	sub	sp, sp, 8
-	str	lr, sp, 8
-	str	v0, sp, 6
-	str	v1, sp, 4
-	set	v1, nums
-	seth	v0, 0
-	str	v0, sp, 2
-	shr	v0, v0, 4
-	add	v0, v1, v0
-	ldrl	v0, v0, 0
-	bsr	putchar
-	ldr	v0, sp, 2
-	and	v0, v0, 15
-	add	v0, v1, v0
-	ldrl	v0, v0, 0
-	bsr	putchar
-	ldr	v1, sp, 4
-	ldr	v0, sp, 6
-	ldr	lr, sp, 8
-	add	sp, sp, 8
-	rts
-nums	db	'0123456789ABCDEF'
-	endp
+;printhex8 proc
+;	sub	sp, sp, 8
+;	str	lr, sp, 8
+;	str	v0, sp, 6
+;	str	v1, sp, 4
+;	set	v1, nums
+;	seth	v0, 0
+;	str	v0, sp, 2
+;	shr	v0, v0, 4
+;	add	v0, v1, v0
+;	ldrl	v0, v0, 0
+;	bsr	putchar
+;	ldr	v0, sp, 2
+;	and	v0, v0, 15
+;	add	v0, v1, v0
+;	ldrl	v0, v0, 0
+;	bsr	putchar
+;	ldr	v1, sp, 4
+;	ldr	v0, sp, 6
+;	ldr	lr, sp, 8
+;	add	sp, sp, 8
+;	rts
+;nums	db	'0123456789ABCDEF'
+;	endp
 
 printstr proc
 	sub	sp, sp, 6
@@ -190,6 +199,6 @@ getchar	proc
 	rts
 	endp
 
-banner	db	10, 13, "pdaXrom uCPU UART loader", 10, 13, 0
+banner	db	10, 13, "Z/pdaXrom UART loader", 10, 13, 0
 
 	ds	$800-*

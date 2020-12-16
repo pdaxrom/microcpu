@@ -14,9 +14,7 @@ SCUBA = \
 	$(SCUBACMD)
 endif
 
-all: hc1200/sram.v
-
-microcomp: hc1200-microcomp/sram.v
+all: hc1200/sram.v hc1200-microcomp/sram.v
 
 hc1200/sram.v: sram.mem
 	cd hc1200 && \
