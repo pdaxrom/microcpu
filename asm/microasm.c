@@ -1328,6 +1328,24 @@ static char *get_error_string(int error) {
     }
 }
 
+static char *get_out_name(char *in_str, char *ext)
+{
+    if (!in_str) {
+	return NULL;
+    }
+
+    char *ptr = strrchr(in_str, '.');
+    if (ptr) {
+	*ptr = 0;
+    }
+
+    char *str = malloc(strlen(in_str) + strlen(ext) + 1);
+    strcpy(str, in_str);
+    strcat(str, ext);
+
+    return str;
+}
+
 int main(int argc, char *argv[]) {
 	int out_type = 0;
 	FILE *inf;
@@ -1335,9 +1353,11 @@ int main(int argc, char *argv[]) {
 	if (!strcmp(argv[1], "-verilog")) {
 		out_type = 1;
 		argv++;
+		argc--;
 	} else if (!strcmp(argv[1], "-binary")) {
 		out_type = 2;
 		argv++;
+		argc--;
 	}
 
 	start_addr = 0;
@@ -1401,19 +1421,27 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "\nErrors: %s\n\n", get_error_string(error));
 
 			if (error == NO_ERROR) {
-				FILE *outf = fopen(argv[2], "wb");
-				if (!outf) {
-				    fprintf(stderr, "Can't create output file!\n");
-				    return 1;
-				}
-				if (out_type == 2) {
-					output_binary(outf);
-				} else if (out_type) {
-					output_verilog(outf);
+				char *name;
+				if (argc > 2) {
+					name = strdup(argv[2]);
 				} else {
-					output_hex(outf);
+					name = get_out_name(argv[1], (out_type == 2) ? ".bin" : (out_type == 1) ? ".v" : ".mem");
 				}
-				fclose(outf);
+				FILE *outf = fopen(name, "wb");
+				if (outf) {
+					if (out_type == 2) {
+						output_binary(outf);
+					} else if (out_type) {
+						output_verilog(outf);
+					} else {
+						output_hex(outf);
+					}
+					fclose(outf);
+				} else {
+				    error = 1;
+				    fprintf(stderr, "Can't create output file!\n");
+				}
+				free(name);
 			}
 		} else {
 			fprintf(stderr, "Source file IO error!\n");
