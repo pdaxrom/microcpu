@@ -2,6 +2,22 @@
 
 # MICROCPU - 16-bit CPU
 
+* [Registers](#Registers)
+* [Address modes](#Address modes)
+* [Flags](#Flags)
+* [Instructions](#Instructions)
+  * [Data Movement Instructions](#Data Movement Instructions)
+  * [Arithmetic and Logic Instructions](#Arithmetic and Logic Instructions)
+  * [Control Flow Instructions](#Control Flow Instructions)
+* [MicroAssembler](#MicroAssembler)
+  * [Assembler directives](#Assembler directives)
+  * [Accembler macro definition](#Accembler macro definition)
+  * [Assembler procedures](#Assembler procedures)
+  * [Command line options](#Command line options)
+* [Bootloader](#Bootloader)
+  * [Bootloader options](#Bootloader options)
+* [Lattice Diamond programmer and ftdi jtag dual channel board](#Lattice Diamond programmer and ftdi jtag dual channel board)
+
 ## Registers:
 
 The processor has eight 16-bit registers. The register 0 (PC) using as program counter.
@@ -24,6 +40,8 @@ Each register has high byte and low byte:
         HIGH BYTE       |        LOW BYTE
 ```
 
+## Address modes
+
 The processor has 5 addressing modes that can be used by the programmer:
 
 1. Register
@@ -31,6 +49,8 @@ The processor has 5 addressing modes that can be used by the programmer:
 3. Immediate indexed
 4. Register indexed
 5. Relative
+
+## Flags
 
 The processor uses five condition code bits or flags:
 Name|Description
@@ -200,7 +220,7 @@ get_2 SET V0, 2
     ENDP
 ```
 
-### Command line options:
+### Command line options
 
 `microasm [-verilog|-binary] <input.asm> [output]`
 
@@ -211,7 +231,9 @@ By default, the output file is hex file.
 
 ## Bootloader
 
-### Bootloader options:
+The bootloader is using to load code and data into RAM, read memory and run the code .
+
+### Bootloader options
 
 * `bootloader <uart port> load <file.bin> [<start address> [<end address>]]`
 * `bootloader <uart port> load <file.bin> <start address> <end address>`
