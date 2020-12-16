@@ -15,8 +15,9 @@
   * [Assembler procedures](#Assembler-procedures)
   * [Command line options](#Command-line-options)
 * [Bootloader](#Bootloader)
-  * [Bootloader options](#Bootloader options)
+  * [Bootloader options](#Bootloader-options)
 * [Lattice Diamond programmer and ftdi jtag dual channel board](#Lattice-Diamond-programmer-and-ftdi-jtag-dual-channel-board)
+* [Microcomputer with MachXO2-1200](docs/hc1200-microcomp.md)
 
 ## Registers:
 
