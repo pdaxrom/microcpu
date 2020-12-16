@@ -60,6 +60,7 @@ The processor has 5 addressing modes that can be used by the programmer:
 ## Flags
 
 The processor uses five condition code bits or flags:
+
 Name|Description
 -|-
 `I`|interrupt mask
