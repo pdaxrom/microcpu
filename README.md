@@ -39,9 +39,8 @@ Numeric | Name |Alias
 Each register has high byte and low byte:
 
 15 14 13 12 11 10 09 08 | 07 06 05 04 03 02 01 00
-------------------------|------------------------
-        HIGH BYTE       |        LOW BYTE
-
+:-:|:-:
+HIGH BYTE|LOW BYTE
 
 [Top](#microcpu---16-bit-cpu)
 
