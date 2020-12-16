@@ -3,20 +3,20 @@
 # MICROCPU - 16-bit CPU
 
 * [Registers](#Registers)
-* [Address modes](#Address modes)
+* [Address modes](#Address-modes)
 * [Flags](#Flags)
 * [Instructions](#Instructions)
-  * [Data Movement Instructions](#Data Movement Instructions)
-  * [Arithmetic and Logic Instructions](#Arithmetic and Logic Instructions)
-  * [Control Flow Instructions](#Control Flow Instructions)
+  * [Data Movement Instructions](#Data-Movement-Instructions)
+  * [Arithmetic and Logic Instructions](#Arithmetic-and-Logic-Instructions)
+  * [Control Flow Instructions](#Control-Flow-Instructions)
 * [MicroAssembler](#MicroAssembler)
-  * [Assembler directives](#Assembler directives)
-  * [Accembler macro definition](#Accembler macro definition)
-  * [Assembler procedures](#Assembler procedures)
-  * [Command line options](#Command line options)
+  * [Assembler directives](#Assembler-directives)
+  * [Accembler macro definition](#Accembler-macro-definition)
+  * [Assembler procedures](#Assembler-procedures)
+  * [Command line options](#Command-line-options)
 * [Bootloader](#Bootloader)
   * [Bootloader options](#Bootloader options)
-* [Lattice Diamond programmer and ftdi jtag dual channel board](#Lattice Diamond programmer and ftdi jtag dual channel board)
+* [Lattice Diamond programmer and ftdi jtag dual channel board](#Lattice-Diamond-programmer-and-ftdi-jtag-dual-channel-board)
 
 ## Registers:
 
