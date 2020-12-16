@@ -175,3 +175,27 @@ get_2	SET V0, 2
 	B return
 	ENDP
 
+Microassembler optios:
+
+microasm [-verilog|-binary] <input.asm> [output]
+
+-verilog - create verilog ram file
+
+-binary  - create binary file
+
+By default, the output file is hex file.
+
+Bootloader options:
+
+bootloader <uart port> load <file.bin> [<start address> [<end address>]]
+
+bootloader <uart port> load <file.bin> <start address> <end address>
+
+bootloader <uart port> go [<address>]
+
+load - load a binary file to RAM
+
+save - save RAM to a binary file
+
+go - execute code
+
