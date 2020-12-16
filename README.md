@@ -1,5 +1,7 @@
 (c) 2020 sashz <sashz@pdaXrom.org>
 
+[GitHub project page](https://github.com/pdaxrom/microcpu)
+
 # MICROCPU - 16-bit CPU
 
 * [Registers](#registers)
