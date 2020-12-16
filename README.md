@@ -25,7 +25,7 @@
 
 The processor has eight 16-bit registers. The register 0 (PC) using as program counter.
 
-Numeric|Name|Alias
+Numeric | Name |Alias
 -------|----|-----
 0|R0|PC
 1|R1|SP
@@ -91,7 +91,7 @@ Notation | Description
 
 ### Data Movement Instructions
 
-Instruction | |Description
+Instruction | | Description
 ------------|-|-----------
 `LDRL <dst>, <src>, <idx>`|`RL<dst> = M[R<src> + idx]`|Load low byte from source address + index
 `STRL <dst>, <src>, <idx>`|`M[R<src> + idx] = RL<dst>`|Store low byte to source address + index
@@ -120,7 +120,7 @@ Examples:
 
 ### Arithmetic and Logic Instructions
 
-Instruction | |Description
+Instruction | | Description
 ------------|-|-----------
 `ADD  <dst>, <arg1>, <arg2>`|`<dst> = <arg1> + <arg2>`|Add
 `ADDC <dst>, <arg1>, <arg2>`|`<dst> = <arg1> + <arg2>  + flag_C`|Add with carry
@@ -147,7 +147,7 @@ Examples:
 
 ### Control Flow Instructions
 
-Instruction | |Description
+Instruction | | Description
 ------------|-|-----------
 `CMP <arg1>, <arg2>`|`<arg1> - <arg2>`|Compare
 `TST <arg1>, <arg2>`|`<arg2> & <arg2>`|Test bits
@@ -177,7 +177,7 @@ Assembler has support for macros, procedures. Since the processor has a limited 
 
 ### Assembler directives
 
-Directive |Description
+Directive | Description
 ----------|-----------
 `<symbol> EQU <exp>`|Set a symbol equal to an expression
 `DB <imm>[,<imm>...]`|Define constant byte(s)
@@ -204,7 +204,7 @@ CONST_TWO EQU 2
 
 ### Accembler macro definition
 
-Directive|Description
+Directive | Description
 ---------|-----------
 `MACRO <name>`|Start macro
 `ENDM`|End macro
@@ -225,7 +225,7 @@ Example:
 
 ### Assembler procedures
 
-Directive|Description
+Directive | Description
 ---------|-----------
 `<label> PROC`|Start procedure
 `GLOBAL <label>[,<label>...]`|Add local procedure label as global
