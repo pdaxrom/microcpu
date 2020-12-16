@@ -41,7 +41,7 @@ Each register has high byte and low byte:
         HIGH BYTE       |        LOW BYTE
 ```
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ## Address modes
 
@@ -53,7 +53,7 @@ The processor has 5 addressing modes that can be used by the programmer:
 4. Register indexed
 5. Relative
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ## Flags
 
@@ -66,7 +66,7 @@ Z|zero flag
 V|2s complement overflow
 N|negative
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ## Instructions
 
@@ -83,7 +83,7 @@ Notation|Description
 `<arg2>`|Any register or 4-bit unsigned immediate
 `<rel>`|11-bit signed immediate
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Data Movement Instructions
 
@@ -112,7 +112,7 @@ Examples:
     MOV V3, V2
 ```
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Arithmetic and Logic Instructions
 
@@ -139,7 +139,7 @@ Examples:
     SXT V1, V1
 ```
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Control Flow Instructions
 
@@ -163,13 +163,13 @@ Examples:
     BEQ wait
 ```
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ## MicroAssembler
 
 Assembler has support for macros, procedures. Since the processor has a limited number of instructions, some instructions can be implemented as macros.
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Assembler directives
 
@@ -196,7 +196,7 @@ CONST_TWO EQU 2
     ALIGN 4
 ```
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Accembler macro definition
 
@@ -217,7 +217,7 @@ Example:
     SET V0, $1234
 ```
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Assembler procedures
 
@@ -243,7 +243,7 @@ get_2 SET V0, 2
     ENDP
 ```
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Command line options
 
@@ -254,13 +254,13 @@ get_2 SET V0, 2
 
 By default, the output file is hex file.
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ## Bootloader
 
 The bootloader is using to load code and data into RAM, read memory and run the code .
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ### Bootloader options
 
@@ -274,7 +274,7 @@ The bootloader is using to load code and data into RAM, read memory and run the 
 
 **go** - execute code
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
 
 ## Lattice Diamond programmer and ftdi jtag dual channel board
 
@@ -286,4 +286,4 @@ Open the Programmer, reconnect the FTDI board and disconnect the JTAG port:
 
 `./ft2232d-util/ft2232d-ctl`
 
-[Top](#MICROCPU---16-bit-CPU)
+[Top](#microcpu---16-bit-cpu)
