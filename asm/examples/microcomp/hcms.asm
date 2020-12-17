@@ -26,6 +26,26 @@
 	seth	#1, /#2
 	endm
 
+	macro	beq
+	ne	#2, #3
+	b	#1
+	endm
+
+	macro	bne
+	eq	#2, #3
+	b	#1
+	endm
+
+	macro	maskeq
+	mne	#2, #3
+	b	#1
+	endm
+
+	macro	maskne
+	meq	#2, #3
+	b	#1
+	endm
+
 UART_ADDR	equ	$e6b0
 GPIOPORT	equ	$e6d0
 
@@ -110,9 +130,8 @@ nl	db	10, 13, 0
 delay	proc
 	push	v0
 loop	sub	v0, v0, 1
-	beq	exit
-	b	loop
-exit	pop	v0
+	bne	loop, v0, 0
+	pop	v0
 	rts
 	endp
 
@@ -167,10 +186,9 @@ disp_cmd proc
 
 loop	bsr	sendbyte
 	sub	v3, v3, 1
-	beq	exit
-	b	loop
+	bne	loop, v3, 0
 
-exit	bsr	disp_ce_high
+	bsr	disp_ce_high
 	pop	v3
 	pop	v2
 	pop	v1
@@ -227,9 +245,8 @@ loop	ldrl	v0, v2, v4
 	bsr	sendbyte
 	add	v4, v4, 1
 	sub	v3, v3, 1
-	beq	exit
-	b	loop
-exit	pop	lr
+	bne	loop, v3, 0
+	pop	lr
 	rts
 	endp
 
@@ -246,11 +263,9 @@ sendbyte proc
 
 loop	ldrl	v4, v1, 1
 	or	v4, v4, PIN_DIN
-	tst	v0, v3
-	beq	bitlo
-	b	writebit
-bitlo	xor	v4, v4, PIN_DIN
-writebit strl	v4, v1, 1
+	mne	v0, v3
+	xor	v4, v4, PIN_DIN
+	strl	v4, v1, 1
 
 	or	v4, v4, PIN_CLK
 	strl	v4, v1, 1
@@ -259,10 +274,9 @@ writebit strl	v4, v1, 1
 
 	shl	v0, v0, 1
 	sub	v2, v2, 1
-	beq	exit
-	b	loop
+	bne	loop, v2, 0
 
-exit	pop	v4
+	pop	v4
 	pop	v3
 	pop	v2
 	pop	v1

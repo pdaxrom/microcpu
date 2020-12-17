@@ -31,6 +31,26 @@
 	seth	#1, /#2
 	endm
 
+	macro	beq
+	ne	#2, #3
+	b	#1
+	endm
+
+	macro	bne
+	eq	#2, #3
+	b	#1
+	endm
+
+	macro	maskeq
+	mne	#2, #3
+	b	#1
+	endm
+
+	macro	maskne
+	meq	#2, #3
+	b	#1
+	endm
+
 UART_ADDR	equ	$e6b0
 TIMER_ADDR	equ	$e6d8
 
@@ -42,8 +62,6 @@ TIMER_ADDR	equ	$e6d8
 	b	getchar
 	b	putchar
 	b	printstr
-;	b	printhex8
-;	b	printhex
 
 begin	set	sp, $07fe
 	set	v0, banner
@@ -52,17 +70,13 @@ begin	set	sp, $07fe
 	seth	v1, 0
 mainloop bsr	getchar
 	setl	v1, 'L'
-	cmp	v0, v1
-	beq	cmd_load
+	beq	cmd_load, v0, v1
 	setl	v1, 'S'
-	cmp	v0, v1
-	beq	cmd_save
+	beq	cmd_save, v0, v1
 	setl	v1, 'G'
-	cmp	v0, v1
-	beq	cmd_go
+	beq	cmd_go, v0, v1
 	setl	v1, 'E'
-	cmp	v0, v1
-	beq	cmd_exit
+	beq	cmd_exit, v0, v1
 	b	mainloop
 cmd_exit b	begin
 
@@ -75,9 +89,8 @@ cmd_load proc
 loop	bsr	getchar
 	strl	v0, v1, 0
 	add	v1, v1, 1
-	cmp	v1, v2
-	beq	begin
-	b	loop
+	bne	loop, v1, v2
+	b	begin
 	endp
 
 cmd_save proc
@@ -89,9 +102,8 @@ cmd_save proc
 loop	ldrl	v0, v1, 0
 	bsr	putchar
 	add	v1, v1, 1
-	cmp	v1, v2
-	beq	begin
-	b	loop
+	bne	loop, v1, v2
+	b	begin
 	endp
 
 cmd_go	proc
@@ -113,44 +125,6 @@ get_word proc
 	rts
 	endp
 
-;printhex proc
-;	sub	sp, sp, 4
-;	str	lr, sp, 4
-;	str	v0, sp, 2
-;	shr	v0, v0, 8
-;	bsr	printhex8
-;	ldr	v0, sp, 2
-;	bsr	printhex8
-;	ldr	lr, sp, 4
-;	add	sp, sp, 4
-;	rts
-;	endp
-
-;printhex8 proc
-;	sub	sp, sp, 8
-;	str	lr, sp, 8
-;	str	v0, sp, 6
-;	str	v1, sp, 4
-;	set	v1, nums
-;	seth	v0, 0
-;	str	v0, sp, 2
-;	shr	v0, v0, 4
-;	add	v0, v1, v0
-;	ldrl	v0, v0, 0
-;	bsr	putchar
-;	ldr	v0, sp, 2
-;	and	v0, v0, 15
-;	add	v0, v1, v0
-;	ldrl	v0, v0, 0
-;	bsr	putchar
-;	ldr	v1, sp, 4
-;	ldr	v0, sp, 6
-;	ldr	lr, sp, 8
-;	add	sp, sp, 8
-;	rts
-;nums	db	'0123456789ABCDEF'
-;	endp
-
 printstr proc
 	sub	sp, sp, 6
 	str	lr, sp, 6
@@ -159,8 +133,7 @@ printstr proc
 	mov	v1, v0
 	seth	v0, 0
 .1	ldrl	v0, v1, 0
-	cmp	v0, 0
-	beq	.2
+	beq	.2, v0, 0
 	bsr	putchar
 	add	v1, v1, 1
 	b	.1
@@ -177,10 +150,8 @@ putchar	proc
 	str	v2, sp, 0
 	set	v1, UART_ADDR
 .1	ldrl	v2, v1, 0
-	and	v2, v2, 2
-	beq	.2
-	b	.1
-.2	strl	v0, v1, 1
+	maskne	.1, v2, 2
+	strl	v0, v1, 1
 	ldr	v2, sp, 0
 	ldr	v1, sp, 2
 	add	sp, sp, 2
@@ -192,8 +163,7 @@ getchar	proc
 	set	v1, UART_ADDR
 	seth	v0, 0
 .1	ldrl	v0, v1, 0
-	and	v0, v0, 1
-	beq	.1
+	maskeq	.1, v0, 1
 	ldrl	v0, v1, 1
 	ldr	v1, sp, 0
 	rts

@@ -26,6 +26,26 @@
 	seth	#1, /#2
 	endm
 
+	macro	beq
+	ne	#2, #3
+	b	#1
+	endm
+
+	macro	bne
+	eq	#2, #3
+	b	#1
+	endm
+
+	macro	maskeq
+	mne	#2, #3
+	b	#1
+	endm
+
+	macro	maskne
+	meq	#2, #3
+	b	#1
+	endm
+
 UART_ADDR	equ	$e6b0
 TIMER_ADDR	equ	$e6d8
 
@@ -59,8 +79,7 @@ begin	set	sp, $07fe
 
 cccc	bsr	printhex
 	sub	v0, v0, 1
-	beq	cccc1
-	b	cccc
+	bne	cccc, v0, 0
 
 cccc1	set	v0, nl
 	bsr	VEC_PUTSTR
@@ -101,8 +120,7 @@ timeloop ldr	v0, v1, 0
 	bsr	VEC_PUTSTR
 
 	ldrl	v0, v1, 2
-	tst	v0, 2
-	beq	timeloop
+	maskeq	timeloop, v0, 2
 
 	bsr	printhex
 

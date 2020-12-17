@@ -40,6 +40,7 @@ enum {
 	op_rel,
 	op_reg_reg,
 	op_no_reg_reg,
+	op_ext_reg_reg,
 	op_reg_reg_reg,
 
 	pseudo_db,
@@ -72,19 +73,20 @@ static OpCode opcode_table[] = {
 		{ "mov"  , op_reg_reg      , 0x10, 0x0  },
 
 		{ "b"    , op_rel          , 0x16, 0x0  },
-		{ "ble"  , op_rel          , 0x18, 0x0  },
-		{ "bge"  , op_rel          , 0x1a, 0x0  },
-		{ "beq"  , op_rel          , 0x1c, 0x0  },
-		{ "bcs"  , op_rel          , 0x1e, 0x0  },
 
-		{ "cmp"  , op_no_reg_reg   , 0x01, 0x0  },
-		{ "sxt"  , op_reg_reg      , 0x03, 0x0  },
-//		{ "sets" , op_no_reg_reg   , 0x05, 0x0  },
-//		{ "gets" , op_reg_reg      , 0x07, 0x0  },
+		{ "eq"   , op_ext_reg_reg   , 0x01, 0x0  },
+		{ "ne"   , op_ext_reg_reg   , 0x01, 0x1  },
+		{ "mi"   , op_ext_reg_reg   , 0x01, 0x2  },
+		{ "vs"   , op_ext_reg_reg   , 0x01, 0x3  },
+		{ "lt"   , op_ext_reg_reg   , 0x01, 0x4  },
+		{ "ge"   , op_ext_reg_reg   , 0x01, 0x5  },
+		{ "ltu"  , op_ext_reg_reg   , 0x01, 0x6  },
+		{ "geu"  , op_ext_reg_reg   , 0x01, 0x7  },
 
-		{ "addc" , op_reg_reg_reg  , 0x09, 0x0  },
-		{ "subc" , op_reg_reg_reg  , 0x0b, 0x0  },
-		{ "tst"  , op_no_reg_reg   , 0x0d, 0x0  },
+		{ "meq"  , op_ext_reg_reg   , 0x03, 0x0  },
+		{ "mne"  , op_ext_reg_reg   , 0x03, 0x1  },
+
+		{ "sxt"  , op_reg_reg      , 0x09, 0x0  },
 
 		{ "add"  , op_reg_reg_reg  , 0x11, 0x0  },
 		{ "sub"  , op_reg_reg_reg  , 0x13, 0x0  },
@@ -947,8 +949,8 @@ static int do_asm(FILE *inf, char *line) {
 			return expand_macro(inf, mac, last ? str : NULL);
 		}
 
+//fprintf(stderr, ">>>%s\n", line);
 //fprintf(stderr, "OPCODE: %s %d %X %X\n", opcode->name, opcode->type, opcode->op, opcode->ext_op);
-
 
 		if (opcode && !strcmp(opcode->name, "equ")) {
 			if (!label) {
@@ -1088,6 +1090,8 @@ static int do_asm(FILE *inf, char *line) {
 
 				if (opcode->type == op_no_reg_reg) {
 					arg1 = 0;
+				} else if (opcode->type == op_ext_reg_reg) {
+					arg1 = opcode->ext_op;
 				} else {
 					reg = find_register_in_string(&str);
 					if (!reg) {
@@ -1130,7 +1134,7 @@ static int do_asm(FILE *inf, char *line) {
 						}
 
 						SKIP_BLANK(str);
-						if (opcode->type == op_reg_reg_reg || opcode->type == op_no_reg_reg) {
+						if (opcode->type == op_reg_reg_reg || opcode->type == op_no_reg_reg || opcode->type == op_ext_reg_reg) {
 							reg = find_register_in_string(&str);
 							if (reg) {
 								arg3 = reg->n << 2;
