@@ -22,8 +22,7 @@ module timer (
 
 	assign DO = (AD == 2'b00) ? counter[ 7:0] :
 	            (AD == 2'b01) ? counter[15:8] :
-	            (AD == 2'b10) ? {5'b0, counter[16], intr_i} :
-	             8'hFF;
+	            {5'b0, counter[16], intr_i};
 	
 	always @ (posedge clk) begin
 		if (rst) counter[16] <= 1;

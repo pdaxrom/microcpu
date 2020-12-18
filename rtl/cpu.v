@@ -4,7 +4,8 @@ module cpu (
     output reg  read,          // CPU read request
     output wire [15:0] address, // read/write address
     output reg  [7:0] dout,    // write data
-    input  wire [7:0] din      // read data
+    input  wire [7:0] din,     // read data
+	input wire intr
 );
 
 	// NO ALU OPS
@@ -84,9 +85,7 @@ module cpu (
 		if (rst) begin
 			op <= 0;
 			dest <= 0;
-//		end else if ((aluop | memio) == 0) begin
-		end else if (aluop | memio) begin
-		end else begin
+		end else if ((aluop | memio) == 0) begin
 			if (~r[0][0]) begin
 				//op <= din[7:3];
 				//dest <= din[2:0];
@@ -121,11 +120,12 @@ module cpu (
 					end
 		end else begin
 				r[0] <= r[0] + 1;   // increment PC by default
-				if (super_mode_req && ~r[0][0] && ~super_mode) begin
+				if (~r[0][0] && ~super_mode && (super_mode_req | intr)) begin
 					user_pc <= r[0];
 					r[0] <= 16'h0002;
 					super_mode <= ~super_mode;
-				end else if (r[0][0] && ~op[0]) begin
+				end
+				if (r[0][0] && ~op[0]) begin
 					case (op[4:1])
 						Inst_SETL,
 						Inst_MOVL: r[dest][ 7:0] <= op[2] ? r[arg1][7:0] : constant;

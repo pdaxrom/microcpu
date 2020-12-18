@@ -73,6 +73,7 @@ module demo (
 	wire TIMER_CS = DS6 && (ADDR[4:3] == 2'b11); // $E6D8
 	wire TIMER_EN = TIMER_CS;
 	wire [7:0] TIMER_D;
+	wire intr;
 	timer timer1(
 		.clk(CLK),
 		.rst(RESET),
@@ -80,7 +81,8 @@ module demo (
 		.DI(DO),
 		.DO(TIMER_D),
 		.rw(RW),
-		.cs(TIMER_CS)
+		.cs(TIMER_CS),
+		.intr(intr)
 	);
 
 	wire SRAM_CS = ~(UART_CS | GPIO_CS | TIMER_CS);
@@ -108,7 +110,8 @@ module demo (
 		.read(RW),
 		.address(ADDR),
 		.dout(DO),
-		.din(DI)
+		.din(DI),
+		.intr(intr)
 	);
 
 endmodule
