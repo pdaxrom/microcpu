@@ -72,6 +72,9 @@ static OpCode opcode_table[] = {
 
 		{ "mov"  , op_reg_reg      , 0x10, 0x0  },
 
+		{ "sws"  , op_noargs       , 0x12, 0x0  },
+		{ "swu"  , op_noargs       , 0x14, 0x0  },
+
 		{ "b"    , op_rel          , 0x16, 0x0  },
 
 		{ "eq"   , op_ext_reg_reg   , 0x01, 0x0  },

@@ -18,7 +18,10 @@ module cpu (
 	localparam Inst_MOVH  = 4'b0111; // dest, src          : RH[dest] = RL[src]
 	
 	localparam Inst_MOV   = 4'b1000; // dest, src          : R[dest] = R[src]
-	
+
+	localparam Inst_SWS   = 4'b1001;
+	localparam Inst_SWU   = 4'b1010;
+
 	localparam Inst_B     = 4'b1011; // const              : R[0] = R[0] + const
 	
 	// ALU OPS
@@ -73,13 +76,32 @@ module cpu (
 	wire flag_N = aluacc[15];
 	wire flag_V = ((aluval1 ^ aluval2) & (aluval1 ^ aluacc[15:0]) & 16'h8000) != 0;
 
+	reg super_mode_req;
+	reg super_mode;
+	reg [15:0] user_pc;
+
+	always @(negedge clk) begin
+		if (rst) begin
+			op <= 0;
+			dest <= 0;
+//		end else if ((aluop | memio) == 0) begin
+		end else if (aluop | memio) begin
+		end else begin
+			if (~r[0][0]) begin
+				//op <= din[7:3];
+				//dest <= din[2:0];
+				{op, dest} <= din;
+			end
+		end
+	end
+	
 	always @(negedge clk) begin
 		if (rst) begin
 			r[0] <= 0;
-			op <= 0;
-			dest <= 0;
-		end else begin
-			if (aluop) begin
+			super_mode <= 0;
+			super_mode_req <= 0;
+			user_pc <= 0;
+		end else if (aluop) begin
 				if (aluop == 2'b10) begin
 					if (op[4:1] == Inst_CMP || op[4:1] == Inst_BIT) begin
 						if ((dest == Inst_CMP_EQ && flag_Z) ||
@@ -92,23 +114,30 @@ module cpu (
 							(dest == Inst_CMP_GEU && ~flag_C)) r[0] <= r[0] + 2;
 					end	else r[dest] <= aluacc[15:0];
 				end
-			end else if (memio) begin
+		end else if (memio) begin
 					if (op[2:1] == 2'b00 || op[2:1] == 2'b10) begin
 						if (memio == 2'b01) r[dest][7:0] <= din;
 						else if (memio == 2'b11) r[dest][15:8] <= din;
 					end
-			end else begin
+		end else begin
 				r[0] <= r[0] + 1;   // increment PC by default
-				if (~r[0][0]) begin
-					op <= din[7:3];
-					dest <= din[2:0];
-				end else if (~op[0]) begin
+				if (super_mode_req && ~r[0][0] && ~super_mode) begin
+					user_pc <= r[0];
+					r[0] <= 16'h0002;
+					super_mode <= ~super_mode;
+				end else if (r[0][0] && ~op[0]) begin
 					case (op[4:1])
 						Inst_SETL,
-						Inst_MOVL: r[dest][7:0] <= op[2] ? r[arg1][7:0] : constant;
+						Inst_MOVL: r[dest][ 7:0] <= op[2] ? r[arg1][7:0] : constant;
 						Inst_SETH,
 						Inst_MOVH: r[dest][15:8] <= op[2] ? r[arg1][7:0] : constant;
 						Inst_MOV:  r[dest] <= val1;
+						Inst_SWS : super_mode_req <= 1;
+						Inst_SWU : begin
+								r[0] <= user_pc;
+								super_mode <= 0;
+								super_mode_req <= 0;
+							end
 						Inst_B: begin
 									r[0] <= {r[0][15:1], 1'b0} + 
 										{dest[2], dest[2], dest[2], dest[2],
@@ -117,7 +146,6 @@ module cpu (
 							end
 					endcase
 				end
-			end
 		end
 	end
 	
