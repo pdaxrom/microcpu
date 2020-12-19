@@ -61,17 +61,8 @@ VEC_PUTSTR	equ	$000a
 	b	begin
 
 isr	sub	sp, sp, 14
-	set	v1, TIMER_ADDR
-	ldrl	v0, v1, 2
-
-;	set	v0, tosup
-;	bsr	VEC_PUTSTR
-
-	set	v0, counter
-	ldr	v0, v0, 0
-	bsr	printhex
-	set	v0, nl
-	bsr	VEC_PUTSTR
+	push	v0
+	push	v1
 
 	set	v1, counter
 	ldr	v0, v1, 0
@@ -79,9 +70,12 @@ isr	sub	sp, sp, 14
 	str	v0, v1, 0
 
 	set	v1, TIMER_ADDR
-	set	v0, $ffff
-	str	v0, v1, 0
+	ldrl	v0, v1, 2	; reset timer interrupt flag
+	set	v0, $ffff	;
+	str	v0, v1, 0	; restart timer
 
+	pop	v1
+	pop	v0
 	add	sp, sp, 14
 	swu
 
@@ -93,10 +87,8 @@ begin	set	sp, $07fe
 	str	v2, v1, 0
 
 	set	v1, TIMER_ADDR
-	set	v0, $ffff
-	str	v0, v1, 0
-
-stop	b	stop
+	set	v0, $ffff	;
+	str	v0, v1, 0	; start timer
 
 ;	set	v0, tosup
 ;	bsr	VEC_PUTSTR
@@ -143,10 +135,6 @@ printhex8 proc
 	rts
 nums	db	'0123456789ABCDEF'
 	endp
-
-tosup	db	10, 13, "Switch to super mode", 10, 13, 0
-tousr	db	10, 13, "Switch to user  mode", 10, 13, 0
-okay	db	10, 13, "Hello from user mode", 10, 13, 0
 
 nl	db	10, 13, 0
 
