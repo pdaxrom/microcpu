@@ -2,15 +2,15 @@
 
 [GitHub project page](https://github.com/pdaxrom/microcpu)
 
-# MICROCPU - 16-bit CPU
+# MICROCPU - 16-bit RISC CPU (Version 2)
 
 * [Registers](#registers)
 * [Address modes](#address-modes)
-* [Flags](#flags)
 * [Instructions](#instructions)
   * [Data Movement Instructions](#data-movement-instructions)
   * [Arithmetic and Logic Instructions](#arithmetic-and-logic-instructions)
   * [Control Flow Instructions](#control-flow-instructions)
+  * [CPU Modes Control](#cpu-modes-control)
 * [MicroAssembler](#microassembler)
   * [Assembler directives](#assembler-directives)
   * [Accembler macro definition](#accembler-macro-definition)
@@ -56,23 +56,9 @@ The processor has 5 addressing modes that can be used by the programmer:
 
 [Top](#microcpu---16-bit-cpu)
 
-## Flags
-
-The processor uses five condition code bits or flags:
-
-Name | Description
--|-
-`I`|interrupt mask
-`C`|carry flag
-`Z`|zero flag
-`V`|2s complement overflow
-`N`|negative
-
-[Top](#microcpu---16-bit-cpu)
-
 ## Instructions
 
-Machine instructions generally fall into three categories: data movement, arithmetic/logic, and control-flow.
+Machine instructions generally fall into three categories: data movement, arithmetic/logic, control-flow and cpu modes control.
 We use the following notation:
 
 Notation | Description
@@ -122,9 +108,7 @@ Examples:
 Instruction | | Description
 ------------|-|-----------
 `ADD  <dst>, <arg1>, <arg2>`|`<dst> = <arg1> + <arg2>`|Add
-`ADDC <dst>, <arg1>, <arg2>`|`<dst> = <arg1> + <arg2>  + flag_C`|Add with carry
 `SUB  <dst>, <arg1>, <arg2>`|`<dst> = <arg1> - <arg2>`|Subtract
-`SUBC <dst>, <arg1>, <arg2>`|`<dst> = <arg1> - <arg2>  - flag_C`|Subtract with carry
 `SHL  <dst>, <arg1>, <arg2>`|`<dst> = <arg1> << <arg2>`|Logic shift left
 `SHR  <dst>, <arg1>, <arg2>`|`<dst> = <arg1> >> <arg2>`|Logic shift right
 `AND  <dst>, <arg1>, <arg2>`|`<dst> = <arg1> & <arg2>`|And
@@ -136,7 +120,6 @@ Instruction | | Description
 Examples:
 ```
     ADD V0, V1, V2
-    ADDC V1, V2, 5
     SUB V0, V2, V1
     SHR V0, V0, 1
     SXT V1, V1
@@ -148,22 +131,41 @@ Examples:
 
 Instruction | | Description
 ------------|-|-----------
-`CMP <arg1>, <arg2>`|`<arg1> - <arg2>`|Compare
-`TST <arg1>, <arg2>`|`<arg2> & <arg2>`|Test bits
 `B   <rel>`|`PC = PC + <rel>`|Branch
-`BLE <rel>`|`PC = PC + <rel> If Z \| (N ^ V) = 1`|Branch On Less Than Or Equal Zero
-`BGE <rel>`|`PC = PC + <rel> If (N ^ V) = 0`|Branch On Greater Than Or Equal Zero
-`BEQ <rel>`|`PC = PC + <rel> If Z = 1`|Branch On Equal Zero
-`BCS <rel>`|`PC = PC + <rel> If C = 1`|Branch If Carry Set
+`EQ  <arg1>,<arg2>`|`PC = PC + (<arg1> == <arg2>) ? 2 : 0` |Skip next command if arg1 and arg2 are equal
+`NE  <arg1>,<arg2>`|`PC = PC + (<arg1> != <arg2>) ? 2 : 0` |Skip next command if arg1 and arg2 are not equal
+`LT  <arg1>,<arg2>`|`PC = PC + (<arg1> <  <arg2>) ? 2 : 0` |Skip next command if arg1 is less than arg2 (signed)
+`GE  <arg1>,<arg2>`|`PC = PC + (<arg1> >= <arg2>) ? 2 : 0` |Skip next command if arg1 is greater then arg2 or equal (signed)
+`LTU <arg1>,<arg2>`|`PC = PC + (<arg1> <  <arg2>) ? 2 : 0` |Skip next command if arg1 is less than arg2 (unsigned)
+`GEU <arg1>,<arg2>`|`PC = PC + (<arg1> >= <arg2>) ? 2 : 0` |Skip next command if arg1 is greater then arg2 or equal (unsigned)
 
 Examples:
 ```
-    CMP V0, 0
-    BEQ exit
-    CMP V0, V1
-    BLE loop
-    TST V0, 4
-    BEQ wait
+    B	start
+    EQ	V0, V1
+    B	not_the_same
+    B	the same
+```
+
+[Top](#microcpu---16-bit-cpu)
+
+### CPU Modes Control
+
+Instruction | | Description
+------------|-|------------
+`SWS`|`UPC = PC; PC = VEC_SUPER`|Switch to superuser mode
+`SWU`|`PC = UPC`|Return to user mode
+
+Examples:
+```
+    ORG	$0
+    B	start
+    B	su
+    ...
+su  SWU
+    ...
+ini SWS
+    ...
 ```
 
 [Top](#microcpu---16-bit-cpu)
