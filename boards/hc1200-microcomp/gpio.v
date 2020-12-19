@@ -40,19 +40,24 @@ module gpio (
 				(AD == 2'b01) ? (gpio[ 7:0]  & ~gpio_dir[ 7:0]) | gpio_out[ 7:0] :
 				(AD == 2'b10) ?  gpio_dir[15:8] :
 				                 gpio_dir[ 7:0];
-	
+
 	always @ (posedge clk) begin
 		if (rst) begin
 			gpio_dir <= 0;
 			gpio_out <= 0;
 		end else begin
 			if (cs && ~rw) begin
+				gpio_out[15:8] <= (AD[0]) ? gpio_out[15:8] : (AD[1]) ? {1'b0, DI[6:0]} : DI & gpio_dir[15:8];
+				gpio_out[ 7:0] <= (~AD[0])? gpio_out[ 7:0] : (AD[1]) ? DI : DI & gpio_dir[7:0];
+
+/*
 				case (AD[1:0])
-				2'b00: gpio_out[15:8]  <= DI & gpio_dir[15:8];
-				2'b01: gpio_out[ 7:0]  <= DI & gpio_dir[7:0];
-				2'b10: gpio_dir[15:8]  <= {1'b0, DI[6:0]};
-				2'b11: gpio_dir[ 7:0]  <= DI;
+				2'b00,
+				2'b10: gpio_out[15:8] <= (AD[1]) ? {1'b0, DI[6:0]} : DI & gpio_dir[15:8];
+				2'b01,
+				2'b11: gpio_out[ 7:0] <= (AD[1]) ? DI : DI & gpio_dir[7:0];
 				endcase
+ */
 			end
 		end
 	end

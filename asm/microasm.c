@@ -42,6 +42,7 @@ enum {
 	op_no_reg_reg,
 	op_ext_reg_reg,
 	op_reg_reg_reg,
+	op_reg_reg_sreg,
 
 	pseudo_db,
 	pseudo_dw,
@@ -65,22 +66,25 @@ static OpCode opcode_table[] = {
 		{ "strl" , op_reg_reg_reg  , 0x02, 0x0  },
 		{ "ldr"  , op_reg_reg_reg  , 0x04, 0x0  },
 		{ "str"  , op_reg_reg_reg  , 0x06, 0x0  },
-		{ "setl" , op_reg_const    , 0x08, 0x0  },
-		{ "seth" , op_reg_const    , 0x0a, 0x0  },
-		{ "movl" , op_reg_reg      , 0x0c, 0x0  },
-		{ "movh" , op_reg_reg      , 0x0e, 0x0  },
 
-		{ "mov"  , op_reg_reg      , 0x10, 0x0  },
+		{ "ldrln", op_reg_reg_sreg , 0x08, 0x0  },
+		{ "strln", op_reg_reg_sreg , 0x0a, 0x0  },
+		{ "ldrn" , op_reg_reg_sreg , 0x0c, 0x0  },
+		{ "strn" , op_reg_reg_sreg , 0x0e, 0x0  },
 
-		{ "sws"  , op_noargs       , 0x12, 0x0  },
-		{ "swu"  , op_noargs       , 0x14, 0x0  },
 
-		{ "b"    , op_rel          , 0x16, 0x0  },
+		{ "setl" , op_reg_const    , 0x10, 0x0  },
+		{ "seth" , op_reg_const    , 0x12, 0x0  },
+		{ "movl" , op_reg_reg      , 0x14, 0x0  },
+		{ "movh" , op_reg_reg      , 0x16, 0x0  },
+
+		{ "mov"  , op_reg_reg      , 0x18, 0x0  },
+		{ "sws"  , op_noargs       , 0x1a, 0x0  },
+		{ "swu"  , op_noargs       , 0x1c, 0x0  },
+		{ "b"    , op_rel          , 0x1e, 0x0  },
 
 		{ "eq"   , op_ext_reg_reg   , 0x01, 0x0  },
 		{ "ne"   , op_ext_reg_reg   , 0x01, 0x1  },
-		{ "mi"   , op_ext_reg_reg   , 0x01, 0x2  },
-		{ "vs"   , op_ext_reg_reg   , 0x01, 0x3  },
 		{ "lt"   , op_ext_reg_reg   , 0x01, 0x4  },
 		{ "ge"   , op_ext_reg_reg   , 0x01, 0x5  },
 		{ "ltu"  , op_ext_reg_reg   , 0x01, 0x6  },
@@ -1137,7 +1141,7 @@ static int do_asm(FILE *inf, char *line) {
 						}
 
 						SKIP_BLANK(str);
-						if (opcode->type == op_reg_reg_reg || opcode->type == op_no_reg_reg || opcode->type == op_ext_reg_reg) {
+						if (opcode->type == op_reg_reg_reg || opcode->type == op_reg_reg_sreg || opcode->type == op_no_reg_reg || opcode->type == op_ext_reg_reg) {
 							reg = find_register_in_string(&str);
 							if (reg) {
 								arg3 = reg->n << 2;
@@ -1151,7 +1155,11 @@ static int do_asm(FILE *inf, char *line) {
 								}
 								to_second_pass = 0;
 
-								if (val > 16) {
+								if ((opcode->type == op_reg_reg_sreg) &&
+								    (val > 7 || val < -7)) {
+									error = CONSTAND_VALUE_TOO_BIG;
+									return 1;
+								} else if (val > 16) {
 									error = CONSTAND_VALUE_TOO_BIG;
 									return 1;
 								}
