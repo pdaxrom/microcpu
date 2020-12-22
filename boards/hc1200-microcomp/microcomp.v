@@ -33,11 +33,11 @@ module demo (
 //	wire DS2 = (ADDR[15:5] == 11'b11100110010); // $E640
 //	wire DS3 = (ADDR[15:5] == 11'b11100110011); // $E660
 //	wire DS4 = (ADDR[15:5] == 11'b11100110100); // $E680
-	wire DS5 = (ADDR[15:5] == 11'b11100110101); // $E6A0
-	wire DS6 = (ADDR[15:5] == 11'b11100110110); // $E6C0
-//	wire DS7 = (ADDR[15:5] == 11'b11100110111); // $E6E0
+//	wire DS5 = (ADDR[15:5] == 11'b11100110101); // $E6A0
+//	wire DS6 = (ADDR[15:5] == 11'b11100110110); // $E6C0
+	wire DS7 = (ADDR[15:5] == 11'b11100110111); // $E6E0
 
-	wire UART_CS = DS5 && (ADDR[4] == 1'b1); // $E6B0
+	wire UART_CS = DS7 && (ADDR[4:3] == 2'b00); // $E6E0
 	wire UART_EN = UART_CS;
 	wire [7:0] UART_D;
 	
@@ -53,7 +53,7 @@ module demo (
 		.txd(tx)
 	);
 
-	wire GPIO_CS = DS6 && (ADDR[4:3] == 2'b10); // $E6D0
+	wire GPIO_CS = DS7 && (ADDR[4:3] == 2'b01); // $E6E8
 	wire GPIO_EN = GPIO_CS;
 	wire [7:0] GPIO_D;
 	
@@ -70,7 +70,7 @@ module demo (
 		.gpio({res, gpio[14:0]})
 	);
 
-	wire TIMER_CS = DS6 && (ADDR[4:3] == 2'b11); // $E6D8
+	wire TIMER_CS = DS7 && (ADDR[4:3] == 2'b10); // $E6F0
 	wire TIMER_EN = TIMER_CS;
 	wire [7:0] TIMER_D;
 	wire intr;
@@ -85,10 +85,39 @@ module demo (
 		.intr(intr)
 	);
 
-	wire SRAM_CS = ~(UART_CS | GPIO_CS | TIMER_CS);
+	wire MEMMAP_CS = DS7 && (ADDR[4:3] == 2'b11); // $E6F8
+	wire MEMMAP_EN = MEMMAP_CS;
+	reg [9:0] MEM_pages;
+	wire [7:0] MEMMAP_D = {(ADDR[0]) ? MEM_pages[9:5] : MEM_pages[4:0], 3'b000};
+	
+	always @(posedge CLK) begin
+		if (RESET) MEM_pages <=  10'b00010_00001; // page 1 and page 2
+		else if (MEMMAP_CS && ~RW) begin
+			if (ADDR[0]) MEM_pages[9:5] <= DO[7:3];
+			else MEM_pages[4:0] <= DO[7:3];
+		end
+	end	
+	
+	// pages 1,2
+	wire SRAM2_CS = (ADDR[15:11] == MEM_pages[9:5]);
+	wire SRAM1_CS = (ADDR[15:11] == MEM_pages[4:0]);
+	wire SRAMP_EN = (SRAM2_CS | SRAM1_CS);
+	wire [7:0] SRAMP_D;
+	srampages srampages(
+		.Clock(CLK),
+		.ClockEn(SRAMP_EN),
+		.Reset(RESET),
+		.WE(~RW),
+		.Address({SRAM2_CS, ADDR[10:0]}),
+		.Data(DO),
+		.Q(SRAMP_D)
+	);
+
+	// zero page
+	wire SRAM_CS = (ADDR[15:11] == 5'b00000);
 	wire SRAM_EN = SRAM_CS;
 	wire [7:0] SRAM_D;
-	sram sram1(
+	sram sram0(
 		.Clock(CLK),
 		.ClockEn(SRAM_CS),
 		.Reset(RESET),
@@ -99,9 +128,11 @@ module demo (
 	);
 
 	assign DI = SRAM_EN ? SRAM_D :
+				SRAMP_EN ? SRAMP_D :
 				UART_EN ? UART_D :
 				GPIO_EN ? GPIO_D :
 				TIMER_EN ? TIMER_D :
+				MEMMAP_EN ? MEMMAP_D :
 				8'b11111111;
 
 	cpu cpu1 (

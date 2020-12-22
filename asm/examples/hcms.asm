@@ -1,61 +1,3 @@
-	macro nop
-	mov	v0,v0
-	endm
-
-	macro bsr
-	mov	lr, pc
-	b	#1
-	endm
-
-	macro rts
-	add	pc, lr, 3
-	endm
-
-	macro push
-	str	#1, sp, 0
-	sub	sp, sp, 2
-	endm
-
-	macro pop
-	add	sp, sp, 2
-	ldr	#1, sp, 0
-	endm
-
-	macro set
-	setl	#1, #2
-	seth	#1, /#2
-	endm
-
-	macro	beq
-	ne	#2, #3
-	b	#1
-	endm
-
-	macro	bne
-	eq	#2, #3
-	b	#1
-	endm
-
-	macro	maskeq
-	mne	#2, #3
-	b	#1
-	endm
-
-	macro	maskne
-	meq	#2, #3
-	b	#1
-	endm
-
-UART_ADDR	equ	$e6b0
-GPIOPORT	equ	$e6d0
-
-VEC_RESET	equ	$0000
-VEC_INTR	equ	$0002
-VEC_MEMERR	equ	$0004
-VEC_GETCHAR	equ	$0006
-VEC_PUTCHAR	equ	$0008
-VEC_PUTSTR	equ	$000a
-
 ;
 ; HCMS matrix display
 ;
@@ -66,6 +8,9 @@ VEC_PUTSTR	equ	$000a
 ; GPIO 4 - RESET
 ;
 
+	include ../include/pseudo.inc
+	include ../include/devmap.inc
+
 PIN_DIN		equ	1
 PIN_CE		equ	2
 PIN_CLK		equ	4
@@ -75,7 +20,7 @@ PIN_RESET	equ	16
 	org	$100
 
 begin	set	sp, $07fe
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 
 ; set PIN_CE=1, PIN_RESET=1, PIN_DIN=0, PIN_CLK=0, PIN_RS=0
 	ldrl	v0, v1, 1
@@ -141,7 +86,7 @@ disp_init proc
 	push	v1
 	push	v2
 
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
 	setl	v0, (PIN_RS | PIN_RESET | PIN_CE)
 	or	v2, v2, v0
@@ -174,7 +119,7 @@ disp_cmd proc
 	push	v2
 	push	v3
 
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
 	setl	v3, PIN_RS
 	or	v2, v2, v3
@@ -204,7 +149,7 @@ disp_show proc
 	push	v3
 	push	v4
 
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
 	setl	v3, $ff^PIN_RS
 	and	v2, v2, v3
@@ -288,7 +233,7 @@ loop	ldrl	v4, v1, 1
 disp_ce_low proc
 	push	v1
 	push	v4
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 	ldrl	v4, v1, 1
 	or	v4, v4, PIN_CE
 	xor	v4, v4, PIN_CE
@@ -301,7 +246,7 @@ disp_ce_low proc
 disp_ce_high proc
 	push	v1
 	push	v4
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 	ldrl	v4, v1, 1
 	or	v4, v4, PIN_CE
 	strl	v4, v1, 1

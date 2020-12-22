@@ -31,7 +31,8 @@ enum {
     MACRO_ALREADY_DEFINED,
     PROC_ALREADY_DEFINED,
     EXTRA_SYMBOLS,
-    SYNTAX_ERROR
+    SYNTAX_ERROR,
+    CANNOT_OPEN_FILE,
 };
 
 enum {
@@ -50,7 +51,8 @@ enum {
 	pseudo_macro,
 	pseudo_equ,
 	pseudo_proc,
-	pseudo_org
+	pseudo_org,
+	pseudo_include
 };
 
 typedef struct {
@@ -112,6 +114,7 @@ static OpCode opcode_table[] = {
 		{ "endp" , pseudo_proc  , 0x0, 0x0  },
 		{ "global",pseudo_proc  , 0x0, 0x0  },
 		{ "org"  , pseudo_org   , 0x0, 0x0  },
+		{ "include", pseudo_include, 0x0, 0x0 },
 };
 
 typedef struct Register {
@@ -162,6 +165,16 @@ typedef struct Proc {
 	struct Proc *prev;
 } Proc;
 
+typedef struct File {
+	char *in_file_path;
+	FILE *in_file;
+	int src_line;
+	struct File *prev;
+} File;
+
+static char *in_file_path;
+static FILE *in_file;
+
 static int output[65536];
 static unsigned int start_addr = 0;
 static unsigned int output_addr = 0;
@@ -173,8 +186,8 @@ static Label *labels = NULL;
 static Label *equs = NULL;
 static Label *refs = NULL;
 static Proc *procs = NULL;
-
 static Macro *macros = NULL;
+static File *files = NULL;
 
 static int error = 0;
 static int to_second_pass = 0;
@@ -876,6 +889,16 @@ static int expand_macro(FILE *inf, Macro *mac, char *args) {
 	return 0;
 }
 
+static char *get_file_path(char *name) {
+	char *tmp;
+	if ((tmp = strrchr(name, '/'))) {
+		*tmp = 0;
+	} else {
+		strcpy(name, ".");
+	}
+	return name;
+}
+
 static int do_asm(FILE *inf, char *line) {
 	char last;
 	char *ptr, *ptr1;
@@ -955,7 +978,31 @@ static int do_asm(FILE *inf, char *line) {
 //fprintf(stderr, ">>>%s\n", line);
 //fprintf(stderr, "OPCODE: %s %d %X %X\n", opcode->name, opcode->type, opcode->op, opcode->ext_op);
 
-		if (opcode && !strcmp(opcode->name, "equ")) {
+		if (opcode && !strcmp(opcode->name, "include")) {
+			char name[512];
+			if (label) {
+				error = SYNTAX_ERROR;
+				return 1;
+			}
+			File *file = malloc(sizeof(File));
+			file->src_line = src_line + 1;
+			file->in_file_path = in_file_path;
+			file->in_file = in_file;
+			file->prev = files;
+			files = file;
+			src_line = 1;
+			SKIP_BLANK(str);
+			snprintf(name, sizeof(name), "%s/%s", in_file_path, str);
+			fprintf(stderr, "\r%s\n", name);
+			in_file = fopen(name, "rb");
+			if (!in_file) {
+			    error = CANNOT_OPEN_FILE;
+			    return 1;
+			}
+
+			in_file_path = get_file_path(name);
+			return 0;
+		} else if (opcode && !strcmp(opcode->name, "equ")) {
 			if (!label) {
 				error = MISSED_NAME_FOR_EQU;
 			} else {
@@ -1331,6 +1378,7 @@ static char *get_error_string(int error) {
     case PROC_ALREADY_DEFINED: return "Procedure name already used";
     case EXTRA_SYMBOLS:        return "Extra symbols";
     case SYNTAX_ERROR:		return "Syntax error";
+    case CANNOT_OPEN_FILE:	return "Cannot open file";
     default: return "No error";
     }
 }
@@ -1355,7 +1403,6 @@ static char *get_out_name(char *in_str, char *ext)
 
 int main(int argc, char *argv[]) {
 	int out_type = 0;
-	FILE *inf;
 
 	if (!strcmp(argv[1], "-verilog")) {
 		out_type = 1;
@@ -1369,10 +1416,13 @@ int main(int argc, char *argv[]) {
 
 	start_addr = 0;
 
-	inf = fopen(argv[1], "rb");
-	if (inf) {
+	in_file = fopen(argv[1], "rb");
+	if (in_file) {
 		int err;
 		char str[512];
+
+		in_file_path = strdup(argv[1]);
+		get_file_path(in_file_path);
 
 		output_addr = start_addr;
 		src_pass = 1;
@@ -1384,15 +1434,27 @@ int main(int argc, char *argv[]) {
 
 		fprintf(stderr, "\nPass 1\n");
 
-		while (fgets(str, sizeof(str), inf)) {
-			char *ptr = str;
-			REMOVE_ENDLINE(ptr);
-			if ((err = do_asm(inf, str)) || error != NO_ERROR) {
-				fprintf(stderr, "Line %d: %s\n", src_line, str);
-				fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
-				return 1;
+		do {
+			if (files) {
+				fclose(in_file);
+				in_file = files->in_file;
+				in_file_path = files->in_file_path;
+				src_line = files->src_line;
+				File *tmp = files->prev;
+				free(files);
+				files = tmp;
 			}
-		}
+
+			while(fgets(str, sizeof(str), in_file)) {
+				char *ptr = str;
+				REMOVE_ENDLINE(ptr);
+				if ((err = do_asm(in_file, str)) || error != NO_ERROR) {
+					fprintf(stderr, "Line %d: %s\n", src_line, str);
+					fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
+					return 1;
+				}
+			}
+		} while(files);
 
 		output_addr = start_addr;
 		src_pass = 2;
@@ -1400,21 +1462,33 @@ int main(int argc, char *argv[]) {
 		in_macro = 0;
 		in_proc = NULL;
 
-		if (fseek(inf, 0, SEEK_SET) == 0) {
+		if (fseek(in_file, 0, SEEK_SET) == 0) {
 
 			// Pass 2
 
 			fprintf(stderr, "\n\nPass 2\n\n");
 
-			while (fgets(str, sizeof(str), inf)) {
-				char *ptr = str;
-				REMOVE_ENDLINE(ptr);
-				if ((err = do_asm(inf, str)) || error != NO_ERROR) {
-					fprintf(stderr, "Line %d: %s\n", src_line, str);
-					fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
-					return 1;
+			do {
+				if (files) {
+					fclose(in_file);
+					in_file = files->in_file;
+					in_file_path = files->in_file_path;
+					src_line = files->src_line;
+					File *tmp = files->prev;
+					free(files);
+					files = tmp;
 				}
-			}
+
+				while(fgets(str, sizeof(str), in_file)) {
+					char *ptr = str;
+					REMOVE_ENDLINE(ptr);
+					if ((err = do_asm(in_file, str)) || error != NO_ERROR) {
+						fprintf(stderr, "Line %d: %s\n", src_line, str);
+						fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
+						return 1;
+					}
+				}
+			} while(files);
 
 			relink_refs();
 
@@ -1454,7 +1528,7 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "Source file IO error!\n");
 		}
 
-		fclose(inf);
+		fclose(in_file);
 	} else {
 		fprintf(stderr, "Cannot open input file!\n");
 		return -1;

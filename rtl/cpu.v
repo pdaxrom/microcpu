@@ -120,7 +120,7 @@ module cpu (
 					end
 		end else begin
 				r[0] <= r[0] + 1;   // increment PC by default
-				if (~r[0][0] && ~super_mode && (super_mode_req | intr)) begin
+				if (~r[0][0] && (~super_mode && (super_mode_req || intr))) begin
 					user_pc <= r[0];
 					r[0] <= 16'h0002;
 					super_mode <= ~super_mode;

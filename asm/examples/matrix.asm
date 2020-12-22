@@ -1,62 +1,3 @@
-	macro nop
-	mov	v0,v0
-	endm
-
-	macro bsr
-	mov	lr, pc
-	b	#1
-	endm
-
-	macro rts
-	add	pc, lr, 3
-	endm
-
-	macro push
-	str	#1, sp, 0
-	sub	sp, sp, 2
-	endm
-
-	macro pop
-	add	sp, sp, 2
-	ldr	#1, sp, 0
-	endm
-
-	macro set
-	setl	#1, #2
-	seth	#1, /#2
-	endm
-
-	macro	beq
-	ne	#2, #3
-	b	#1
-	endm
-
-	macro	bne
-	eq	#2, #3
-	b	#1
-	endm
-
-	macro	maskeq
-	mne	#2, #3
-	b	#1
-	endm
-
-	macro	maskne
-	meq	#2, #3
-	b	#1
-	endm
-
-
-UART_ADDR	equ	$e6b0
-GPIOPORT	equ	$e6d0
-
-VEC_RESET	equ	$0000
-VEC_INTR	equ	$0002
-VEC_MEMERR	equ	$0004
-VEC_GETCHAR	equ	$0006
-VEC_PUTCHAR	equ	$0008
-VEC_PUTSTR	equ	$000a
-
 ;
 ; MATRIX LED (MAX7219)
 ;
@@ -64,6 +5,9 @@ VEC_PUTSTR	equ	$000a
 ; GPIO 1 - CS
 ; GPIO 2 - CLK
 ;
+
+	include ../include/pseudo.inc
+	include ../include/devmap.inc
 
 PIN_DIN		equ	1
 PIN_CS		equ	2
@@ -87,7 +31,7 @@ REG_DISP_TEST	equ	$F00
 	org	$100
 
 begin	set	sp, $07fe
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 	setl	v0, $7
 	strl	v0, v1, 3
 	ldrl	v0, v1, 1
@@ -238,7 +182,7 @@ senddata proc
 	push	v3
 	push	v4
 
-	set	v1, GPIOPORT
+	set	v1, GPIO_ADDR
 	ldrl	v4, v1, 1
 	or	v4, v4, PIN_CS
 	xor	v4, v4, PIN_CS
