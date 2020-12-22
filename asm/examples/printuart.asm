@@ -1,5 +1,4 @@
 	include ../include/pseudo.inc
-	include ../include/devmap.inc
 
 	org	$100
 
@@ -20,7 +19,7 @@ loopexit:
 printnum:
 	push	v1
 	push	v2
-	set	v1, $e6e0
+	set	v1, $ffe0
 printnum1:
 	ldrl	v2, v1, 0
 	maskne	printnum1, v2, 2

@@ -1,7 +1,7 @@
-UART_ADDR	equ	$e6e0
-GPIO_ADDR	equ	$e6e8
-TIMER_ADDR	equ	$e6f0
-MMAP_ADDR	equ	$e6f8
+UART_ADDR	equ	$ffe0
+GPIO_ADDR	equ	$ffe8
+TIMER_ADDR	equ	$fff0
+MMAP_ADDR	equ	$fff8
 
 VEC_RESET	equ	$0000
 VEC_INTR	equ	$0002

@@ -35,9 +35,9 @@ module demo (
 //	wire DS4 = (ADDR[15:5] == 11'b11100110100); // $E680
 //	wire DS5 = (ADDR[15:5] == 11'b11100110101); // $E6A0
 //	wire DS6 = (ADDR[15:5] == 11'b11100110110); // $E6C0
-	wire DS7 = (ADDR[15:5] == 11'b11100110111); // $E6E0
+	wire DS7 = (ADDR[15:5] == 11'b11111111111); // $FFE0
 
-	wire UART_CS = DS7 && (ADDR[4:3] == 2'b00); // $E6E0
+	wire UART_CS = DS7 && (ADDR[4:3] == 2'b00); // $FFE0
 	wire UART_EN = UART_CS;
 	wire [7:0] UART_D;
 	
@@ -53,7 +53,7 @@ module demo (
 		.txd(tx)
 	);
 
-	wire GPIO_CS = DS7 && (ADDR[4:3] == 2'b01); // $E6E8
+	wire GPIO_CS = DS7 && (ADDR[4:3] == 2'b01); // $FFE8
 	wire GPIO_EN = GPIO_CS;
 	wire [7:0] GPIO_D;
 	
@@ -70,7 +70,7 @@ module demo (
 		.gpio({res, gpio[14:0]})
 	);
 
-	wire TIMER_CS = DS7 && (ADDR[4:3] == 2'b10); // $E6F0
+	wire TIMER_CS = DS7 && (ADDR[4:3] == 2'b10); // $FFF0
 	wire TIMER_EN = TIMER_CS;
 	wire [7:0] TIMER_D;
 	wire intr;
@@ -85,7 +85,7 @@ module demo (
 		.intr(intr)
 	);
 
-	wire MEMMAP_CS = DS7 && (ADDR[4:3] == 2'b11); // $E6F8
+	wire MEMMAP_CS = DS7 && (ADDR[4:3] == 2'b11); // $FFF8
 	wire MEMMAP_EN = MEMMAP_CS;
 	reg [9:0] MEM_pages;
 	wire [7:0] MEMMAP_D = {(ADDR[0]) ? MEM_pages[9:5] : MEM_pages[4:0], 3'b000};
