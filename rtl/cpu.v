@@ -19,11 +19,15 @@ module cpu (
 	localparam Inst_MOVH  = 4'b0111; // dest, src          : RH[dest] = RL[src]
 	
 	localparam Inst_MOV   = 4'b1000; // dest, src          : R[dest] = R[src]
-
 	localparam Inst_SWS   = 4'b1001;
 	localparam Inst_SWU   = 4'b1010;
-
 	localparam Inst_B     = 4'b1011; // const              : R[0] = R[0] + const
+	
+	localparam Inst_SETP  = 4'b1100;
+	localparam Inst_GETP  = 4'b1101;
+	
+	localparam Inst_NOPE  = 4'b1110;
+	localparam Inst_NOPF  = 4'b1111;
 	
 	// ALU OPS
 	
@@ -68,8 +72,8 @@ module cpu (
 	wire [3:0] const4 = din[4:1];
 	wire is_const4 = din[0]; // use constant
 	
-	wire [ 7:0] constant = din[7:0];
-	wire [15:0] val1 = r[arg1];
+	wire [ 7:0] constant = din;
+//	wire [15:0] val1 = r[arg1];
 	wire [15:0] val2u = is_const4 ? {12'b000000000000, const4} : r[arg2];
 
 	wire flag_Z = aluacc[15:0] == 0;
@@ -105,8 +109,8 @@ module cpu (
 					if (op[4:1] == Inst_CMP || op[4:1] == Inst_BIT) begin
 						if ((dest == Inst_CMP_EQ && flag_Z) ||
 							(dest == Inst_CMP_NE && ~flag_Z) ||
-							(dest == Inst_CMP_MI && flag_N) ||
-							(dest == Inst_CMP_VS && flag_V) ||
+							(dest == Inst_CMP_MI) ||
+							(dest == Inst_CMP_VS) ||
 							(dest == Inst_CMP_LT && (flag_N ^ flag_V)) ||
 							(dest == Inst_CMP_GE && ~(flag_N ^ flag_V)) ||
 							(dest == Inst_CMP_LTU && flag_C) ||
@@ -127,11 +131,16 @@ module cpu (
 				end
 				if (r[0][0] && ~op[0]) begin
 					case (op[4:1])
+						Inst_LDR,
+						Inst_STR,
+						Inst_LDRL,
+						Inst_STRL: super_mode <= super_mode;
 						Inst_SETL,
 						Inst_MOVL: r[dest][ 7:0] <= op[2] ? r[arg1][7:0] : constant;
 						Inst_SETH,
 						Inst_MOVH: r[dest][15:8] <= op[2] ? r[arg1][7:0] : constant;
-						Inst_MOV:  r[dest] <= val1;
+						Inst_GETP,
+						Inst_MOV:  r[dest] <= op[1] ? user_pc : r[arg1];
 						Inst_SWS : super_mode_req <= 1;
 						Inst_SWU : begin
 								r[0] <= user_pc;
@@ -144,6 +153,7 @@ module cpu (
 										 dest, constant, 1'b0 };
 
 							end
+						Inst_SETP: user_pc <= r[dest];
 					endcase
 				end
 		end

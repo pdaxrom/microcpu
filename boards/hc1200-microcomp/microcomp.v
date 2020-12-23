@@ -67,13 +67,13 @@ module demo (
 		.DO(GPIO_D),
 		.rw(RW),
 		.cs(GPIO_CS),
-		.gpio({res, gpio[14:0]})
+		.gpio(gpio)
 	);
 
 	wire TIMER_CS = DS7 && (ADDR[4:3] == 2'b10); // $FFF0
 	wire TIMER_EN = TIMER_CS;
 	wire [7:0] TIMER_D;
-	wire intr;
+	wire intr_timer;
 	timer timer1(
 		.clk(CLK),
 		.rst(RESET),
@@ -82,23 +82,11 @@ module demo (
 		.DO(TIMER_D),
 		.rw(RW),
 		.cs(TIMER_CS),
-		.intr(intr)
+		.intr(intr_timer)
 	);
 
-	wire MEMMAP_CS = DS7 && (ADDR[4:3] == 2'b11); // $FFF8
-	wire MEMMAP_EN = MEMMAP_CS;
-	reg [9:0] MEM_pages;
-	wire [7:0] MEMMAP_D = {(ADDR[0]) ? MEM_pages[9:5] : MEM_pages[4:0], 3'b000};
-	
-	always @(posedge CLK) begin
-		if (RESET) MEM_pages <=  10'b00010_00001; // page 1 and page 2
-		else if (MEMMAP_CS && ~RW) begin
-			if (ADDR[0]) MEM_pages[9:5] <= DO[7:3];
-			else MEM_pages[4:0] <= DO[7:3];
-		end
-	end	
-	
 	// pages 1,2
+	reg [9:0] MEM_pages;
 	wire SRAM2_CS = (ADDR[15:11] == MEM_pages[9:5]);
 	wire SRAM1_CS = (ADDR[15:11] == MEM_pages[4:0]);
 	wire SRAMP_EN = (SRAM2_CS | SRAM1_CS);
@@ -127,13 +115,35 @@ module demo (
 		.Q(SRAM_D)
 	);
 
-	assign DI = SRAM_EN ? SRAM_D :
-				SRAMP_EN ? SRAMP_D :
+	wire MEMMAP_CS = DS7 && (ADDR[4:3] == 2'b11); // $FFF8
+	wire MEMMAP_EN = MEMMAP_CS;
+	reg  [4:0] MEM_addr;
+	wire [7:0] MEMMAP_D = ADDR[1] ? {MEM_addr[4:0], 3'b000} :
+							ADDR[0] ? { MEM_pages[9:5], 3'b000} :
+							{MEM_pages[4:0], 3'b000};
+	
+	wire intr_memmap = ~(SRAM_EN | SRAMP_EN | DS7);
+
+	always @(posedge CLK) begin
+		if (RESET) begin
+			MEM_pages <=  10'b00010_00001; // page 1 and page 2
+		end else if (MEMMAP_CS && ~RW) begin
+			if (ADDR[0]) MEM_pages[9:5] <= DO[7:3];
+			else MEM_pages[4:0] <= DO[7:3];
+		end
+	end
+
+	always @(posedge CLK) begin
+		if (RESET) MEM_addr <= 0;
+		else if (intr_memmap) MEM_addr <= ADDR[15:11];
+	end	
+
+	assign DI = SRAMP_EN ? SRAMP_D :
 				UART_EN ? UART_D :
 				GPIO_EN ? GPIO_D :
 				TIMER_EN ? TIMER_D :
 				MEMMAP_EN ? MEMMAP_D :
-				8'b11111111;
+				SRAM_D;
 
 	cpu cpu1 (
 		.clk(CLK),
@@ -142,7 +152,7 @@ module demo (
 		.address(ADDR),
 		.dout(DO),
 		.din(DI),
-		.intr(intr)
+		.intr(intr_timer | intr_memmap)
 	);
 
 endmodule
