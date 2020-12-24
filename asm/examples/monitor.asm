@@ -33,15 +33,37 @@ main	proc
 
 ; main loop
 
-loop	bsr	gethex
-	push	v0
-	set	v0, nl
-	bsr	VEC_PUTSTR
-	pop	v0
-	bsr	printhex
-	set	v0, nl
-	bsr	VEC_PUTSTR
+loop	set	v1, lastch
+	bsr	gethex
+	str	v0, v1, 2
+	ldr	v0, v1, 0
+	set	v2, '.'
+	bne	action, v0, v2
+	bsr	gethex
+	str	v0, v1, 4
+action	ldr	v0, v1, 0
+	setl	v2, 'Z'
+	beq	dump, v0, v2
 	b	loop
+dump	ldr	v2, v1, 4
+	ldr	v1, v1, 2
+dump1	mov	v0, v1
+	bsr	printhex
+	setl	v0, ' '
+	bsr	VEC_PUTCHAR
+	set	v3, 16
+dump2	ldrl	v0, v1, 0
+	bsr	printhex8
+	setl	v0, ' '
+	bsr	VEC_PUTCHAR
+	add	v1, v1, 1
+	beq	dump3, v1, v2
+	sub	v3, v3, 1
+	bne	dump2, v3, 0
+	set	v0, nl
+	bsr	VEC_PUTSTR
+	b	dump1
+dump3	b	loop
 	endp
 
 printhex proc
@@ -110,3 +132,5 @@ exit	mov	v0, v3
 banner	db	10, 13, "pdaXrom monitor", 10, 13, 0
 nl	db	10, 13, 0
 lastch	dw	0
+saddr	dw	0
+eaddr	dw	0
