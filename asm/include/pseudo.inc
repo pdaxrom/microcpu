@@ -36,6 +36,54 @@
 	b	#1
 	endm
 
+	macro	blt
+	ge	#2, #3		; #2 >= #3
+	b	#1		; <
+	endm
+
+	macro	ble
+	ne	#2, #3		; #2 != #3
+	b	#1		; =
+	ge	#2, #3		; #2 >= #3
+	b	#1		; <
+	endm
+
+	macro	bgt
+	ge	#2, #3		; #2 >= #3
+	b	*+6		; <
+	eq	#2, #3		; #2 == #3
+	b	#1		; !=
+	endm
+
+	macro	bge
+	lt	#2, #3		; #2 < #3
+	b	#1		; >=
+	endm
+
+	macro	bltu
+	geu	#2, #3		; #2 >= #3
+	b	#1		; <
+	endm
+
+	macro	bleu
+	ne	#2, #3		; #2 != #3
+	b	#1		; =
+	geu	#2, #3		; #2 >= #3
+	b	#1		; <
+	endm
+
+	macro	bgtu
+	geu	#2, #3		; #2 >= #3
+	b	*+6		; <
+	eq	#2, #3		; #2 == #3
+	b	#1		; !=
+	endm
+
+	macro	bgeu
+	ltu	#2, #3		; #2 < #3
+	b	#1		; >=
+	endm
+
 	macro	maskeq
 	mne	#2, #3
 	b	#1
