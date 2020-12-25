@@ -1128,9 +1128,11 @@ static int do_asm(FILE *inf, char *line) {
 				}
 				to_second_pass = 0;
 
-				if (val < -0x7ff || val > 0x7ff) {
-				    error = LONG_RELATED_OFFSET;
-				    return 1;
+				if (src_pass == 2) {
+					if (val < -0x7ff || val > 0x7ff) {
+						error = LONG_RELATED_OFFSET;
+						return 1;
+					}
 				}
 
 				val = val >> 1;
