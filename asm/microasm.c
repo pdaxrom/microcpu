@@ -39,6 +39,7 @@ enum {
 	op_noargs = 0,
 	op_reg_const,
 	op_rel,
+	op_reg,
 	op_reg_reg,
 	op_no_reg_reg,
 	op_ext_reg_reg,
@@ -78,6 +79,8 @@ static OpCode opcode_table[] = {
 		{ "swu"  , op_noargs       , 0x14, 0x0  },
 
 		{ "b"    , op_rel          , 0x16, 0x0  },
+		{ "setp" , op_reg          , 0x18, 0x0  },
+		{ "getp" , op_reg          , 0x1a, 0x0  },
 
 		{ "eq"   , op_ext_reg_reg   , 0x01, 0x0  },
 		{ "ne"   , op_ext_reg_reg   , 0x01, 0x1  },
@@ -1140,6 +1143,17 @@ static int do_asm(FILE *inf, char *line) {
 				arg1 = (val & 0x700) >> 8;
 				arg2 = (val & 0xe0) >> 5;
 				arg3 =  val & 0x1f;
+			} else if (opcode->type == op_reg) {
+				SKIP_BLANK(str);
+
+				reg = find_register_in_string(&str);
+				if (!reg) {
+					error = MISSED_OPCODE_ARG_1;
+					return 1;
+				}
+				arg1 = reg->n;
+				arg2 = 0;
+				arg3 = 0;
 			} else if (opcode->type != op_noargs) {
 				SKIP_BLANK(str);
 
