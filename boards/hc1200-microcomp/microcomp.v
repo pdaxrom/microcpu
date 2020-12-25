@@ -122,21 +122,27 @@ module demo (
 							ADDR[0] ? { MEM_pages[9:5], 3'b000} :
 							{MEM_pages[4:0], 3'b000};
 	
-	wire intr_memmap = ~(SRAM_EN | SRAMP_EN | DS7);
+	reg intr_memmap; // = ~(SRAM_EN | SRAMP_EN | DS7);
 
 	always @(posedge CLK) begin
 		if (RESET) begin
 			MEM_pages <=  10'b00010_00001; // page 1 and page 2
+			MEM_addr <= 0;
+			intr_memmap <= 0;
 		end else if (MEMMAP_CS && ~RW) begin
 			if (ADDR[0]) MEM_pages[9:5] <= DO[7:3];
 			else MEM_pages[4:0] <= DO[7:3];
+			intr_memmap <= 0;
+		end else if (~(SRAM_EN | SRAMP_EN | DS7)) begin
+			intr_memmap <= 1;
+			MEM_addr <= ADDR[15:11];
 		end
 	end
 
-	always @(posedge CLK) begin
-		if (RESET) MEM_addr <= 0;
-		else if (intr_memmap) MEM_addr <= ADDR[15:11];
-	end	
+//	always @(posedge CLK) begin
+//		if (RESET) MEM_addr <= 0;
+//		else if (intr_memmap) MEM_addr <= ADDR[15:11];
+//	end	
 
 	assign DI = SRAMP_EN ? SRAMP_D :
 				UART_EN ? UART_D :
