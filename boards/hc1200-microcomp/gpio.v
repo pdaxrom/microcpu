@@ -36,7 +36,7 @@ module gpio (
 	assign gpio[14] = gpio_dir[14] ? gpio_out[14] : 1'bZ;
 //	assign gpio[15] = gpio_dir[15] ? gpio_out[15] : 1'bZ;
 
-	wire [15:0] gpio_in;
+	wire [14:0] gpio_in;
 		assign gpio_in[ 0] = gpio_dir[ 0] ? gpio_out[ 0] : gpio[ 0];
 	assign gpio_in[ 1] = gpio_dir[ 1] ? gpio_out[ 1] : gpio[ 1];
 	assign gpio_in[ 2] = gpio_dir[ 2] ? gpio_out[ 2] : gpio[ 2];
@@ -71,8 +71,8 @@ module gpio (
 			gpio_out <= 0;
 		end else if (cs && ~rw) begin
 				case (AD[1:0])
-				2'b00: gpio_out[14:8]  <= DI[6:0] & gpio_dir[14:8];
-				2'b01: gpio_out[ 7:0]  <= DI & gpio_dir[7:0];
+				2'b00: gpio_out[14:8]  <= DI[6:0];
+				2'b01: gpio_out[ 7:0]  <= DI;
 				2'b10: gpio_dir[14:8]  <= DI[6:0];
 				2'b11: gpio_dir[ 7:0]  <= DI;
 				endcase
