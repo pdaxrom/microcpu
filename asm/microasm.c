@@ -1104,8 +1104,11 @@ static int do_asm(FILE *inf, char *line) {
 				}
 
 				if (opcode->type == pseudo_align) {
-					int n = count - 1;
-					count = ((output_addr + count) & ~n) - output_addr;
+					int n = 1 << count;
+					if (n > 1) {
+					    n = n - 1;
+					}
+					count = ((output_addr + n) & ~n) - output_addr;
 				}
 
 				while (count-- > 0) {
