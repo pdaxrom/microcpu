@@ -394,7 +394,6 @@ static int add_macro(FILE *inf, char *name) {
 	char str[512];
 	Macro *mac;
 
-
 	if (src_pass == 1) {
 		if (find_macro(name)) {
 			error = MACRO_ALREADY_DEFINED;
@@ -408,6 +407,7 @@ static int add_macro(FILE *inf, char *name) {
 		}
 
 		mac->name = strdup(name);
+		mac->line = NULL;
 		mac->lines = 0;
 		mac->prev = macros;
 	}
@@ -806,8 +806,8 @@ static int get_words(char *str) {
 		}
 		to_second_pass = 0;
 
-		output[output_addr++] = word >> 8;
 		output[output_addr++] = word & 0xFF;
+		output[output_addr++] = word >> 8;
 		if (match(&str, ',') == 0) {
 			break;
 		}
