@@ -108,34 +108,39 @@ ram_read_mem_loop
 	rts
 
 ram_write_cmd
-	push	lr
-	push	v1
+	sub	sp, sp, 4
+	str	lr, sp, 4
+	str	v1, sp, 2
 	set	v1, GPIO_ADDR
 	bsr	sram_cs_low
 	bsr	writespi
 	bsr	sram_cs_high
-	pop	v1
-	pop	lr
+	ldr	v1, sp, 2
+	ldr	lr, sp, 4
+	add	sp, sp, 4
 	rts
 
 ram_write_mode
-	push	lr
-	push	v1
+	sub	sp, sp, 6
+	str	lr, sp, 6
+	str	v1, sp, 4
+	str	v0, sp, 2
 	set	v1, GPIO_ADDR
 	bsr	sram_cs_low
-	push	v0
 	setl	v0, CMD_WRMR
 	bsr	writespi
-	pop	v0
+	ldr	v0, sp, 2
 	bsr	writespi
 	bsr	sram_cs_high
-	pop	v1
-	pop	lr
+	ldr	v1, sp, 4
+	ldr	lr, sp, 6
+	add	sp, sp, 6
 	rts
 
 ram_read_mode
-	push	lr
-	push	v1
+	sub	sp, sp, 4
+	str	lr, sp, 4
+	str	v1, sp, 2
 	set	v1, GPIO_ADDR
 	bsr	sram_cs_low
 	setl	v0, CMD_RDMR
@@ -143,16 +148,18 @@ ram_read_mode
 	bsr	readspi
 	seth	v0, 0
 	bsr	sram_cs_high
-	pop	v1
-	pop	lr
+	ldr	v1, sp, 2
+	ldr	lr, sp, 4
+	add	sp, sp, 4
 	rts
 
 writespi
-	push	lr
-	push	v0
-	push	v2
-	push	v3
-	push	v4
+	sub	sp, sp, 10
+	str	lr, sp, 10
+	str	v0, sp, 8
+	str	v2, sp, 6
+	str	v3, sp, 4
+	str	v4, sp, 2
 
 	set	v2, 8
 
@@ -173,18 +180,20 @@ wloop	set	v3, $80
 	sub	v2, v2, 1
 	bne	wloop, v2, 0
 
-	pop	v4
-	pop	v3
-	pop	v2
-	pop	v0
-	pop	lr
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	ldr	v2, sp, 6
+	ldr	v0, sp, 8
+	ldr	lr, sp, 10
+	add	sp, sp, 10
 	rts
 
 readspi
-	push	lr
-	push	v2
-	push	v3
-	push	v4
+	sub	sp, sp, 8
+	str	lr, sp, 8
+	str	v2, sp, 6
+	str	v3, sp, 4
+	str	v4, sp, 2
 
 	set	v2, 8
 
@@ -202,38 +211,44 @@ rloop	shl	v0, v0, 1
 	sub	v2, v2, 1
 	bne	rloop, v2, 0
 
-	pop	v4
-	pop	v3
-	pop	v2
-	pop	lr
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	ldr	v2, sp, 6
+	ldr	lr, sp, 8
+	add	sp, sp, 8
 	rts
 
 sram_cs_low
-	push	v3
-	push	v4
+	sub	sp, sp, 4
+	str	v3, sp, 4
+	str	v4, sp, 2
 	ldrl	v4, v1, 0
 	setl	v3, $FF^PIN_CS
 	and	v4, v4, v3
 	strl	v4, v1, 0
-	pop	v4
-	pop	v3
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	add	sp, sp, 4
 	rts
 
 sram_cs_high
-	push	v3
-	push	v4
+	sub	sp, sp, 4
+	str	v3, sp, 4
+	str	v4, sp, 2
 	ldrl	v4, v1, 0
 	setl	v3, PIN_CS
 	or	v4, v4, v3
 	strl	v4, v1, 0
-	pop	v4
-	pop	v3
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	add	sp, sp, 4
 	rts
 
 ram_set_gpio
-	push	v0
-	push	v1
-	push	v2
+	sub	sp, sp, 6
+	str	v0, sp, 6
+	str	v1, sp, 4
+	str	v2, sp, 2
 	set	v1, GPIO_ADDR
 	ldrl	v0, v1, 0
 	setl	v2, $ff^(PIN_SCK | PIN_SISIO0 | PIN_SOSIO1)
@@ -248,8 +263,9 @@ ram_set_gpio
 	setl	v2, (PIN_SISIO0 | PIN_SIO2 | PIN_HOLDSIO3 | PIN_SCK | PIN_CS)
 	or	v0, v0, v2
 	strl	v0, v1, 2
-	pop	v2
-	pop	v1
-	pop	v0
+	ldr	v2, sp, 2
+	ldr	v1, sp, 4
+	ldr	v0, sp, 6
+	add	sp, sp, 6
 	rts
 	endp
