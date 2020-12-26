@@ -11,7 +11,11 @@ module uart(
 	);
 
 	// CLKSPEED is the main clock speed
-	parameter CLKSPEED = 2080000;
+//	parameter CLKSPEED = 2080000;
+//	parameter CLKSPEED = 4160000;
+//	parameter CLKSPEED = 14000000;
+	parameter CLKSPEED = 19000000;
+//	parameter CLKSPEED = 38000000;
 
 	// BAUD is the desired serial baud rate
 	parameter BAUD = 115200;
