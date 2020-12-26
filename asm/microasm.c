@@ -1227,6 +1227,8 @@ static int do_asm(FILE *inf, char *line) {
 					}
 				}
 
+				SKIP_BLANK(str);
+
 				if (strlen(str) > 0) {
 					error = EXTRA_SYMBOLS;
 				}
