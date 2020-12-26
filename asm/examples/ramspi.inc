@@ -1,0 +1,255 @@
+;
+; SPI RAM
+;
+; GPIO 8  - SISIO0
+; GPIO 9  - SOSIO1
+; GPIO 10 - SIO3
+; GPIO 11 - SIO3
+; GPIO 12 - SCK
+; GPIO 13 - CS
+;
+
+PIN_SISIO0	equ	1
+PIN_SOSIO1	equ	2
+PIN_SIO2	equ	4
+PIN_HOLDSIO3	equ	8
+PIN_SCK		equ	16
+PIN_CS		equ	32
+
+CMD_READ	equ	$03
+CMD_WRITE	equ	$02
+CMD_EDIO	equ	$3b
+CMD_EQIO	equ	$38
+CMD_RSTIO	equ	$ff
+CMD_RDMR	equ	$05
+CMD_WRMR	equ	$01
+
+ram_init proc
+	global	ram_write_cmd, ram_write_mode, ram_read_mode, ram_set_gpio, ram_write_mem, ram_read_mem
+	push	lr
+	bsr	ram_set_gpio
+	set	v0, $40
+	bsr	ram_write_mode
+	pop	lr
+	rts
+
+ram_write_mem
+	sub	sp, sp, 10
+	str	lr, sp, 10
+	str	v0, sp, 8
+	str	v1, sp, 6
+	str	v2, sp, 4
+	str	v3, sp, 2
+	set	v1, GPIO_ADDR
+	bsr	sram_cs_low
+	setl	v0, CMD_WRITE
+	bsr	writespi
+	setl	v0, 0
+	bsr	writespi
+	ldrl	v0, sp, 9
+	bsr	writespi
+	ldrl	v0, sp, 8
+	bsr	writespi
+
+	ldr	v2, sp, 6
+	ldr	v3, sp, 4
+
+ram_write_mem_loop
+	ldrl	v0, v2, 0
+	bsr	writespi
+	add	v2, v2, 1
+	sub	v3, v3, 1
+	bne	ram_write_mem_loop, v3, 0
+
+	bsr	sram_cs_high
+	ldr	v3, sp, 2
+	ldr	v2, sp, 4
+	ldr	v1, sp, 6
+	ldr	v0, sp, 8
+	ldr	lr, sp, 10
+	add	sp, sp, 10
+	rts
+
+ram_read_mem
+	sub	sp, sp, 10
+	str	lr, sp, 10
+	str	v0, sp, 8
+	str	v1, sp, 6
+	str	v2, sp, 4
+	str	v3, sp, 2
+	set	v1, GPIO_ADDR
+	bsr	sram_cs_low
+	setl	v0, CMD_READ
+	bsr	writespi
+	setl	v0, 0
+	bsr	writespi
+	ldrl	v0, sp, 9
+	bsr	writespi
+	ldrl	v0, sp, 8
+	bsr	writespi
+
+	ldr	v2, sp, 6
+	ldr	v3, sp, 4
+
+ram_read_mem_loop
+	bsr	readspi
+	strl	v0, v2, 0
+	add	v2, v2, 1
+	sub	v3, v3, 1
+	bne	ram_read_mem_loop, v3, 0
+
+	bsr	sram_cs_high
+	ldr	v3, sp, 2
+	ldr	v2, sp, 4
+	ldr	v1, sp, 6
+	ldr	v0, sp, 8
+	ldr	lr, sp, 10
+	add	sp, sp, 10
+	rts
+
+ram_write_cmd
+	push	lr
+	push	v1
+	set	v1, GPIO_ADDR
+	bsr	sram_cs_low
+	bsr	writespi
+	bsr	sram_cs_high
+	pop	v1
+	pop	lr
+	rts
+
+ram_write_mode
+	push	lr
+	push	v1
+	set	v1, GPIO_ADDR
+	bsr	sram_cs_low
+	push	v0
+	setl	v0, CMD_WRMR
+	bsr	writespi
+	pop	v0
+	bsr	writespi
+	bsr	sram_cs_high
+	pop	v1
+	pop	lr
+	rts
+
+ram_read_mode
+	push	lr
+	push	v1
+	set	v1, GPIO_ADDR
+	bsr	sram_cs_low
+	setl	v0, CMD_RDMR
+	bsr	writespi
+	bsr	readspi
+	seth	v0, 0
+	bsr	sram_cs_high
+	pop	v1
+	pop	lr
+	rts
+
+writespi
+	push	lr
+	push	v0
+	push	v2
+	push	v3
+	push	v4
+
+	set	v2, 8
+
+wloop	set	v3, $80
+	ldrl	v4, v1, 0
+	or	v4, v4, PIN_SISIO0
+	mne	v0, v3
+	xor	v4, v4, PIN_SISIO0
+	strl	v4, v1, 0
+
+	setl	v3, PIN_SCK
+	or	v4, v4, v3
+	strl	v4, v1, 0
+	xor	v4, v4, v3
+	strl	v4, v1, 0
+
+	shl	v0, v0, 1
+	sub	v2, v2, 1
+	bne	wloop, v2, 0
+
+	pop	v4
+	pop	v3
+	pop	v2
+	pop	v0
+	pop	lr
+	rts
+
+readspi
+	push	lr
+	push	v2
+	push	v3
+	push	v4
+
+	set	v2, 8
+
+rloop	shl	v0, v0, 1
+	ldrl	v4, v1, 0
+	meq	v4, PIN_SOSIO1
+	or	v0, v0, 1
+
+	setl	v3, PIN_SCK
+	or	v4, v4, v3
+	strl	v4, v1, 0
+	xor	v4, v4, v3
+	strl	v4, v1, 0
+
+	sub	v2, v2, 1
+	bne	rloop, v2, 0
+
+	pop	v4
+	pop	v3
+	pop	v2
+	pop	lr
+	rts
+
+sram_cs_low
+	push	v3
+	push	v4
+	ldrl	v4, v1, 0
+	setl	v3, $FF^PIN_CS
+	and	v4, v4, v3
+	strl	v4, v1, 0
+	pop	v4
+	pop	v3
+	rts
+
+sram_cs_high
+	push	v3
+	push	v4
+	ldrl	v4, v1, 0
+	setl	v3, PIN_CS
+	or	v4, v4, v3
+	strl	v4, v1, 0
+	pop	v4
+	pop	v3
+	rts
+
+ram_set_gpio
+	push	v0
+	push	v1
+	push	v2
+	set	v1, GPIO_ADDR
+	ldrl	v0, v1, 0
+	setl	v2, $ff^(PIN_SCK | PIN_SISIO0 | PIN_SOSIO1)
+	and	v0, v0, v2
+	setl	v2, (PIN_CS | PIN_HOLDSIO3)
+	or	v0, v0, v2
+	strl	v0, v1, 0
+
+	ldrl	v0, v1, 2
+	setl	v2, $ff^PIN_SOSIO1
+	and	v0, v0, v2
+	setl	v2, (PIN_SISIO0 | PIN_SIO2 | PIN_HOLDSIO3 | PIN_SCK | PIN_CS)
+	or	v0, v0, v2
+	strl	v0, v1, 2
+	pop	v2
+	pop	v1
+	pop	v0
+	rts
+	endp
