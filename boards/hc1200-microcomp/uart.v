@@ -14,11 +14,13 @@ module uart(
 //	parameter CLKSPEED = 2080000;
 //	parameter CLKSPEED = 4160000;
 //	parameter CLKSPEED = 14000000;
-	parameter CLKSPEED = 19000000;
+//	parameter CLKSPEED = 19000000;
+	parameter CLKSPEED = 26600000;
 //	parameter CLKSPEED = 38000000;
 
 	// BAUD is the desired serial baud rate
 	parameter BAUD = 115200;
+//	parameter BAUD = 460800;
 
 	// DIVISOR is the number of clk cycles per bit time
 	parameter DIVISOR = CLKSPEED / BAUD;

@@ -14,7 +14,7 @@ module demo (
 	wire			RW;
 
 	OSCH #(
-		.NOM_FREQ("19.00")
+		.NOM_FREQ("26.60")
 	) internal_oscillator_inst (
 		.STDBY(1'b0), 
 		.OSC(CLK)

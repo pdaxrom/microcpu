@@ -27,10 +27,7 @@ mainloop bsr	getchar
 	beq	cmd_save, v0, v1
 	setl	v1, 'G'
 	beq	cmd_go, v0, v1
-	setl	v1, 'E'
-	beq	cmd_exit, v0, v1
 	b	mainloop
-cmd_exit b	begin
 
 cmd_load proc
 	bsr	get_word
@@ -38,10 +35,29 @@ cmd_load proc
 	bsr	get_word
 	mov	v2, v0
 
-loop	bsr	getchar
+	sub	sp, sp, 8
+	mov	v3, sp
+	add	v3, v3, 2
+	seth	v4, 0
+
+loop	setl	v4, 0
+
+loop1	bsr	getchar
+	strl	v0, v3, v4
+	add	v4, v4, 1
+	bne	loop1, v4, 8
+
+	setl	v4, 0
+
+loop2	ldrl	v0, v3, v4
 	strl	v0, v1, 0
+	add	v4, v4, 1
 	add	v1, v1, 1
+	beq	break, v1, v2
+	bne	loop2, v4, 8
+break	bsr	putchar		; echo to get sync transfer
 	bne	loop, v1, v2
+	add	sp, sp, 8
 	b	begin
 	endp
 
@@ -64,17 +80,21 @@ cmd_go	proc
 	endp
 
 get_word proc
-	sub	sp, sp, 4
-	str	lr, sp, 4
-	str	v1, sp, 2
+	mov	v4, lr
+;	sub	sp, sp, 4
+;	str	lr, sp, 4
+;	str	v1, sp, 2
 	bsr	getchar
-	mov	v1, v0
+	mov	v3, v0
 	bsr	getchar
-	movh	v0, v1
-	ldr	v1, sp, 2
-	ldr	lr, sp, 4
-	add	sp, sp, 4
-	rts
+	movh	v0, v3
+;	ldr	v1, sp, 2
+;	ldr	lr, sp, 4
+;	add	sp, sp, 4
+
+;	mov	lr, v4
+;	rts
+	add	pc, v4, 3
 	endp
 
 printstr proc
@@ -121,6 +141,6 @@ getchar	proc
 	rts
 	endp
 
-banner	db	10, 13, "Z/pdaXrom UART loader", 10, 13, 0
+banner	db	"Z/pdaXrom", 10, 13, 0
 
 	ds	$800-*

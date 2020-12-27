@@ -9,6 +9,7 @@
 #include <errno.h>
 
 #define BAUDRATE B115200
+//#define BAUDRATE B460800
 #define MODEMDEVICE "/dev/ttyUSB0"
 #define _POSIX_SOURCE 1 /* POSIX compliant source */
 #define FALSE 0
@@ -98,6 +99,8 @@ int main(int argc, char *argv[])
     if (!strcmp(argv[2], "load")) {
 	unsigned int s;
 	unsigned int e;
+	unsigned int t;
+	unsigned int p;
 
 
 	FILE *inf = fopen(argv[3], "rb");
@@ -121,18 +124,50 @@ int main(int argc, char *argv[])
 	    unsigned char tmp[5] = { 'L', (s >> 8) & 0xff, s & 0xff, (e >> 8) & 0xff, e & 0xff };
 	    write(fd, tmp, 5);
 
-	    for (; s < e; s++) {
-		fread(buf, 1, 1, inf);
-		res = write(fd, buf, 1);   /* returns after 5 chars have been input */
+	    t = e - s;
+	    p = 0;
+
+	    while (s < e) {
+		int i;
+		int res;
+		int tp;
+		char rbuf[255];
+
+		for (i = 0; i < 8; i++) {
+		    if (s + i < e) {
+			fread(buf, 1, 1, inf);
+//			fprintf(stderr, "Remaining %d     \r", e - (s + i));
+		    }
+		    res = write(fd, buf, 1);   /* returns after 5 chars have been input */
+		    if (res < 1) {
+			fprintf(stderr, "error %d\n", errno);
+			break;
+		    }
+		}
+
 		if (res < 1) {
-		    fprintf(stderr, "error %d\n", errno);
+		    break;
+		}
+
+		s += i;
+
+		tp = (t - (e - s)) * 100 / t;
+		if (tp != p) {
+		    p = tp;
+		    fprintf(stderr, "Uploaded %d%%   \r", p);
+		}
+
+		res = read(fd, rbuf, 1);
+		if (res < 1) {
+		    fprintf(stderr, "error read sync byte %d\n", errno);
 		    break;
 		}
 	    }
-	    res = read(fd,buf,1);   /* returns after 5 chars have been input */
-	    if (buf[0] == 'O') {
-		fprintf(stderr, "OK\n");
-	    }
+	    fprintf(stderr, "\n");
+//	    res = read(fd,buf,1);   /* returns after 5 chars have been input */
+//	    if (buf[0] == 'O') {
+//		fprintf(stderr, "OK\n");
+//	    }
 	    fclose(inf);
 	} else {
 	    fprintf(stderr, "Can't open infile\n");
@@ -141,7 +176,6 @@ int main(int argc, char *argv[])
 
     if (!strcmp(argv[2], "go")) {
 	unsigned int s;
-	unsigned int e;
 	sscanf(argv[3], "%x", &s);
 
 	fprintf(stderr, "go %x\n", s);
