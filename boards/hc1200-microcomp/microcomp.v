@@ -85,22 +85,6 @@ module demo (
 		.intr(intr_timer)
 	);
 
-	// pages 1,2
-	reg [9:0] MEM_pages;
-	wire SRAM2_CS = (ADDR[15:11] == MEM_pages[9:5]);
-	wire SRAM1_CS = (ADDR[15:11] == MEM_pages[4:0]);
-	wire SRAMP_EN = (SRAM2_CS | SRAM1_CS);
-	wire [7:0] SRAMP_D;
-	srampages srampages(
-		.Clock(CLK),
-		.ClockEn(SRAMP_EN),
-		.Reset(RESET),
-		.WE(~RW),
-		.Address({SRAM2_CS, ADDR[10:0]}),
-		.Data(DO),
-		.Q(SRAMP_D)
-	);
-
 	// zero page
 	wire SRAM_CS = (ADDR[15:11] == 5'b00000);
 	wire SRAM_EN = SRAM_CS;
@@ -113,6 +97,22 @@ module demo (
 		.Address(ADDR[10:0]),
 		.Data(DO),
 		.Q(SRAM_D)
+	);
+
+	// pages 1,2
+	reg [9:0] MEM_pages;
+	wire SRAM2_CS = (ADDR[15:11] == MEM_pages[9:5]);
+	wire SRAM1_CS = (ADDR[15:11] == MEM_pages[4:0]);
+	wire SRAMP_EN = ((SRAM2_CS | SRAM1_CS) && !SRAM_CS);
+	wire [7:0] SRAMP_D;
+	srampages srampages(
+		.Clock(CLK),
+		.ClockEn(SRAMP_EN),
+		.Reset(RESET),
+		.WE(~RW),
+		.Address({SRAM2_CS, ADDR[10:0]}),
+		.Data(DO),
+		.Q(SRAMP_D)
 	);
 
 	wire MEMMAP_CS = DS7 && (ADDR[4:3] == 2'b11); // $FFF8
@@ -144,12 +144,13 @@ module demo (
 //		else if (intr_memmap) MEM_addr <= ADDR[15:11];
 //	end	
 
-	assign DI = SRAMP_EN ? SRAMP_D :
-				UART_EN ? UART_D :
+	assign DI = UART_EN ? UART_D :
 				GPIO_EN ? GPIO_D :
 				TIMER_EN ? TIMER_D :
 				MEMMAP_EN ? MEMMAP_D :
-				SRAM_D;
+				SRAM_EN ? SRAM_D :
+				SRAMP_EN ? SRAMP_D :
+				0;
 
 	cpu cpu1 (
 		.clk(CLK),

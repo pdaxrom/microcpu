@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
 	FILE *inf = fopen(argv[3], "rb");
 	if (inf) {
 	    if (argc < 5) {
-		s = 0x100;
+		s = 0x400;
 	    } else {
 		sscanf(argv[4], "%x", &s);
 	    }

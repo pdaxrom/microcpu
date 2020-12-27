@@ -8,15 +8,28 @@
 
 	org	$0
 
-	b	begin
-	b	begin		; reserved for external interrupt
-	b	begin		; reserved for memory access error
+	b	init
+	b	isr		; reserved for external interrupt
+	dw	0		; timer irq
+	dw	0		; superuser irq
 	b	getchar
 	b	putchar
 	b	printstr
 
-begin	set	sp, $07fe
-	set	v0, banner
+init	set	sp, $07fe
+
+	bsr	ram_init
+
+; load initial mapped pages from sram
+	set	v2, MMAP_ADDR
+	ldrl	v0, v2, 0
+	shl	v0, v0, 8
+	bsr	sram_load_page
+	ldrl	v0, v2, 1
+	shl	v0, v0, 8
+	bsr	sram_load_page
+
+begin	set	v0, banner
 	bsr	printstr
 
 	seth	v1, 0
@@ -81,19 +94,10 @@ cmd_go	proc
 
 get_word proc
 	mov	v4, lr
-;	sub	sp, sp, 4
-;	str	lr, sp, 4
-;	str	v1, sp, 2
 	bsr	getchar
 	mov	v3, v0
 	bsr	getchar
 	movh	v0, v3
-;	ldr	v1, sp, 2
-;	ldr	lr, sp, 4
-;	add	sp, sp, 4
-
-;	mov	lr, v4
-;	rts
 	add	pc, v4, 3
 	endp
 
@@ -140,6 +144,95 @@ getchar	proc
 	ldr	v1, sp, 0
 	rts
 	endp
+
+isr	proc
+;	sub	sp, sp, 14
+	sub	sp, sp, 10
+	str	v0, sp, 8
+	str	v1, sp, 6
+	str	v2, sp, 4
+	str	v3, sp, 2
+
+	set	v3, MMAP_ADDR
+	getp	v0
+
+	shr	v0, v0, 8
+	setl	v1, %11111000
+	and	v0, v0, v1
+
+	seth	v2, 0
+	ldrl	v2, v3, 2		; memory violation page
+	beq	skip, v0, 0		; interrupt from page 0, it's not remapping
+	beq	load_c, v0, v2		; load code page if mem violation and interrupt pages the same
+
+skip	ldrl	v0, v3, 1
+	bne	load_d, v0, v2
+
+	set	v0, inter_i
+	bsr	VEC_PUTSTR
+
+;	set	v1, TIMER_ADDR
+;	ldrl	v0, v1, 2	; reset timer interrupt flag
+;	maskeq	next, v0, 1
+;	set	v0, timer_i
+;	bsr	VEC_PUTSTR
+
+exit	ldr	v3, sp, 2
+	ldr	v2, sp, 4
+	ldr	v1, sp, 6
+	ldr	v0, sp, 8
+	add	sp, sp, 10
+;	add	sp, sp, 14
+	swu
+
+load_c	ldrl	v0, v3, 0
+	shl	v0, v0, 8
+	bsr	sram_save_page
+	strl	v2, v3, 0
+	shl	v0, v2, 8
+	bsr	sram_load_page
+	b	exit
+load_d	getp	v1
+	sub	v1, v1, 2
+	setp	v1
+	shl	v0, v0, 8
+	bsr	sram_save_page
+	strl	v2, v3, 1
+	shl	v0, v2, 8
+	bsr	sram_load_page
+	b	exit
+
+inter_i	db	'Interrupt', 0
+	align	1
+	endp
+
+sram_save_page proc
+	sub	sp, sp, 4
+	str	lr, sp, 4
+	str	v2, sp, 2
+	mov	v1, v0
+	set	v2, 2048
+	bsr	ram_write_mem
+	ldr	v2, sp, 2
+	ldr	lr, sp, 4
+	add	sp, sp, 4
+	rts
+	endp
+
+sram_load_page proc
+	sub	sp, sp, 4
+	str	lr, sp, 4
+	str	v2, sp, 2
+	mov	v1, v0
+	set	v2, 2048
+	bsr	ram_read_mem
+	ldr	v2, sp, 2
+	ldr	lr, sp, 4
+	add	sp, sp, 4
+	rts
+	endp
+
+	include	ramspi.inc
 
 banner	db	"Z/pdaXrom", 10, 13, 0
 
