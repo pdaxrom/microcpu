@@ -35,7 +35,7 @@ cmd_load proc
 	bsr	get_word
 	mov	v2, v0
 
-	sub	sp, sp, 8
+	sub	sp, sp, 14
 	mov	v3, sp
 	add	v3, v3, 2
 	seth	v4, 0
@@ -45,7 +45,7 @@ loop	setl	v4, 0
 loop1	bsr	getchar
 	strl	v0, v3, v4
 	add	v4, v4, 1
-	bne	loop1, v4, 8
+	bne	loop1, v4, 14
 
 	setl	v4, 0
 
@@ -54,10 +54,10 @@ loop2	ldrl	v0, v3, v4
 	add	v4, v4, 1
 	add	v1, v1, 1
 	beq	break, v1, v2
-	bne	loop2, v4, 8
+	bne	loop2, v4, 14
 break	bsr	putchar		; echo to get sync transfer
 	bne	loop, v1, v2
-	add	sp, sp, 8
+	add	sp, sp, 14
 	b	begin
 	endp
 

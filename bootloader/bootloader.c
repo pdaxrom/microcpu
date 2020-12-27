@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 		int tp;
 		char rbuf[255];
 
-		for (i = 0; i < 8; i++) {
+		for (i = 0; i < 14; i++) {
 		    if (s + i < e) {
 			fread(buf, 1, 1, inf);
 //			fprintf(stderr, "Remaining %d     \r", e - (s + i));
