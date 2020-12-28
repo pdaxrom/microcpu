@@ -157,6 +157,8 @@ Instruction | | Description
 ------------|-|------------
 `SWS`|`UPC = PC; PC = VEC_SUPER`|Switch to superuser mode
 `SWU`|`PC = UPC`|Return to user mode
+`GETS <dst>`|`<dst> = <User PC>`|Get user programm counter
+`SETS <src>`|`<User PC> = <src>`|Set user programm counter
 
 Examples:
 ```
@@ -164,7 +166,14 @@ Examples:
     B	start
     B	su
     ...
-su  SWU
+su  SUB SP, SP, 2
+    PUSH V0
+    GETS V0
+    ...
+    PUTS V0
+    POP  V0
+    ADD SP, SP, 2
+    SWU
     ...
 ini SWS
     ...
@@ -186,11 +195,13 @@ Directive | Description
 `DB <imm>[,<imm>...]`|Define constant byte(s)
 `DW <imm16>[,<imm16>...]`|Define constant word(s)
 `DS <imm16>[,<imm>]`|Reserves num bytes of space and initializes them to val (optional, defaul 0).
-`ALIGN <imm>`|Align address to num bytes
+`ALIGN <imm>`|Align address to num bits
 `ORG <imm16>`|Set location address counter
+`INCLUDE <file name>`|Include external source file
 
 Examples:
 ```
+    INCLUDE functions.inc
 CONST_ONE EQU 1
 CONST_TWO EQU 2
     ORG $100
