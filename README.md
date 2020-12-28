@@ -11,6 +11,7 @@
   * [Arithmetic and Logic Instructions](#arithmetic-and-logic-instructions)
   * [Control Flow Instructions](#control-flow-instructions)
   * [CPU Modes Control](#cpu-modes-control)
+  * [Interrupts](#interrupts)
 * [MicroAssembler](#microassembler)
   * [Assembler directives](#assembler-directives)
   * [Accembler macro definition](#accembler-macro-definition)
@@ -178,6 +179,12 @@ su  SUB SP, SP, 2
 ini SWS
     ...
 ```
+
+[Top](#microcpu---16-bit-risc-cpu-version-2)
+
+## Interrupts
+
+The system supports two interrupts - the CPU command to switch to superuser mode (SWS command) and peripheral interrupt (external signal). Both interrupts cause a jump to address $0002 while saving the interrupted address in a special register, which is available for modification using the GETS and PUTS commands. Exit from the interrupt mode is performed using the SWU command. Until the end of the execution of the mode, other interrupts are prohibited.
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
