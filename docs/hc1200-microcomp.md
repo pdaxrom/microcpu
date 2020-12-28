@@ -114,7 +114,7 @@ The examples are compiled by a microassembler and loaded by the bootloader via U
 
 ### UART I/O
 
-Example of use UART [printuart.asm](../asm/examples/microcomp/printuart.asm)
+Example of use UART [printuart.asm](../asm/examples/printuart.asm)
 
 <img src="uart.jpg" width="320" />
 
@@ -122,7 +122,7 @@ Example of use UART [printuart.asm](../asm/examples/microcomp/printuart.asm)
 
 ### Led Matrix
 
-Example of use with led matrix (MAX7219) [matrix.asm](../asm/examples/microcomp/matrix.asm)
+Example of use with led matrix (MAX7219) [matrix.asm](../asm/examples/matrix.asm)
 
 <img src="matrix.jpg" width="320" />
 
@@ -130,7 +130,7 @@ Example of use with led matrix (MAX7219) [matrix.asm](../asm/examples/microcomp/
 
 ### Led Display
 
-Example of use with led matrix display [hcms.asm](../asm/examples/microcomp/hcms.asm)
+Example of use with led matrix display [hcms.asm](../asm/examples/hcms.asm)
 
 <img src="hcms.jpg" width="320" />
 
