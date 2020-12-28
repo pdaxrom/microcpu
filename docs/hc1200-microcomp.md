@@ -1,8 +1,10 @@
 # Microcomputer with Lattice MachXO2-1200
 
 * [Board](#board)
-  * [GPIO](#gpio)
   * [UART](#uart)
+  * [GPIO](#gpio)
+  * [TIMER](#timer)
+  * [Memory mapping](#memory-mapping)
 * [Bootloader](#bootloader)
 * [Examples](#examples)
   * [UART I/O](#uart-io)
@@ -17,7 +19,7 @@ The system uses a [microfpga board](https://github.com/pdaxrom/microfpga-demo)
 
 <img src="microfpga.jpg" width="320" />
 
-Implemented 15 bit I/O port, UART and RESET signal. The default configuration includes 2KB of RAM, pre-initialized with [bootloader](#bootloader) code.
+Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The default configuration includes 2KB of RAM, pre-initialized with [bootloader](#bootloader) code.
 
 [Top](#microcomputer-with-lattice-machxo2-1200)
 
@@ -27,8 +29,8 @@ The UART has a fixed baud rate of 115200.
 
 Address | Description
 -|-
-$E6B0|Status
-$E6B1|Data
+$FFE0|Status
+$FFE1|Data
 
 Status bit | Description
 -|-
@@ -43,12 +45,39 @@ I/O port uses 15 bits (maximum available pins for this board).
 
 Address | Description
 -|-
-$E6D0|I/O bits 14..8
-$E6D1|I/O bits 7..0
-$E6D2|Direction bits 14..8
-$E6D3|Direction bits 7..0
+$FFE8|I/O bits 14..8
+$FFE9|I/O bits 7..0
+$FFEA|Direction bits 14..8
+$FFEB|Direction bits 7..0
 
 Direction bits 1 - output, 0 - input. By default, all bits are input.
+
+[Top](#microcomputer-with-lattice-machxo2-1200)
+
+### Timer
+
+Address | Description
+-|-
+$FFF0|Initial value bits [7:0]
+$FFF1|Initial value bits [15:8]
+$FFF2|Status
+
+Status bits: 1 - countdown finished, 0 - interrupt.
+The interrupt bit is cleared after reading the status register.
+
+[Top](#microcomputer-with-lattice-machxo2-1200)
+
+### Memory mapping
+
+The chip used has a limited RAM size, so there are three 2048 byte pages of memory. Page zero is permanent. The first page and the second can be located anywhere in the address space. An interrupt is triggered when accessing an empty address space. This can be used to implement virtual memory.
+
+Address | Description
+-|-
+$FFF8|SRAM page 1
+$FFF9|SRAM page 2
+$FFFA|Memory violation page
+
+The registers use bits 7: 3, which corresponds to bits 15:11 of the address space.
 
 [Top](#microcomputer-with-lattice-machxo2-1200)
 
@@ -60,18 +89,20 @@ Bootloader commands:
 
 Command bytes | Size in bytes | Description
 -|-|-
-`'L' <start address> <end address>`|`5 + (<end address> - <start address>)`|Loading code into RAM
+`'L' <start address> <end address>`|`5 + (payload)`|Loading code into RAM
 `'S' <start address> <end address>`|`5 + (<end address> - <start address>)`|Saving code from memory
 `'G' <start address>`|`3`|Execute code from start address
+
+Data is transmitted to the bootloader in packets of 14 bytes, after which a sync byte is received.
 
 The loader contains the following subroutines:
 
 Address | Description
 -|-
 `$0000`|RESET
-`$0006`|Get char from UART to register V0
-`$0008`|Put char to UART from register V0
-`$000A`|Put string to UART (V0 is pointer to null-terminated string)
+`$0008`|Get char from UART to register V0
+`$000A`|Put char to UART from register V0
+`$000C`|Put string to UART (V0 is pointer to null-terminated string)
 
 [Top](#microcomputer-with-lattice-machxo2-1200)
 
