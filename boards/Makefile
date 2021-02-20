@@ -1,8 +1,10 @@
+DIAMOND_VERSION=3.11_x64
+
 ifneq (Microsoft, $(findstring Microsoft, $(shell uname -r)))
-SCUBACMD = /usr/local/diamond/3.11_x64/ispfpga/bin/lin64/scuba
-FOUNDRY  = /usr/local/diamond/3.11_x64/ispfpga
+SCUBACMD = /usr/local/diamond/$(DIAMOND_VERSION)/ispfpga/bin/lin64/scuba
+FOUNDRY  = /usr/local/diamond/$(DIAMOND_VERSION)/ispfpga
 SCUBA = \
-	export LD_LIBRARY_PATH="/usr/local/diamond/3.11_x64/tcltk/lib:/usr/local/diamond/3.11_x64/ispfpga/bin/lin64:/usr/local/diamond/3.11_x64/bin/lin64:/usr/local/diamond/3.11_x64/ispfpga/bin/lin64"; \
+	export LD_LIBRARY_PATH="/usr/local/diamond/$(DIAMOND_VERSION)/tcltk/lib:/usr/local/diamond/$(DIAMOND_VERSION)/ispfpga/bin/lin64:/usr/local/diamond/$(DIAMOND_VERSION)/bin/lin64:/usr/local/diamond/$(DIAMOND_VERSION)/ispfpga/bin/lin64"; \
 	export FOUNDRY="$(FOUNDRY)"; \
 	$(SCUBACMD)
 else
