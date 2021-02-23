@@ -27,9 +27,6 @@
         <Source name="srampages.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
-        <Source name="impl1/impl1.xcf" type="Programming Project File" type_short="Programming">
-            <Options/>
-        </Source>
         <Source name="microcomp.lpf" type="Logic Preference" type_short="LPF">
             <Options/>
         </Source>
