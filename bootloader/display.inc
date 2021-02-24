@@ -8,18 +8,14 @@
 ; GPIO 4 - RESET
 ;
 
-	include ../include/pseudo.inc
-	include ../include/devmap.inc
-
 PIN_DIN		equ	1
 PIN_CE		equ	2
 PIN_CLK		equ	4
 PIN_RS		equ	8
 PIN_RESET	equ	16
 
-	org	$800
-
-begin	set	sp, $07fe
+disp_start proc
+	push	lr
 	set	v1, GPIO_ADDR
 
 ; set PIN_CE=1, PIN_RESET=1, PIN_DIN=0, PIN_CLK=0, PIN_RS=0
@@ -39,36 +35,20 @@ begin	set	sp, $07fe
 	set	v0, $2000
 	bsr	delay
 
-	set	v0, t_1
-	jsr	VEC_PUTSTR
-
 	bsr	disp_init
 
-;	set	v0, fb_blank
-;	bsr	disp_show
+	set	v0, textscr
+	bsr	disp_text
 
-	set	v0, font+32*5
-	bsr	disp_show
-
-	set	v0, t_5
-	jsr	VEC_PUTSTR
-
-	jmp	VEC_WARMUP
-
-dump	proc
-	push	lr
-	push	v0
-	bsr	printhex
-	set	v0, nl
-	jsr	VEC_PUTSTR
-	pop	v0
 	pop	lr
 	rts
 	endp
 
-t_1	db	10, 13, 'Init1', 0
-t_5	db	10, 13, 'Stop', 0
-nl	db	10, 13, 0
+;		 01234567
+textscr	db	"MicroCPU"
+	db	" v 1.0  "
+	db	"Hello, W"
+	db	"orld!!!!"
 
 	align	2
 
@@ -82,9 +62,11 @@ loop	sub	v0, v0, 1
 
 disp_init proc
 	push	lr
-	push	v0
-	push	v1
-	push	v2
+;	sub	sp, sp, 8
+;	str	lr, sp, 8
+;	str	v0, sp, 6
+;	str	v1, sp, 4
+;	str	v2, sp, 2
 
 	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
@@ -106,18 +88,21 @@ disp_init proc
 	setl	v0, $4c		; 0101 1100
 	bsr	disp_cmd
 
-	pop	v2
-	pop	v1
-	pop	v0
+;	ldr	v2, sp, 2
+;	ldr	v1, sp, 4
+;	ldr	v0, sp, 6
+;	ldr	lr, sp, 8
+;	add	sp, sp, 8
 	pop	lr
 	rts
 	endp
 
 disp_cmd proc
-	push	lr
-	push	v1
-	push	v2
-	push	v3
+	sub	sp, sp, 8
+	str	lr, sp, 8
+	str	v1, sp, 6
+	str	v2, sp, 4
+	str	v3, sp, 2
 
 	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
@@ -134,20 +119,23 @@ loop	bsr	sendbyte
 	bne	loop, v3, 0
 
 	bsr	disp_ce_high
-	pop	v3
-	pop	v2
-	pop	v1
-	pop	lr
+
+	ldr	v3, sp, 2
+	ldr	v2, sp, 4
+	ldr	v1, sp, 6
+	ldr	lr, sp, 8
+	add	sp, sp, 8
 	rts
 	endp
 
-disp_show proc
-	push	lr
-	push	v0
-	push	v1
-	push	v2
-	push	v3
-	push	v4
+disp_text proc
+	sub	sp, sp, 12
+	str	lr, sp, 12
+	str	v0, sp, 10
+	str	v1, sp, 8
+	str	v2, sp, 6
+	str	v3, sp, 4
+	str	v4, sp, 2
 
 	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
@@ -157,51 +145,70 @@ disp_show proc
 
 	bsr	disp_ce_low
 
-	mov	v2, v0
+	set	v4, 24
+	bsr	print8
 
-	set	v3, 40
-	set	v4, 120
-	bsr	send40
+	set	v4, 16
+	bsr	print8
 
-	set	v3, 40
-	set	v4, 80
-	bsr	send40
+	set	v4, 8
+	bsr	print8
 
-	set	v3, 40
-	set	v4, 40
-	bsr	send40
-
-	set	v3, 40
 	set	v4, 0
-	bsr	send40
+	bsr	print8
 
 	bsr	disp_ce_high
 
-	pop	v4
-	pop	v3
-	pop	v2
-	pop	v1
-	pop	v0
-	pop	lr
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	ldr	v2, sp, 6
+	ldr	v1, sp, 8
+	ldr	v0, sp, 10
+	ldr	lr, sp, 12
+	add	sp, sp, 12
 	rts
 
-send40	push	lr
-loop	ldrl	v0, v2, v4
-	bsr	sendbyte
+print8	push	lr
+	seth	v2, 0
+	set	v3, 8
+loop	ldrl	v2, v4, v0
+	bsr	putchar
 	add	v4, v4, 1
 	sub	v3, v3, 1
 	bne	loop, v3, 0
 	pop	lr
 	rts
+; v2 - char
+putchar sub	sp, sp, 6
+	str	lr, sp, 6
+	str	v0, sp, 4
+	str	v3, sp, 2
+	set	v3, font-32*5
+putch1	beq	putch2, v2, 0
+	add	v3, v3, 5
+	sub	v2, v2, 1
+	b	putch1
+putch2	set	v2, 5
+putch3	ldr	v0, v3, 0
+	bsr	sendbyte
+	add	v3, v3, 1
+	sub	v2, v2, 1
+	bne	putch3, v2, 0
+	ldr	v3, sp, 2
+	ldr	v0, sp, 4
+	ldr	lr, sp, 6
+	add	sp, sp, 6
+	rts
 	endp
 
 sendbyte proc
-	push	lr
-	push	v0
-	push	v1
-	push	v2
-	push	v3
-	push	v4
+	sub	sp, sp, 12
+	str	lr, sp, 12
+	str	v0, sp, 10
+	str	v1, sp, 8
+	str	v2, sp, 6
+	str	v3, sp, 4
+	str	v4, sp, 2
 
 	set	v2, 8
 	set	v3, $80
@@ -221,107 +228,46 @@ loop	ldrl	v4, v1, 1
 	sub	v2, v2, 1
 	bne	loop, v2, 0
 
-	pop	v4
-	pop	v3
-	pop	v2
-	pop	v1
-	pop	v0
-	pop	lr
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	ldr	v2, sp, 6
+	ldr	v1, sp, 8
+	ldr	v0, sp, 10
+	ldr	lr, sp, 12
+	add	sp, sp, 12
 	rts
 	endp
 
 disp_ce_low proc
-	push	v1
-	push	v4
+	sub	sp, sp, 4
+	str	v1, sp, 4
+	str	v4, sp, 2
 	set	v1, GPIO_ADDR
 	ldrl	v4, v1, 1
 	or	v4, v4, PIN_CE
 	xor	v4, v4, PIN_CE
 	strl	v4, v1, 1
-	pop	v4
-	pop	v1
+	ldr	v4, sp, 2
+	ldr	v1, sp, 4
+	add	sp, sp, 4
 	rts
 	endp
 
 disp_ce_high proc
-	push	v1
-	push	v4
+	sub	sp, sp, 4
+	str	v1, sp, 4
+	str	v4, sp, 2
 	set	v1, GPIO_ADDR
 	ldrl	v4, v1, 1
 	or	v4, v4, PIN_CE
 	strl	v4, v1, 1
-	pop	v4
-	pop	v1
+	ldr	v4, sp, 2
+	ldr	v1, sp, 4
+	add	sp, sp, 4
 	rts
 	endp
 
-printhex proc
-	push	lr
-	push	v0
-	shr	v0, v0, 8
-	bsr	printhex8
-	pop	v0
-	bsr	printhex8
-	pop	lr
-	rts
-	endp
-
-printhex8 proc
-	push	lr
-	push	v0
-	push	v1
-	set	v1, nums
-	seth	v0, 0
-	push	v0
-	shr	v0, v0, 4
-	add	v0, v1, v0
-	ldrl	v0, v0, 0
-	jsr	VEC_PUTCHAR
-	pop	v0
-	and	v0, v0, 15
-	add	v0, v1, v0
-	ldrl	v0, v0, 0
-	jsr	VEC_PUTCHAR
-	pop	v1
-	pop	v0
-	pop	lr
-	rts
-nums	db	'0123456789ABCDEF'
-	endp
-
-font	db	 $FF, $FF, $FF, $FF, $FF	; 00
-	db	 $FF, $FF, $FF, $FF, $FF	; 01
-	db	 $1C, $3E, $7C, $3E, $1C	; 02
-	db	 $FF, $FF, $FF, $FF, $FF	; 03
-	db	 $FF, $FF, $FF, $FF, $FF	; 04
-	db	 $FF, $FF, $FF, $FF, $FF	; 05
-	db	 $FF, $FF, $FF, $FF, $FF	; 06
-	db	 $FF, $FF, $FF, $FF, $FF	; 07
-	db	 $FF, $FF, $FF, $FF, $FF	; 08
-	db	 $FF, $FF, $FF, $FF, $FF	; 09
-	db	 $FF, $FF, $FF, $FF, $FF	; 0A
-	db	 $FF, $FF, $FF, $FF, $FF	; 0B
-	db	 $FF, $FF, $FF, $FF, $FF	; 0C
-	db	 $FF, $FF, $FF, $FF, $FF	; 0D
-	db	 $FF, $FF, $FF, $FF, $FF	; 0E
-	db	 $FF, $FF, $FF, $FF, $FF	; 0F
-	db	 $FF, $FF, $FF, $FF, $FF	; 10
-	db	 $FF, $FF, $FF, $FF, $FF	; 11
-	db	 $FF, $FF, $FF, $FF, $FF	; 12
-	db	 $FF, $FF, $FF, $FF, $FF	; 13
-	db	 $FF, $FF, $FF, $FF, $FF	; 14
-	db	 $FF, $FF, $FF, $FF, $FF	; 15
-	db	 $FF, $FF, $FF, $FF, $FF	; 16
-	db	 $FF, $FF, $FF, $FF, $FF	; 17
-	db	 $FF, $FF, $FF, $FF, $FF	; 18
-	db	 $FF, $FF, $FF, $FF, $FF	; 19
-	db	 $FF, $FF, $FF, $FF, $FF	; 1A
-	db	 $FF, $FF, $FF, $FF, $FF	; 1B
-	db	 $FF, $FF, $FF, $FF, $FF	; 1C
-	db	 $FF, $FF, $FF, $FF, $FF	; 1D
-	db	 $FF, $FF, $FF, $FF, $FF	; 1E
-	db	 $FF, $FF, $FF, $FF, $FF	; 1F
-	db	 $00, $00, $00, $00, $00	; ' '
+font	db	 $00, $00, $00, $00, $00	; ' '
 	db	 $00, $00, $5F, $00, $00	; '!'
 	db	 $00, $07, $00, $07, $00	; '"'
 	db	 $14, $7F, $14, $7F, $14	; '#'

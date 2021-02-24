@@ -12,9 +12,11 @@
 	b	isr		; reserved for external interrupt
 	dw	0		; timer irq
 	dw	0		; superuser irq
+	b	begin
 	b	getchar
 	b	putchar
 	b	printstr
+	b	disp_text
 
 init	set	sp, $07fe
 
@@ -29,7 +31,11 @@ init	set	sp, $07fe
 	shl	v0, v0, 8
 	bsr	sram_load_page
 
-begin	set	v0, banner
+	bsr	disp_start
+
+begin	set	sp, $07fe
+
+	set	v0, banner
 	bsr	printstr
 
 	seth	v1, 0
@@ -233,6 +239,8 @@ sram_load_page proc
 	endp
 
 	include	ramspi.inc
+
+	include display.inc
 
 banner	db	"Z/pdaXrom", 10, 13, 0
 

@@ -234,10 +234,10 @@ sram_cs_high
 	rts
 
 ram_set_gpio
-	sub	sp, sp, 6
-	str	v0, sp, 6
-	str	v1, sp, 4
-	str	v2, sp, 2
+;	sub	sp, sp, 6
+;	str	v0, sp, 6
+;	str	v1, sp, 4
+;	str	v2, sp, 2
 	set	v1, GPIO_ADDR
 	ldrl	v0, v1, 0
 	setl	v2, $ff^(PIN_SCK | PIN_SISIO0 | PIN_SOSIO1)
@@ -250,9 +250,9 @@ ram_set_gpio
 	and	v0, v0, v2
 	or	v0, v0, (PIN_SISIO0 | PIN_SCK | PIN_CS)
 	strl	v0, v1, 2
-	ldr	v2, sp, 2
-	ldr	v1, sp, 4
-	ldr	v0, sp, 6
-	add	sp, sp, 6
+;	ldr	v2, sp, 2
+;	ldr	v1, sp, 4
+;	ldr	v0, sp, 6
+;	add	sp, sp, 6
 	rts
 	endp
