@@ -2,7 +2,21 @@ module demo (
 	input			res,
 	input			rx,
 	output			tx,
-	inout	[14:0]	gpio
+
+	inout	[3:0]	gpio,
+	
+	output			gpio_mosi,
+	input			gpio_miso,
+	output			gpio_msck,
+	output			gpio_mcs,
+	
+	output			gpio_din,
+	output			gpio_ce,
+	output			gpio_clk,
+	output			gpio_rs,
+	output			gpio_blank,
+	output			gpio_reg_latch,
+	input	[3:0]	gpio_key_row
 );
 
 	wire				CLK;
@@ -62,12 +76,23 @@ module demo (
 	gpio gpio1(
 		.clk(CLK),
 		.rst(RESET),
-		.AD(ADDR[1:0]),
+		.AD(ADDR[2:0]),
 		.DI(DO),
 		.DO(GPIO_D),
 		.rw(RW),
 		.cs(GPIO_CS),
-		.gpio(gpio)
+		.gpio(gpio),
+		.gpio_mosi(gpio_mosi),
+		.gpio_miso(gpio_miso),
+		.gpio_msck(gpio_msck),
+		.gpio_mcs(gpio_mcs),
+		.gpio_din(gpio_din),
+		.gpio_ce(gpio_ce),
+		.gpio_clk(gpio_clk),
+		.gpio_rs(gpio_rs),
+		.gpio_blank(gpio_blank),
+		.gpio_reg_latch(gpio_reg_latch),
+		.gpio_key_row(gpio_key_row)
 	);
 
 	wire TIMER_CS = DS7 && (ADDR[4:3] == 2'b10); // $FFF0
