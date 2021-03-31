@@ -27,7 +27,7 @@ module demo (
 			RESET <= 1;
 		end
 	end
-
+	
 //	wire DS0 = (ADDR[15:5] == 11'b11100110000); // $E600
 //	wire DS1 = (ADDR[15:5] == 11'b11100110001); // $E620
 //	wire DS2 = (ADDR[15:5] == 11'b11100110010); // $E640

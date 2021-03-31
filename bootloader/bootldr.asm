@@ -238,7 +238,7 @@ sram_load_page proc
 	rts
 	endp
 
-	include	ramspi.inc
+	include	framspi.inc
 
 	include display.inc
 

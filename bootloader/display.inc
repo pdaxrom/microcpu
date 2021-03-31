@@ -5,14 +5,14 @@
 ; GPIO 1 - CE
 ; GPIO 2 - CLK
 ; GPIO 3 - RS
-; GPIO 4 - RESET
+; GPIO 4 - BLANK
 ;
 
 PIN_DIN		equ	1
 PIN_CE		equ	2
 PIN_CLK		equ	4
 PIN_RS		equ	8
-PIN_RESET	equ	16
+PIN_BLANK	equ	16
 
 disp_start proc
 	push	lr
@@ -22,13 +22,13 @@ disp_start proc
 	ldrl	v0, v1, 1
 	setl	v2, $ff^(PIN_DIN | PIN_CLK | PIN_RS)
 	and	v0, v0, v2
-	setl	v2, (PIN_CE | PIN_RESET)
+	setl	v2, PIN_CE
 	or	v0, v0, v2
 	strl	v0, v1, 1
 
 ; enable output for PIN_DIN, PIN_CE, PIN_CLK, PIN_RS, PIN_RESET
 	ldrl	v0, v1, 3
-	setl	v2, (PIN_DIN | PIN_CE | PIN_CLK | PIN_RS | PIN_RESET)
+	setl	v2, (PIN_DIN | PIN_CE | PIN_CLK | PIN_RS | PIN_BLANK)
 	or	v0, v0, v2
 	strl	v0, v1, 3
 
@@ -70,20 +70,14 @@ disp_init proc
 
 	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
-	setl	v0, (PIN_RS | PIN_RESET | PIN_CE)
+	setl	v0, (PIN_RS | PIN_CE)
 	or	v2, v2, v0
-	strl	v2, v1, 1
-
-	setl	v0, $ff^PIN_RESET
+	setl	v0, $ff^PIN_BLANK
 	and	v2, v2, v0
 	strl	v2, v1, 1
 
 	setl	v0, 40
 	bsr	delay
-
-	setl	v0, PIN_RESET
-	or	v2, v2, v0
-	strl	v2, v1, 1
 
 	setl	v0, $4c		; 0101 1100
 	bsr	disp_cmd
