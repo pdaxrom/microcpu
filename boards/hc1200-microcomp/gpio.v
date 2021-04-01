@@ -3,7 +3,7 @@
 	
 	$00 - KR3 | KR2 | KR1       | KR0   | MCS   | MSCK  | MISO  | MOSI
 	$01 - 0   | 0   | REG_LATCH | BLANK | RS    | CLK   | CE    | DIN
-	$04 - 1   | 1   | 1         | 1     | GPIO3 | GPIO2 | GPIO1 | GPIO 0
+	$04 - 1   | 1   | 1         | 1     | GPIO3 | GPIO2 | GPIO1 | GPIO0
 	$06 - 1   | 1   | 1         | 1     | DIR3  | DIR2  | DIR1  | DIR0
  */
 module gpio (

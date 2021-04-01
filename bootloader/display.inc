@@ -26,12 +26,6 @@ disp_start proc
 	or	v0, v0, v2
 	strl	v0, v1, 1
 
-; enable output for PIN_DIN, PIN_CE, PIN_CLK, PIN_RS, PIN_RESET
-	ldrl	v0, v1, 3
-	setl	v2, (PIN_DIN | PIN_CE | PIN_CLK | PIN_RS | PIN_BLANK)
-	or	v0, v0, v2
-	strl	v0, v1, 3
-
 	set	v0, $2000
 	bsr	delay
 
@@ -45,10 +39,8 @@ disp_start proc
 	endp
 
 ;		 01234567
-textscr	db	"MicroCPU"
-	db	" v 1.0  "
-	db	"Hello, W"
-	db	"orld!!!!"
+textscr	db	"pdaXrom "
+	db	"uCPU 1.0"
 
 	align	2
 
@@ -139,11 +131,11 @@ disp_text proc
 
 	bsr	disp_ce_low
 
-	set	v4, 24
-	bsr	print8
+;	set	v4, 24
+;	bsr	print8
 
-	set	v4, 16
-	bsr	print8
+;	set	v4, 16
+;	bsr	print8
 
 	set	v4, 8
 	bsr	print8

@@ -267,12 +267,6 @@ ram_set_gpio
 	and	v0, v0, v2
 	or	v0, v0, PIN_CS
 	strl	v0, v1, 0
-
-	ldrl	v0, v1, 2
-	setl	v2, $ff^PIN_SOSIO1
-	and	v0, v0, v2
-	or	v0, v0, (PIN_SISIO0 | PIN_SCK | PIN_CS)
-	strl	v0, v1, 2
 ;	ldr	v2, sp, 2
 ;	ldr	v1, sp, 4
 ;	ldr	v0, sp, 6
