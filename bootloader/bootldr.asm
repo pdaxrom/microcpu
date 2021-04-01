@@ -17,6 +17,11 @@
 	b	putchar
 	b	printstr
 	b	disp_text
+	b	0		; disp_char
+	b	0		; get_key
+	b	0		; set_outreg
+	b	0		; get_outreg
+	b	flush_rampages
 
 init	set	sp, $07fe
 
@@ -77,6 +82,7 @@ loop2	ldrl	v0, v3, v4
 break	bsr	putchar		; echo to get sync transfer
 	bne	loop, v1, v2
 	add	sp, sp, 14
+	bsr	flush_rampages
 	b	begin
 	endp
 
@@ -210,6 +216,25 @@ load_d	getp	v1
 
 inter_i	db	'Interrupt', 0
 	align	1
+	endp
+
+flush_rampages proc
+	sub	sp, sp, 6
+	str	lr, sp, 6
+	str	v2, sp, 4
+	str	v0, sp, 2
+	set	v2, MMAP_ADDR
+	ldrl	v0, v2, 0
+	shl	v0, v0, 8
+	bsr	sram_save_page
+	ldrl	v0, v2, 1
+	shl	v0, v0, 8
+	bsr	sram_save_page
+	ldr	v0, sp, 2
+	ldr	v2, sp, 4
+	ldr	lr, sp, 6
+	add	sp, sp, 6
+	rts
 	endp
 
 sram_save_page proc
