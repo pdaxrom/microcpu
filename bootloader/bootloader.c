@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
 	FILE *inf = fopen(argv[3], "rb");
 	if (inf) {
 	    if (argc < 5) {
-		s = 0x400;
+		s = 0x800;
 	    } else {
 		sscanf(argv[4], "%x", &s);
 	    }
@@ -183,6 +183,10 @@ int main(int argc, char *argv[])
 	unsigned char tmp[5] = { 'G', (s >> 8) & 0xff, s & 0xff };
 	write(fd, tmp, 3);
     }
+
+    tcflush(fd, TCIFLUSH);
+
+    close(fd);
 
     tcsetattr(fd, TCSANOW, &tty_old);
 
