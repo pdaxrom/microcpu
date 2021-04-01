@@ -19,8 +19,7 @@
 	b	disp_text
 	b	0		; disp_char
 	b	0		; get_key
-	b	0		; set_outreg
-	b	0		; get_outreg
+	b	set_outreg	; set_outreg
 	b	flush_rampages
 
 init	set	sp, $07fe

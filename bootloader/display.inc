@@ -6,6 +6,7 @@
 ; GPIO 2 - CLK
 ; GPIO 3 - RS
 ; GPIO 4 - BLANK
+; GPIO 5 - REG_LATCH
 ;
 
 PIN_DIN		equ	1
@@ -13,14 +14,15 @@ PIN_CE		equ	2
 PIN_CLK		equ	4
 PIN_RS		equ	8
 PIN_BLANK	equ	16
+PIN_REG_LATCH	equ	32
 
 disp_start proc
 	push	lr
 	set	v1, GPIO_ADDR
 
-; set PIN_CE=1, PIN_RESET=1, PIN_DIN=0, PIN_CLK=0, PIN_RS=0
+; set PIN_CE=1, PIN_BLANK=1, PIN_DIN=0, PIN_CLK=0, PIN_RS=0, PIN_REG_LATCH=0
 	ldrl	v0, v1, 1
-	setl	v2, $ff^(PIN_DIN | PIN_CLK | PIN_RS)
+	setl	v2, $ff^(PIN_DIN | PIN_CLK | PIN_RS | PIN_REG_LATCH)
 	and	v0, v0, v2
 	setl	v2, PIN_CE
 	or	v0, v0, v2
@@ -30,6 +32,9 @@ disp_start proc
 	bsr	delay
 
 	bsr	disp_init
+
+	setl	v0, $ff
+	bsr	set_outreg
 
 	set	v0, textscr
 	bsr	disp_text
@@ -84,11 +89,12 @@ disp_init proc
 	endp
 
 disp_cmd proc
-	sub	sp, sp, 8
-	str	lr, sp, 8
-	str	v1, sp, 6
-	str	v2, sp, 4
-	str	v3, sp, 2
+	sub	sp, sp, 10
+	str	lr, sp, 10
+	str	v1, sp, 8
+	str	v2, sp, 6
+	str	v3, sp, 4
+	str	v4, sp, 2
 
 	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
@@ -106,11 +112,12 @@ loop	bsr	sendbyte
 
 	bsr	disp_ce_high
 
-	ldr	v3, sp, 2
-	ldr	v2, sp, 4
-	ldr	v1, sp, 6
-	ldr	lr, sp, 8
-	add	sp, sp, 8
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	ldr	v2, sp, 6
+	ldr	v1, sp, 8
+	ldr	lr, sp, 10
+	add	sp, sp, 10
 	rts
 	endp
 
@@ -225,31 +232,39 @@ loop	ldrl	v4, v1, 1
 	endp
 
 disp_ce_low proc
-	sub	sp, sp, 4
-	str	v1, sp, 4
-	str	v4, sp, 2
-	set	v1, GPIO_ADDR
 	ldrl	v4, v1, 1
 	or	v4, v4, PIN_CE
 	xor	v4, v4, PIN_CE
 	strl	v4, v1, 1
-	ldr	v4, sp, 2
-	ldr	v1, sp, 4
-	add	sp, sp, 4
 	rts
 	endp
 
 disp_ce_high proc
-	sub	sp, sp, 4
-	str	v1, sp, 4
-	str	v4, sp, 2
-	set	v1, GPIO_ADDR
 	ldrl	v4, v1, 1
 	or	v4, v4, PIN_CE
 	strl	v4, v1, 1
+	rts
+	endp
+
+set_outreg proc
+	sub	sp, sp, 8
+	str	lr, sp, 8
+	str	v1, sp, 6
+	str	v2, sp, 4
+	str	v4, sp, 2
+	set	v1, GPIO_ADDR
+	bsr	sendbyte
+	ldrl	v4, v1, 1
+	setl	v2, PIN_REG_LATCH
+	or	v4, v4, v2
+	strl	v4, v1, 1
+	xor	v4, v4, v2
+	strl	v4, v1, 1
 	ldr	v4, sp, 2
-	ldr	v1, sp, 4
-	add	sp, sp, 4
+	ldr	v2, sp, 4
+	ldr	v1, sp, 6
+	ldr	lr, sp, 8
+	add	sp, sp, 8
 	rts
 	endp
 
