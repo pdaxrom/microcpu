@@ -157,12 +157,13 @@ getchar	proc
 	endp
 
 isr	proc
-;	sub	sp, sp, 14
-	sub	sp, sp, 10
-	str	v0, sp, 8
-	str	v1, sp, 6
-	str	v2, sp, 4
-	str	v3, sp, 2
+	sub	sp, sp, 14
+	str	lr, sp, 12
+	str	v0, sp, 10
+	str	v1, sp, 8
+	str	v2, sp, 6
+	str	v3, sp, 4
+	str	v4, sp, 2
 
 	set	v3, MMAP_ADDR
 	getp	v0
@@ -188,12 +189,13 @@ skip	ldrl	v0, v3, 1
 ;	set	v0, timer_i
 ;	bsr	VEC_PUTSTR
 
-exit	ldr	v3, sp, 2
-	ldr	v2, sp, 4
-	ldr	v1, sp, 6
-	ldr	v0, sp, 8
-	add	sp, sp, 10
-;	add	sp, sp, 14
+exit	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	ldr	v2, sp, 6
+	ldr	v1, sp, 8
+	ldr	v0, sp, 10
+	ldr	lr, sp, 12
+	add	sp, sp, 14
 	swu
 
 load_c	ldrl	v0, v3, 0

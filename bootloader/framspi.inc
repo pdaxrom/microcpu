@@ -181,9 +181,8 @@ writespi
 	str	v4, sp, 2
 
 	set	v2, 8
-
-wloop	set	v3, $80
-	ldrl	v4, v1, 0
+	set	v3, $80
+wloop	ldrl	v4, v1, 0
 	or	v4, v4, PIN_SISIO0
 	mne	v0, v3
 	xor	v4, v4, PIN_SISIO0
@@ -214,7 +213,6 @@ readspi
 	str	v4, sp, 2
 
 	set	v2, 8
-
 rloop	shl	v0, v0, 1
 	ldrl	v4, v1, 0
 	meq	v4, PIN_SOSIO1
