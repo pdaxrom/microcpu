@@ -26,6 +26,10 @@
 	seth	#1, /#2
 	endm
 
+	macro	clr
+	sub	#1, #1, #1
+	endm
+
 	macro	jsr
 	set	lr, #1
 	str	lr, sp, 0
