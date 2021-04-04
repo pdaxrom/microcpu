@@ -1,14 +1,14 @@
 	macro	nop
-	mov	v0,v0
+	mov	v0, v0
 	endm
 
-	macro	bsr
-	mov	lr, pc
-	b	#1
+	macro	set
+	setl	#1, #2
+	seth	#1, /#2
 	endm
 
-	macro	rts
-	add	pc, lr, 3
+	macro	clr
+	sub	#1, #1, #1
 	endm
 
 	macro	push
@@ -21,28 +21,24 @@
 	ldr	#1, sp, 0
 	endm
 
-	macro	set
-	setl	#1, #2
-	seth	#1, /#2
+	macro	bsr
+	mov	lr, pc
+	b	#1
 	endm
 
-	macro	clr
-	sub	#1, #1, #1
+	macro	rts
+	add	pc, lr, 3
 	endm
 
 	macro	jsr
-	set	lr, #1
-	str	lr, sp, 0
-	mov	lr, pc
-	ldr	pc, sp, 0
+	add	lr, pc, 2
+	ldr	pc, pc, 1
+	dw	#1
 	endm
 
-;
-; jmp uses lr
-;
 	macro	jmp
-	set	lr, #1
-	mov	pc, lr
+	ldr	pc, pc, 1
+	dw	#1
 	endm
 
 	macro	beq
