@@ -53,7 +53,8 @@ enum {
 	pseudo_equ,
 	pseudo_proc,
 	pseudo_org,
-	pseudo_include
+	pseudo_include,
+	pseudo_chksum,
 };
 
 typedef struct {
@@ -118,6 +119,7 @@ static OpCode opcode_table[] = {
 		{ "global",pseudo_proc  , 0x0, 0x0  },
 		{ "org"  , pseudo_org   , 0x0, 0x0  },
 		{ "include", pseudo_include, 0x0, 0x0 },
+		{ "chksum", pseudo_chksum, 0x0, 0x0 },
 };
 
 typedef struct Register {
@@ -178,9 +180,12 @@ typedef struct File {
 static char *in_file_path;
 static FILE *in_file;
 
-static int output[65536];
+static unsigned char output[65536];
 static unsigned int start_addr = 0;
 static unsigned int output_addr = 0;
+
+static int use_chksum = 0;
+static unsigned int chksum_addr;
 
 static int src_pass = 1;
 static int src_line = 1;
@@ -1079,6 +1084,14 @@ static int do_asm(FILE *inf, char *line) {
 			if (src_pass == 2) {
 				fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
 			}
+		} else if (opcode && opcode->type == pseudo_chksum) {
+			use_chksum = 1;
+			chksum_addr = output_addr;
+			output[output_addr++] = 0;
+			output[output_addr++] = 0;
+			if (src_pass == 2) {
+				fprintf(stderr, "%04X: 0000 \t%s\n", output_addr - 2, line);
+			}
 		} else if (opcode) {
 			unsigned int old_addr = output_addr;
 			Register *reg;
@@ -1370,6 +1383,18 @@ void output_binary(FILE *outf) {
 	}
 }
 
+void calculate_chksum()
+{
+	unsigned short chksum = 0;
+	for (unsigned int i = start_addr; i < output_addr; i += 2) {
+	    unsigned short tmp = (output[i + 1] << 8) | output[i];
+	    chksum += tmp;
+	}
+	chksum ^= 0xffff;
+	output[chksum_addr    ] = chksum & 0xff;
+	output[chksum_addr + 1] = chksum >> 8;
+}
+
 static char *get_error_string(int error) {
     switch(error) {
     case NO_MEMORY_FOR_LABEL:	return "No memory for labels";
@@ -1512,6 +1537,10 @@ int main(int argc, char *argv[]) {
 			} while(files);
 
 			relink_refs();
+
+			if (use_chksum) {
+				calculate_chksum();
+			}
 
 			fprintf(stderr, "\nConstants:\n");
 			dump_labels(equs);
