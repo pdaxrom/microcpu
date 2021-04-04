@@ -22,16 +22,16 @@
 	endm
 
 	macro	bsr
-	mov	lr, pc
+	add	lr, pc, 3
 	b	#1
 	endm
 
 	macro	rts
-	add	pc, lr, 3
+	mov	pc, lr
 	endm
 
 	macro	jsr
-	add	lr, pc, 2
+	add	lr, pc, 5
 	ldr	pc, pc, 1
 	dw	#1
 	endm

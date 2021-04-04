@@ -116,7 +116,7 @@ get_word proc
 	mov	v3, v0
 	bsr	getchar
 	movh	v0, v3
-	add	pc, v4, 3
+	mov	pc, v4
 	endp
 
 printstr proc
