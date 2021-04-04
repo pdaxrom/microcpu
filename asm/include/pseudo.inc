@@ -103,12 +103,12 @@
 	b	#1		; >=
 	endm
 
-	macro	maskeq
-	mne	#2, #3
+	macro	bitne
+	bts	#2, #3
 	b	#1
 	endm
 
-	macro	maskne
-	meq	#2, #3
+	macro	biteq
+	btc	#2, #3
 	b	#1
 	endm

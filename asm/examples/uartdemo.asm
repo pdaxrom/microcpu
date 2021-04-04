@@ -65,7 +65,7 @@ timeloop ldr	v0, v1, 0
 	bsr	VEC_PUTSTR
 
 	ldrl	v0, v1, 2
-	maskeq	timeloop, v0, 2
+	bitne	timeloop, v0, 2
 
 	bsr	printhex
 

@@ -207,7 +207,7 @@ sendbyte proc
 	set	v3, $80
 loop	ldrl	v4, v1, 1
 	or	v4, v4, PIN_DIN
-	mne	v0, v3
+	bts	v0, v3
 	xor	v4, v4, PIN_DIN
 	strl	v4, v1, 1
 

@@ -91,8 +91,8 @@ static OpCode opcode_table[] = {
 		{ "ltu"  , op_ext_reg_reg   , 0x01, 0x6  },
 		{ "geu"  , op_ext_reg_reg   , 0x01, 0x7  },
 
-		{ "meq"  , op_ext_reg_reg   , 0x03, 0x0  },
-		{ "mne"  , op_ext_reg_reg   , 0x03, 0x1  },
+		{ "btc"  , op_ext_reg_reg   , 0x03, 0x0  },
+		{ "bts"  , op_ext_reg_reg   , 0x03, 0x1  },
 
 		{ "sxt"  , op_reg_reg      , 0x09, 0x0  },
 

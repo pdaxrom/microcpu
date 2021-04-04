@@ -184,7 +184,7 @@ writespi
 	set	v3, $80
 wloop	ldrl	v4, v1, 0
 	or	v4, v4, PIN_SISIO0
-	mne	v0, v3
+	bts	v0, v3
 	xor	v4, v4, PIN_SISIO0
 	strl	v4, v1, 0
 
@@ -215,7 +215,7 @@ readspi
 	set	v2, 8
 rloop	shl	v0, v0, 1
 	ldrl	v4, v1, 0
-	meq	v4, PIN_SOSIO1
+	btc	v4, PIN_SOSIO1
 	or	v0, v0, 1
 
 	or	v4, v4, PIN_SCK

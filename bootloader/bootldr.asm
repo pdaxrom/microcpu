@@ -27,13 +27,20 @@ init	set	sp, $07fe
 	bsr	ram_init
 
 ; load initial mapped pages from sram
-	set	v2, MMAP_ADDR
-	ldrl	v0, v2, 0
-	shl	v0, v0, 8
+	set	v3, MMAP_ADDR
+
+	setl	v2, $08
+	strl	v2, v3, 0	; Init SRAM1 page
+	shl	v0, v2, 8
 	bsr	sram_load_page
-	ldrl	v0, v2, 1
-	shl	v0, v0, 8
+	strl	v2, v3, 0	; reset dirty flag
+
+	setl	v2, $10
+	strl	v2, v3, 1	; Init SRAM2 page
+	shl	v0, v2, 8
 	bsr	sram_load_page
+	strl	v2, v3, 1	; reset dirty flag
+;
 
 	bsr	disp_start
 
@@ -137,7 +144,7 @@ putchar	proc
 	str	v2, sp, 0
 	set	v1, UART_ADDR
 .1	ldrl	v2, v1, 0
-	maskne	.1, v2, 2
+	biteq	.1, v2, 2
 	strl	v0, v1, 1
 	ldr	v2, sp, 0
 	ldr	v1, sp, 2
@@ -150,7 +157,7 @@ getchar	proc
 	set	v1, UART_ADDR
 	seth	v0, 0
 .1	ldrl	v0, v1, 0
-	maskeq	.1, v0, 1
+	bitne	.1, v0, 1
 	ldrl	v0, v1, 1
 	ldr	v1, sp, 0
 	rts
@@ -178,6 +185,7 @@ isr	proc
 	beq	load_c, v0, v2		; load code page if mem violation and interrupt pages the same
 
 skip	ldrl	v0, v3, 1
+	and	v0, v0, v1
 	bne	load_d, v0, v2
 
 	set	v0, inter_i
@@ -185,7 +193,7 @@ skip	ldrl	v0, v3, 1
 
 ;	set	v1, TIMER_ADDR
 ;	ldrl	v0, v1, 2	; reset timer interrupt flag
-;	maskeq	next, v0, 1
+;	bitne	next, v0, 1
 ;	set	v0, timer_i
 ;	bsr	VEC_PUTSTR
 
@@ -199,20 +207,28 @@ exit	ldr	v4, sp, 2
 	swu
 
 load_c	ldrl	v0, v3, 0
-	shl	v0, v0, 8
+	bitne	load_c1, v0, 1	; no dirty flag, load only
+	shr	v0, v0, 1
+	shl	v0, v0, 9
 	bsr	sram_save_page
-	strl	v2, v3, 0
+load_c1	strl	v2, v3, 0
 	shl	v0, v2, 8
 	bsr	sram_load_page
+	strl	v2, v3, 0	; reset dirty page flag after memory load
 	b	exit
+
 load_d	getp	v1
 	sub	v1, v1, 2
 	setp	v1
-	shl	v0, v0, 8
+	ldrl	v0, v3, 1
+	bitne	load_d1, v0, 1	; no dirty flag, load only
+	shr	v0, v0, 1
+	shl	v0, v0, 9
 	bsr	sram_save_page
-	strl	v2, v3, 1
+load_d1	strl	v2, v3, 1
 	shl	v0, v2, 8
 	bsr	sram_load_page
+	strl	v2, v3, 1	; reset dirty page flag after memory load
 	b	exit
 
 inter_i	db	'Interrupt', 0
@@ -220,21 +236,30 @@ inter_i	db	'Interrupt', 0
 	endp
 
 flush_rampages proc
-	sub	sp, sp, 6
-	str	lr, sp, 6
+	sub	sp, sp, 8
+	str	lr, sp, 8
+	str	v3, sp, 6
 	str	v2, sp, 4
 	str	v0, sp, 2
-	set	v2, MMAP_ADDR
-	ldrl	v0, v2, 0
-	shl	v0, v0, 8
+	set	v3, MMAP_ADDR
+
+	ldrl	v2, v3, 0
+	shr	v0, v2, 1
+	shl	v0, v0, 9
 	bsr	sram_save_page
-	ldrl	v0, v2, 1
-	shl	v0, v0, 8
+	strl	v2, v3, 0	; reset dirty page flag
+
+	ldrl	v2, v3, 1
+	shr	v0, v2, 1
+	shl	v0, v0, 9
 	bsr	sram_save_page
+	strl	v2, v3, 1	; reset dirty page flag
+
 	ldr	v0, sp, 2
 	ldr	v2, sp, 4
-	ldr	lr, sp, 6
-	add	sp, sp, 6
+	ldr	v3, sp, 6
+	ldr	lr, sp, 8
+	add	sp, sp, 8
 	rts
 	endp
 
@@ -264,10 +289,11 @@ sram_load_page proc
 	rts
 	endp
 
+banner	db	"Z/pdaXrom", 10, 13, 0
+	align	1
+
 	include	framspi.inc
 
 	include display.inc
-
-banner	db	"Z/pdaXrom", 10, 13, 0
 
 	ds	$800-*

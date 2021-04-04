@@ -128,7 +128,7 @@ module demo (
 	reg [9:0] MEM_pages;
 	wire SRAM2_CS = (ADDR[15:11] == MEM_pages[9:5]);
 	wire SRAM1_CS = (ADDR[15:11] == MEM_pages[4:0]);
-	wire SRAMP_EN = ((SRAM2_CS | SRAM1_CS) && !SRAM_CS);
+	wire SRAMP_EN = (SRAM2_CS | SRAM1_CS);
 	wire [7:0] SRAMP_D;
 	srampages srampages(
 		.Clock(CLK),
@@ -142,10 +142,14 @@ module demo (
 
 	wire MEMMAP_CS = DS7 && (ADDR[4:3] == 2'b11); // $FFF8
 	wire MEMMAP_EN = MEMMAP_CS;
+	wire SRAM1_wr = (SRAM1_CS && ~RW);
+	wire SRAM2_wr = (SRAM2_CS && ~RW);
+	reg  SRAM1_dirty;
+	reg  SRAM2_dirty;
 	reg  [4:0] MEM_addr;
 	wire [7:0] MEMMAP_D = ADDR[1] ? {MEM_addr[4:0], 3'b000} :
-							ADDR[0] ? { MEM_pages[9:5], 3'b000} :
-							{MEM_pages[4:0], 3'b000};
+							ADDR[0] ? { MEM_pages[9:5], 2'b00, SRAM2_dirty} :
+							{MEM_pages[4:0], 2'b00, SRAM1_dirty};
 	
 	reg intr_memmap; // = ~(SRAM_EN | SRAMP_EN | DS7);
 
@@ -155,19 +159,21 @@ module demo (
 			MEM_addr <= 0;
 			intr_memmap <= 0;
 		end else if (MEMMAP_CS && ~RW) begin
-			if (ADDR[0]) MEM_pages[9:5] <= DO[7:3];
-			else MEM_pages[4:0] <= DO[7:3];
+			if (ADDR[0]) begin
+				MEM_pages[9:5] <= DO[7:3];
+				SRAM2_dirty <= 0;
+			end else begin
+				MEM_pages[4:0] <= DO[7:3];
+				SRAM1_dirty <= 0;
+			end
 			intr_memmap <= 0;
 		end else if (~(SRAM_EN | SRAMP_EN | DS7)) begin
 			intr_memmap <= 1;
 			MEM_addr <= ADDR[15:11];
 		end
+		if (SRAM1_wr) SRAM1_dirty <= 1;
+		if (SRAM2_wr) SRAM2_dirty <= 1;
 	end
-
-//	always @(posedge CLK) begin
-//		if (RESET) MEM_addr <= 0;
-//		else if (intr_memmap) MEM_addr <= ADDR[15:11];
-//	end	
 
 	assign DI = UART_EN ? UART_D :
 				GPIO_EN ? GPIO_D :

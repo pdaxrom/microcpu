@@ -22,7 +22,7 @@ printnum:
 	set	v1, $ffe0
 printnum1:
 	ldrl	v2, v1, 0
-	maskne	printnum1, v2, 2
+	biteq	printnum1, v2, 2
 printnum2:
 	strl	v0, v1, 1
 	pop	v2
