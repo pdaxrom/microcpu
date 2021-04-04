@@ -13,14 +13,10 @@
 	dw	0		; timer irq
 	dw	0		; superuser irq
 	b	begin
+	b	flush_rampages
 	b	getchar
 	b	putchar
 	b	printstr
-	b	disp_text
-	b	0		; disp_char
-	b	0		; get_key
-	b	set_outreg	; set_outreg
-	b	flush_rampages
 
 init	set	sp, $07fe
 
@@ -42,10 +38,30 @@ init	set	sp, $07fe
 	strl	v2, v3, 1	; reset dirty flag
 ;
 
-	bsr	disp_start
-
 begin	set	sp, $07fe
 
+	clr	v2
+	set	v1, UART_ADDR
+	seth	v0, 0
+bootch1	ldrl	v0, v1, 0
+	biteq	bootch2, v0, 1
+	sub	v2, v2, 1
+	beq	modchk, v2, 0
+	b	bootch1
+bootch2	ldrl	v0, v1, 1
+	setl	v2, 'z'
+	bne	modchk, v0, v2
+	setl	v0, 'Z'
+	bsr	putchar
+	b	bootld
+
+modchk	set	v1, $f000
+modchk1	bsr	check_module
+	set	v0, $800
+	sub	v1, v1, v0
+	bne	modchk1, v1, 0
+
+bootld	set	sp, $07fe
 	set	v0, banner
 	bsr	printstr
 
@@ -89,7 +105,7 @@ break	bsr	putchar		; echo to get sync transfer
 	bne	loop, v1, v2
 	add	sp, sp, 14
 	bsr	flush_rampages
-	b	begin
+	b	bootld
 	endp
 
 cmd_save proc
@@ -102,7 +118,7 @@ loop	ldrl	v0, v1, 0
 	bsr	putchar
 	add	v1, v1, 1
 	bne	loop, v1, v2
-	b	begin
+	b	bootld
 	endp
 
 cmd_go	proc
@@ -160,6 +176,47 @@ getchar	proc
 	bitne	.1, v0, 1
 	ldrl	v0, v1, 1
 	ldr	v1, sp, 0
+	rts
+	endp
+
+check_module proc
+	sub	sp, sp, 4
+	str	lr, sp, 4
+	str	v1, sp, 2
+	mov	v4, v1
+	ldr	v1, v4, 0
+	set	v2, $5aa5
+	bne	exit, v1, v2
+	mov	v0, v4
+	ldr	v1, v4, 2
+	bsr	calc_chksum
+	inv	v0, v0
+	bne	exit, v0, 0
+	ldr	v0, v4, 4
+	bsr	printstr
+	set	v0, nl
+	bsr	printstr
+	set	lr, exit
+	add	pc, v4, 8
+exit	ldr	v1, sp, 2
+	ldr	lr, sp, 4
+	add	sp, sp, 4
+	rts
+	endp
+
+calc_chksum proc
+	sub	sp, sp, 4
+	str	v2, sp, 4
+	str	v3, sp, 2
+	clr	v2
+loop	ldr	v3, v0, 0
+	add	v2, v2, v3
+	add	v0, v0, 2
+	bne	loop, v0, v1
+	mov	v0, v2
+	ldr	v3, sp, 2
+	ldr	v2, sp, 4
+	add	sp, sp, 4
 	rts
 	endp
 
@@ -289,11 +346,10 @@ sram_load_page proc
 	rts
 	endp
 
-banner	db	"Z/pdaXrom", 10, 13, 0
+banner	db	"Z/pdaXrom"
+nl	db	10, 13, 0
 	align	1
 
 	include	framspi.inc
-
-	include display.inc
 
 	ds	$800-*

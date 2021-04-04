@@ -16,7 +16,27 @@ PIN_RS		equ	8
 PIN_BLANK	equ	16
 PIN_REG_LATCH	equ	32
 
-disp_start proc
+	include ../include/pseudo.inc
+	include ../include/devmap.inc
+
+	org	$f000
+
+begin	dw	$5aa5		; module header
+	dw	end		; length
+	dw	modname		; module name
+	dw	$0000		; module version
+	b	modinit
+	b	set_outreg
+	dw	0		; disp_putchar
+	b	disp_getkey	; disp_getkey
+	b	disp_puttext
+	dw	0		; disp_getstring
+
+modname	db	'Display & keys', 0
+
+	align	1
+
+modinit	proc
 	push	lr
 	set	v1, GPIO_ADDR
 
@@ -37,7 +57,7 @@ disp_start proc
 	bsr	set_outreg
 
 	set	v0, textscr
-	bsr	disp_text
+	bsr	disp_puttext
 
 	pop	lr
 	rts
@@ -45,9 +65,9 @@ disp_start proc
 
 ;		 01234567
 textscr	db	"pdaXrom "
-	db	"uCPU 1.0"
+	db	"uCPU 1.1"
 
-	align	2
+	align	1
 
 delay	proc
 	push	v0
@@ -59,12 +79,6 @@ loop	sub	v0, v0, 1
 
 disp_init proc
 	push	lr
-;	sub	sp, sp, 8
-;	str	lr, sp, 8
-;	str	v0, sp, 6
-;	str	v1, sp, 4
-;	str	v2, sp, 2
-
 	set	v1, GPIO_ADDR
 	ldrl	v2, v1, 1
 	setl	v0, (PIN_RS | PIN_CE)
@@ -78,12 +92,6 @@ disp_init proc
 
 	setl	v0, $4c		; 0101 1100
 	bsr	disp_cmd
-
-;	ldr	v2, sp, 2
-;	ldr	v1, sp, 4
-;	ldr	v0, sp, 6
-;	ldr	lr, sp, 8
-;	add	sp, sp, 8
 	pop	lr
 	rts
 	endp
@@ -121,7 +129,7 @@ loop	bsr	sendbyte
 	rts
 	endp
 
-disp_text proc
+disp_puttext proc
 	sub	sp, sp, 12
 	str	lr, sp, 12
 	str	v0, sp, 10
@@ -267,6 +275,52 @@ set_outreg proc
 	rts
 	endp
 
+disp_getkey proc
+	sub	sp, sp, 10
+	str	lr, sp, 10
+	str	v1, sp, 8
+	str	v2, sp, 6
+	str	v3, sp, 4
+	str	v4, sp, 2
+	seth	v0, 0
+	mov	v4, v0
+	clr	v2
+	set	v3, 8
+	set	v1, GPIO_ADDR
+loop	mov	v0, v3
+	or	v0, v0, v4
+	bsr	set_outreg
+	ldrl	v0, v1, 0
+	shr	v0, v0, 4
+	bne	key, v0, 0
+	add	v2, v2, 4
+	shl	v3, v3, 1
+	seth	v3, 0
+	bne	loop, v3, 0
+	clr	v0
+exit	set	v1, kmap
+	ldrl	v0, v1, v0
+	ldr	v4, sp, 2
+	ldr	v3, sp, 4
+	ldr	v2, sp, 6
+	ldr	v1, sp, 8
+	ldr	lr, sp, 10
+	add	sp, sp, 10
+	rts
+key	add	v2, v2, 1
+	shr	v0, v0, 1
+	bne	key, v0, 0
+	mov	v0, v2
+	b	exit
+kmap	db	$ff
+	db	$00, $01, $04, $07
+	db	$0a, $02, $05, $08
+	db	$0b, $03, $06, $09
+	db	$0f, $0e, $0d, $0c
+	db	$10, $11, $12, $13
+	align	1
+	endp
+
 font	db	 $00, $00, $00, $00, $00	; ' '
 	db	 $00, $00, $5F, $00, $00	; '!'
 	db	 $00, $07, $00, $07, $00	; '"'
@@ -363,3 +417,7 @@ font	db	 $00, $00, $00, $00, $00	; ' '
 	db	 $00, $41, $36, $08, $00	; '}'
 	db	 $08, $08, $2A, $1C, $08	; '~'
 	db	 $08, $1C, $2A, $08, $08	; ' '
+
+	align	1
+	chksum
+end
