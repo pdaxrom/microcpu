@@ -285,14 +285,14 @@ By default, the output file is hex file.
 
 ## Bootloader
 
-The bootloader is using to load code and data into RAM, read memory and run the code .
+The bootloader is using to load code and data into RAM, save memory from RAM and run the code .
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
 ### Bootloader options
 
 * `bootloader <uart port> load <file.bin> [<start address> [<end address>]]`
-* `bootloader <uart port> load <file.bin> <start address> <end address>`
+* `bootloader <uart port> save <file.bin> <start address> <end address>`
 * `bootloader <uart port> go [<address>]`
 
 **load** - load a binary file to RAM
