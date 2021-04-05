@@ -1,12 +1,12 @@
 	include ../include/pseudo.inc
 	include ../include/devmap.inc
 
-	org	$400
+	org	$800
 
 main	set	sp, $07fe
 
 	set	v0, banner
-	bsr	VEC_PUTSTR
+	jsr	VEC_PUTSTR
 
 ;	set	v0, sysiniv
 ;	ldr	v1, v0, 0
@@ -24,7 +24,7 @@ main	set	sp, $07fe
 
 mainloop proc
 	set	v0, prompt
-	bsr	VEC_PUTSTR
+	jsr	VEC_PUTSTR
 	set	v1, lastch
 	bsr	gethex
 	str	v0, v1, 2
@@ -34,7 +34,7 @@ mainloop proc
 	bsr	gethex
 	str	v0, v1, 4
 action	set	v0, nl
-	bsr	VEC_PUTSTR
+	jsr	VEC_PUTSTR
 	ldr	v0, v1, 0
 	setl	v2, 'X'
 	beq	hexdump, v0, v2
@@ -51,12 +51,12 @@ setmem	proc
 	ldr	v2, v1, 2
 
 	set	v0, nl
-	bsr	VEC_PUTSTR
+	jsr	VEC_PUTSTR
 
 loop	mov	v0, v2
 	bsr	printhex
 	setl	v0, ' '
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	bsr	gethex
 	set	v1, lastch
 	ldr	v1, v1, 0
@@ -65,7 +65,7 @@ loop	mov	v0, v2
 	strl	v0, v2, 0
 	add	v2, v2, 1
 	set	v0, nl
-	bsr	VEC_PUTSTR
+	jsr	VEC_PUTSTR
 	b	loop
 exit	b	mainloop
 	endp
@@ -81,18 +81,18 @@ hexdump	proc
 dump1	mov	v0, v1
 	bsr	printhex
 	setl	v0, ' '
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	set	v3, 16
 dump2	ldrl	v0, v1, 0
 	bsr	printhex8
 	setl	v0, ' '
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	add	v1, v1, 1
 	beq	dump3, v1, v2
 	sub	v3, v3, 1
 	bne	dump2, v3, 0
 	set	v0, nl
-	bsr	VEC_PUTSTR
+	jsr	VEC_PUTSTR
 	b	dump1
 dump3	b	mainloop
 	endp
@@ -104,7 +104,7 @@ chrdump	proc
 dump1	mov	v0, v1
 	bsr	printhex
 	setl	v0, ' '
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	set	v3, 16
 	seth	v0, 0
 dump2	ldrl	v0, v1, 0
@@ -113,15 +113,15 @@ dump2	ldrl	v0, v1, 0
 	setl	v4, $80
 	ltu	v0, v4
 dot	setl	v0, '.'
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	setl	v0, ' '
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	add	v1, v1, 1
 	beq	dump3, v1, v2
 	sub	v3, v3, 1
 	bne	dump2, v3, 0
 	set	v0, nl
-	bsr	VEC_PUTSTR
+	jsr	VEC_PUTSTR
 	b	dump1
 dump3	b	mainloop
 	endp
@@ -147,12 +147,12 @@ printhex8 proc
 	shr	v0, v0, 4
 	add	v0, v1, v0
 	ldrl	v0, v0, 0
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	pop	v0
 	and	v0, v0, 15
 	add	v0, v1, v0
 	ldrl	v0, v0, 0
-	bsr	VEC_PUTCHAR
+	jsr	VEC_PUTCHAR
 	pop	v1
 	pop	v0
 	pop	lr
@@ -169,8 +169,8 @@ gethex	proc
 	sub	v3, v3, v3
 	seth	v0, 0
 	set	v1, lastch
-loop	bsr	VEC_GETCHAR
-	bsr	VEC_PUTCHAR
+loop	jsr	VEC_GETCHAR
+	jsr	VEC_PUTCHAR
 	str	v0, v1, 0
 	set	v2, '0'
 	sub	v0, v0, v2
