@@ -85,9 +85,10 @@ The loader contains the following subroutines:
 Address | Description
 -|-
 `$0000`|RESET
-`$0008`|Get char from UART to register V0
-`$000A`|Put char to UART from register V0
-`$000C`|Put string to UART (V0 is pointer to null-terminated string)
+`$0008`|WARM UP
+`$000C`|Get char from UART to register V0
+`$000E`|Put char to UART from register V0
+`$0010`|Put string to UART (V0 is pointer to null-terminated string)
 
 [Top](#microcontroller-with-lattice-machxo2-1200-microboard)
 
