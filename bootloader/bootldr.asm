@@ -1,6 +1,6 @@
 ;
 ; BOOTROM for microcpu
-; (c) sashz <sashz@pdaXrom.org>, 2020
+; (c) sashz <sashz@pdaXrom.org>, 2020-2021
 ;
 
 	include ../asm/include/pseudo.inc

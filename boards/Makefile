@@ -16,11 +16,19 @@ SCUBA = \
 	$(SCUBACMD)
 endif
 
-all: hc1200/sram.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v
+all: hc1200/sram.v hc1200-mcu/sram.v hc1200-mcu/srampages.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v
 
-hc1200/sram.v: sram.mem
+hc1200/sram.v: sram-mcu.mem
 	cd hc1200 && \
-	$(SCUBA) -w -n sram -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 11 -data_width 8 -num_words 2048 -cascade -11 -memfile ../sram.mem -memformat orca -writemode NORMAL
+	$(SCUBA) -w -n sram -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 11 -data_width 8 -num_words 2048 -cascade -11 -memfile ../sram-mcu.mem -memformat orca -writemode NORMAL
+
+hc1200-mcu/sram.v: sram-mcu.mem
+	cd hc1200-mcu && \
+	$(SCUBA) -w -n sram -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 11 -data_width 8 -num_words 2048 -cascade -11 -memfile ../sram-mcu.mem -memformat orca -writemode NORMAL
+
+hc1200-mcu/srampages.v:
+	cd hc1200-mcu && \
+	$(SCUBA) -w -n srampages -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 12 -data_width 8 -num_words 4096 -cascade -1 -meminit0 -writemode NORMAL
 
 hc1200-microcomp/sram.v: sram.mem
 	cd hc1200-microcomp && \
@@ -31,4 +39,4 @@ hc1200-microcomp/srampages.v:
 	$(SCUBA) -w -n srampages -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 12 -data_width 8 -num_words 4096 -cascade -1 -meminit0 -writemode NORMAL
 
 clean:
-	rm -f *.mem hc1200/sram.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v
+	rm -f *.mem hc1200/sram.v hc1200-mcu/sram.v hc1200-mcu/srampages.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v
