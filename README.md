@@ -1,4 +1,4 @@
-(c) 2020 sashz <sashz@pdaXrom.org>
+(c) sashz <sashz@pdaXrom.org>, 2020-2021
 
 [GitHub project page](https://github.com/pdaxrom/microcpu)
 
