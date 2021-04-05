@@ -77,7 +77,7 @@ $FFF8|SRAM page 1
 $FFF9|SRAM page 2
 $FFFA|Memory violation page
 
-The registers use bits 7: 3, which corresponds to bits 15:11 of the address space.
+The registers use bits 7: 3, which corresponds to bits 15:11 of the address space. The SRAM page registers also use bit 0 as flag for changed pages (write to the register to reset the flag).
 
 [Top](#microcomputer-with-lattice-machxo2-1200)
 
