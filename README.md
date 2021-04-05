@@ -139,8 +139,8 @@ Instruction | | Description
 `GE  <arg1>,<arg2>`|`PC = PC + (<arg1> >= <arg2>) ? 2 : 0` |Skip next command if arg1 is greater then arg2 or equal (signed)
 `LTU <arg1>,<arg2>`|`PC = PC + (<arg1> <  <arg2>) ? 2 : 0` |Skip next command if arg1 is less than arg2 (unsigned)
 `GEU <arg1>,<arg2>`|`PC = PC + (<arg1> >= <arg2>) ? 2 : 0` |Skip next command if arg1 is greater then arg2 or equal (unsigned)
-`MEQ <arg1>,<arg2>`|`PC = PC + (<arg1> &  <arg2>) ? 2 : 0` |Skip next command if arg1 AND arg2 result is zero
-`MNE <arg1>,<arg2>`|`PC = PC + (<arg1> &  <arg2>) ? 2 : 0` |Skip next command if arg1 AND arg2 result is not zero
+`BTC <arg1>,<arg2>`|`PC = PC + (<arg1> &  <arg2>) ? 2 : 0` |Skip next command if arg1 AND arg2 result is zero
+`BTS <arg1>,<arg2>`|`PC = PC + (<arg1> &  <arg2>) ? 2 : 0` |Skip next command if arg1 AND arg2 result is not zero
 
 Examples:
 ```
@@ -205,6 +205,7 @@ Directive | Description
 `ALIGN <imm>`|Align address to num bits
 `ORG <imm16>`|Set location address counter
 `INCLUDE <file name>`|Include external source file
+`CHKSUM`|Insert constant word to binary to sum all words as $FFFF
 
 Examples:
 ```
