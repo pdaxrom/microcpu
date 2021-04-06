@@ -17,7 +17,7 @@
 
 The system uses a [microcomp board](https://github.com/pdaxrom/microcpu/tree/master/hw)
 
-<img src="microfpga.jpg" width="480" />
+<img src="microcomp-hw.jpg" width="480" />
 
 Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The default configuration includes 2KB of permanent RAM, pre-initialized with [bootloader](#bootloader) code and 2 RAM mapper pages.
 
