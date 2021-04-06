@@ -15,11 +15,11 @@
 
 ## Board
 
-The system uses a [microfpga board](https://github.com/pdaxrom/microfpga-demo)
+The system uses a [microcomp board](https://github.com/pdaxrom/microcpu/tree/master/hw)
 
-<img src="microfpga.jpg" width="320" />
+<img src="microfpga.jpg" width="480" />
 
-Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The default configuration includes 2KB of RAM, pre-initialized with [bootloader](#bootloader) code.
+Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The default configuration includes 2KB of permanent RAM, pre-initialized with [bootloader](#bootloader) code and 2 RAM mapper pages.
 
 [Top](#microcomputer-with-lattice-machxo2-1200)
 
@@ -41,14 +41,26 @@ Status bit | Description
 
 ### GPIO
 
-I/O port uses 15 bits (maximum available pins for this board).
+I/O port uses 4 bits (maximum available pins for this board).
 
 Address | Description
 -|-
-$FFE8|I/O bits 14..8
-$FFE9|I/O bits 7..0
-$FFEA|Direction bits 14..8
-$FFEB|Direction bits 7..0
+$FFE8|Keyboard row and SPI RAM
+$FFE9|Display and output register
+$FFEC|I/O bits 3..0
+$FFED|Direction bits 3..0
+
+Keyboard row and SPI RAM
+
+7|6|5|4|3|2|1|0
+-|-|-|-|-|-|-|-|
+KR3|KR2|KR1|KR0|MCS|MSCK|MISO|MOSI
+
+Display and output register
+
+7|6|5|4|3|2|1|0
+-|-|-|-|-|-|-|-|
+0|0|REG_LATCH|BLANK|RS|CLK|CE|DIN
 
 Direction bits 1 - output, 0 - input. By default, all bits are input.
 
@@ -83,7 +95,8 @@ The registers use bits 7: 3, which corresponds to bits 15:11 of the address spac
 
 ## Bootloader
 
-The UART bootloader uses 256 bytes of memory (from address 0) and allows you to load, save, and execute code.
+The UART bootloader allows you to load, save, and execute code.
+By default, the loader scans memory pages for executables and runs them. At startup, the bootloader checks the data coming to the serial port, if the character code "z" is received, the response "Z" is sent and serial mode starts
 
 Bootloader commands:
 
