@@ -19,7 +19,7 @@ The system uses a [microcomp board](https://github.com/pdaxrom/microcpu/tree/mas
 
 <img src="microcomp-hw.jpg" width="480" />
 
-Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The default configuration includes 2KB of permanent RAM, pre-initialized with [bootloader](#bootloader) code and 2 RAM mapper pages.
+Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The default configuration includes 2KB of permanent RAM, pre-initialized with [bootloader](#bootloader) code and 2x2KB RAM mapper pages.
 
 [Top](#microcomputer-with-lattice-machxo2-1200)
 
