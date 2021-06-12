@@ -30,7 +30,8 @@ begin	dw	$5aa5		; module header
 	b	disp_putchar	; disp_putchar
 	b	disp_getkey	; disp_getkey
 	b	disp_showtextbuf
-	dw	0		; disp_getstring
+	b	disp_putstring	;
+	b	disp_getstring	; disp_getstring
 
 modname	db	'Display & keys', 0
 
@@ -130,11 +131,12 @@ loop	bsr	sendbyte
 	endp
 
 disp_putchar proc
-	push	lr
-	push	v0
-	push	v1
-	push	v2
-	push	v3
+	sub	sp, sp, 8
+	str	lr, sp, 8
+	str	v0, sp, 6
+	str	v1, sp, 4
+	str	v2, sp, 2
+	str	v3, sp, 0
 
 	seth	v0, 0
 	seth	v1, 0
@@ -160,11 +162,12 @@ exitupd mov	v0, v2
 	add	v0, v0, v1
 exitupd1 bsr	disp_showtextbuf
 
-exit	pop	v3
-	pop	v2
-	pop	v1
-	pop	v0
-	pop	lr
+exit	ldr	v3, sp, 0
+	ldr	v2, sp, 2
+	ldr	v1, sp, 4
+	ldr	v0, sp, 6
+	ldr	lr, sp, 8
+	add	sp, sp, 8
 	rts
 
 clrscr	set	v2, textbuf
@@ -195,6 +198,31 @@ ctrlchr	db	$0a
 	dw	delete
 	db	0
 	align	1
+	endp
+
+disp_putstring proc
+	push	lr
+	push	v0
+	push	v1
+	mov	v1, v0
+	clr	v0
+loop	ldrl	v0, v1, 0
+	beq	exit, v0, 0
+	bsr	disp_putchar
+	inc	v1
+	b	loop
+exit	pop	v1
+	pop	v0
+	pop	lr
+	rts
+	endp
+
+disp_getstring proc
+	push	lr
+
+
+	pop	lr
+	rts
 	endp
 
 disp_showtextbuf proc
@@ -525,3 +553,6 @@ end
 
 textbuf	ds	32, 0
 charpos	dw	0
+
+inbuf	ds	32, 0
+inpos	dw	0
