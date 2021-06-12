@@ -11,6 +11,14 @@
 	sub	#1, #1, #1
 	endm
 
+	macro	inc
+	add	#1, #1, 1
+	endm
+
+	macro	dec
+	sub	#1, #1, 1
+	endm
+
 	macro	push
 	str	#1, sp, 0
 	sub	sp, sp, 2
