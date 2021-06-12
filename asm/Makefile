@@ -1,6 +1,8 @@
 TARGET = microasm
 
-all: $(TARGET)
+MODULES = modules/display.bin
+
+all: $(TARGET) $(MODULES)
 
 CFLAGS = -Wall -Wpedantic -g
 
@@ -11,5 +13,10 @@ OBJS = microasm.o
 $(TARGET): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
+.SUFFIXES: .bin .asm
+
+.asm.bin: include/devmap.inc include/pseudo.inc
+	./$(TARGET) -binary $< $@
+
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(TARGET) $(MODULES)
