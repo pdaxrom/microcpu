@@ -131,12 +131,12 @@ loop	bsr	sendbyte
 	endp
 
 disp_putchar proc
-	sub	sp, sp, 8
-	str	lr, sp, 8
-	str	v0, sp, 6
-	str	v1, sp, 4
-	str	v2, sp, 2
-	str	v3, sp, 0
+	sub	sp, sp, 10
+	str	lr, sp, 10
+	str	v0, sp, 8
+	str	v1, sp, 6
+	str	v2, sp, 4
+	str	v3, sp, 2
 
 	seth	v0, 0
 	seth	v1, 0
@@ -162,12 +162,12 @@ exitupd mov	v0, v2
 	add	v0, v0, v1
 exitupd1 bsr	disp_showtextbuf
 
-exit	ldr	v3, sp, 0
-	ldr	v2, sp, 2
-	ldr	v1, sp, 4
-	ldr	v0, sp, 6
-	ldr	lr, sp, 8
-	add	sp, sp, 8
+exit	ldr	v3, sp, 2
+	ldr	v2, sp, 4
+	ldr	v1, sp, 6
+	ldr	v0, sp, 8
+	ldr	lr, sp, 10
+	add	sp, sp, 10
 	rts
 
 clrscr	set	v2, textbuf
@@ -196,10 +196,16 @@ ctrlchr	db	$0a
 	dw	clrscr
 	db	$7f
 	dw	delete
+	db	$c1
+	dw	delete
 	db	0
 	align	1
 	endp
 
+;
+; Put string to display
+; v0 - null terminated string
+;
 disp_putstring proc
 	push	lr
 	push	v0
@@ -217,12 +223,83 @@ exit	pop	v1
 	rts
 	endp
 
+;
+; Get string from keyboard
+; v0 - string address
+; v1 - max length
+;
 disp_getstring proc
 	push	lr
-
-
+	push	v0
+	push	v2
+	push	v3
+	push	v4
+	mov	v3, v0
+	clr	v2
+	clr	v4
+	beq	exit, v1, 0
+loop	setl	v0, 6
+	bsr	disp_getkey
+	setl	v2, $ff
+	beq	loop, v0, v2
+	bsr	convert_key
+	setl	v2, $c1
+	bne	chkey1, v0, v1
+	beq	loopx, v4, 0
+	dec	v3
+	inc	v1
+	dec	v4
+	b	loopx
+chkey1	setl	v2, $c0
+	blt	chkey2, v0, v2
+ctrlkey	clr	v1
+	b	loopx
+chkey2	setl	v2, $20
+	blt	ctrlkey, v0, v2
+	bsr	disp_putchar
+	strl	v0, v3, 0
+	inc	v3
+	dec	v1
+	inc	v4
+loopx	setl	v2, $ff
+loopx1	setl	v0, 6
+	bsr	disp_getkey
+	bne	loopx1, v0, v2
+	beq	exit, v1, 0
+	b	loop
+exit	mov	v1, v4
+	pop	v4
+	pop	v3
+	pop	v2
+	pop	v0
 	pop	lr
 	rts
+	endp
+
+convert_key proc
+	push	lr
+	push	v1
+	push	v2
+	set	v2, convtab
+loop	clr	v1
+	ldrl	v1, v2, 0
+	bne	loop1, v0, v1
+	ldrl	v0, v2, 1
+	b	exit
+loop1	add	v2, v2, 2
+	set	v1, convtab_end
+	bne	loop, v2, v1
+exit	pop	v2
+	pop	v1
+	pop	lr
+	rts
+convtab	db	$00, '0', $01, '1', $02, '2', $03, '3'
+	db	$04, '4', $05, '5', $06, '6', $07, '7'
+	db	$08, '8', $09, '9', $0a, 'A', $0b, 'B'
+	db	$0c, 'C', $0d, 'D', $0e, 'E', $0f, 'F'
+	db	$10, $0a, $11, $c2, $12, $c1, $13, $1b
+convtab_end
+	align	1
 	endp
 
 disp_showtextbuf proc
