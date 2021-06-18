@@ -244,11 +244,12 @@ loop	setl	v0, 6
 	beq	loop, v0, v2
 	bsr	convert_key
 	setl	v2, $c1
-	bne	chkey1, v0, v1
+	bne	chkey1, v0, v2
 	beq	loopx, v4, 0
 	dec	v3
 	inc	v1
 	dec	v4
+	bsr	disp_putchar
 	b	loopx
 chkey1	setl	v2, $c0
 	blt	chkey2, v0, v2
