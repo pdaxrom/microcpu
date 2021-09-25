@@ -27,10 +27,11 @@ begin	dw	$5aa5		; module header
 	dw	$0000		; module version
 	b	modinit
 	b	set_outreg
-	dw	0		; disp_putchar
+	b	disp_putchar	; disp_putchar
 	b	disp_getkey	; disp_getkey
-	b	disp_puttext
-	dw	0		; disp_getstring
+	b	disp_showtextbuf
+	b	disp_putstring	;
+	b	disp_getstring	; disp_getstring
 
 modname	db	'Display & keys', 0
 
@@ -57,7 +58,7 @@ modinit	proc
 	bsr	set_outreg
 
 	set	v0, textscr
-	bsr	disp_puttext
+	bsr	disp_showtextbuf
 
 	pop	lr
 	rts
@@ -65,7 +66,7 @@ modinit	proc
 
 ;		 01234567
 textscr	db	"pdaXrom "
-	db	"uCPU 1.1"
+	db	"uCPU 1.2"
 
 	align	1
 
@@ -129,7 +130,180 @@ loop	bsr	sendbyte
 	rts
 	endp
 
-disp_puttext proc
+disp_putchar proc
+	sub	sp, sp, 10
+	str	lr, sp, 10
+	str	v0, sp, 8
+	str	v1, sp, 6
+	str	v2, sp, 4
+	str	v3, sp, 2
+
+	seth	v0, 0
+	seth	v1, 0
+	set	v2, ctrlchr
+loop	ldrl	v1, v2, 0
+	beq	printc, v1, 0
+	bne	next, v1, v0
+	ldr	pc, v2, 1
+next	add	v2, v2, 3
+	b	loop
+printc	set	v3, charpos
+	ldr	v1, v3, 0
+	set	v2, 32
+	beq	exit, v1, v2
+	set	v2, textbuf
+	strl	v0, v2, v1
+	inc	v1
+	str	v1, v3, 0
+exitupd mov	v0, v2
+	set	v3, 16
+	blt	exitupd1, v1, v3
+	sub	v1, v1, v3
+	add	v0, v0, v1
+exitupd1 bsr	disp_showtextbuf
+
+exit	ldr	v3, sp, 2
+	ldr	v2, sp, 4
+	ldr	v1, sp, 6
+	ldr	v0, sp, 8
+	ldr	lr, sp, 10
+	add	sp, sp, 10
+	rts
+
+clrscr	set	v2, textbuf
+	set	v1, 32
+	clr	v0
+clrscr1	sub	v1, v1, 2
+	str	v0, v2, v1
+	bne	clrscr1, v1, 0
+	set	v3, charpos
+	str	v1, v3, 0
+	b	exitupd
+
+delete	set	v3, charpos
+	ldr	v1, v3, 0
+	beq	exit, v1, 0
+	dec	v1
+	str	v1, v3, 0
+	set	v2, textbuf
+	clr	v0
+	strl	v0, v2, v1
+	b	exitupd
+
+ctrlchr	db	$0a
+	dw	clrscr
+	db	$0c
+	dw	clrscr
+	db	$7f
+	dw	delete
+	db	$c1
+	dw	delete
+	db	0
+	align	1
+	endp
+
+;
+; Put string to display
+; v0 - null terminated string
+;
+disp_putstring proc
+	push	lr
+	push	v0
+	push	v1
+	mov	v1, v0
+	clr	v0
+loop	ldrl	v0, v1, 0
+	beq	exit, v0, 0
+	bsr	disp_putchar
+	inc	v1
+	b	loop
+exit	pop	v1
+	pop	v0
+	pop	lr
+	rts
+	endp
+
+;
+; Get string from keyboard
+; v0 - string address
+; v1 - max length
+;
+disp_getstring proc
+	push	lr
+	push	v0
+	push	v2
+	push	v3
+	push	v4
+	mov	v3, v0
+	clr	v2
+	clr	v4
+	beq	exit, v1, 0
+loop	setl	v0, 6
+	bsr	disp_getkey
+	setl	v2, $ff
+	beq	loop, v0, v2
+	bsr	convert_key
+	setl	v2, $c1
+	bne	chkey1, v0, v2
+	beq	loopx, v4, 0
+	dec	v3
+	inc	v1
+	dec	v4
+	bsr	disp_putchar
+	b	loopx
+chkey1	setl	v2, $c0
+	blt	chkey2, v0, v2
+ctrlkey	clr	v1
+	b	loopx
+chkey2	setl	v2, $20
+	blt	ctrlkey, v0, v2
+	bsr	disp_putchar
+	strl	v0, v3, 0
+	inc	v3
+	dec	v1
+	inc	v4
+loopx	setl	v2, $ff
+loopx1	setl	v0, 6
+	bsr	disp_getkey
+	bne	loopx1, v0, v2
+	beq	exit, v1, 0
+	b	loop
+exit	mov	v1, v4
+	pop	v4
+	pop	v3
+	pop	v2
+	pop	v0
+	pop	lr
+	rts
+	endp
+
+convert_key proc
+	push	lr
+	push	v1
+	push	v2
+	set	v2, convtab
+loop	clr	v1
+	ldrl	v1, v2, 0
+	bne	loop1, v0, v1
+	ldrl	v0, v2, 1
+	b	exit
+loop1	add	v2, v2, 2
+	set	v1, convtab_end
+	bne	loop, v2, v1
+exit	pop	v2
+	pop	v1
+	pop	lr
+	rts
+convtab	db	$00, '0', $01, '1', $02, '2', $03, '3'
+	db	$04, '4', $05, '5', $06, '6', $07, '7'
+	db	$08, '8', $09, '9', $0a, 'A', $0b, 'B'
+	db	$0c, 'C', $0d, 'D', $0e, 'E', $0f, 'F'
+	db	$10, $0a, $11, $c2, $12, $c1, $13, $1b
+convtab_end
+	align	1
+	endp
+
+disp_showtextbuf proc
 	sub	sp, sp, 12
 	str	lr, sp, 12
 	str	v0, sp, 10
@@ -184,7 +358,7 @@ putchar sub	sp, sp, 6
 	str	lr, sp, 6
 	str	v0, sp, 4
 	str	v3, sp, 2
-	set	v3, font-32*5
+	set	v3, font
 putch1	beq	putch2, v2, 0
 	add	v3, v3, 5
 	sub	v2, v2, 1
@@ -321,7 +495,40 @@ kmap	db	$ff
 	align	1
 	endp
 
-font	db	 $00, $00, $00, $00, $00	; ' '
+font	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+	db	 $00, $00, $00, $00, $00
+
+	db	 $00, $00, $00, $00, $00	; ' '
 	db	 $00, $00, $5F, $00, $00	; '!'
 	db	 $00, $07, $00, $07, $00	; '"'
 	db	 $14, $7F, $14, $7F, $14	; '#'
@@ -421,3 +628,9 @@ font	db	 $00, $00, $00, $00, $00	; ' '
 	align	1
 	chksum
 end
+
+textbuf	ds	32, 0
+charpos	dw	0
+
+inbuf	ds	32, 0
+inpos	dw	0
