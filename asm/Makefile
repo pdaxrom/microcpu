@@ -20,3 +20,6 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(MODULES)
+
+codestyle:
+	astyle --style=kr --indent=spaces=4 --add-braces *.c
