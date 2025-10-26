@@ -355,13 +355,14 @@ static Register* find_register(char *name)
 
 static OpCode* find_opcode_in_string(char **str)
 {
-    char tmp[strlen(*str) + 1];
+    char tmp[256];
     char *ptr = tmp;
     char *ptr_str = *str;
 
     SKIP_BLANK(ptr_str);
 
     while(*ptr_str && isalnum(*ptr_str)) {
+        if (ptr - tmp >= 255) break;
         *ptr++ = *ptr_str++;
     }
 
@@ -378,13 +379,14 @@ static OpCode* find_opcode_in_string(char **str)
 
 static Register* find_register_in_string(char **str)
 {
-    char tmp[strlen(*str) + 1];
+    char tmp[256];
     char *ptr = tmp;
     char *ptr_str = *str;
 
     SKIP_BLANK(ptr_str);
 
     while(*ptr_str && isalnum(*ptr_str)) {
+        if (ptr - tmp >= 255) break;
         *ptr++ = *ptr_str++;
     }
 
@@ -643,10 +645,14 @@ static int character(char **str)
 static int operand(char **str)
 {
     char *ptr = *str;
-    char tmp[strlen(*str) + 1];
+    char tmp[256];
     char *ptr1 = tmp;
 
     while (*ptr && (isalnum(*ptr) || *ptr == '_' || *ptr == ':' || *ptr == '.')) {
+        if (ptr1 - tmp >= 255) {
+            error = SYNTAX_ERROR;
+            return 0;
+        }
         *ptr1++ = *ptr++;
     }
     *ptr1 = 0;
@@ -684,11 +690,15 @@ static int operand(char **str)
         return output_addr;
     } else if (isdigit(*(*str))) {
         return decimal(str);
-    } else {
-        *str = ptr;
-        to_second_pass = 1;
-        return 0;
-    }
+     } else {
+         *str = ptr;
+         if (src_pass == 2) {
+             error = CANNOT_RESOLVE_REF;
+         } else {
+             to_second_pass = 1;
+         }
+         return 0;
+     }
 }
 
 static int exp8(char **str)
@@ -725,9 +735,19 @@ static int exp6(char **str)
         if (match(str, '*')) {
             n = n * exp7(str);
         } else if (match(str, '/')) {
-            n = n / exp7(str);
+            int divisor = exp7(str);
+            if (divisor == 0) {
+                error = SYNTAX_ERROR;
+                return 0;
+            }
+            n = n / divisor;
         } else if (match(str, '%')) {
-            n = n % exp7(str);
+            int divisor = exp7(str);
+            if (divisor == 0) {
+                error = SYNTAX_ERROR;
+                return 0;
+            }
+            n = n % divisor;
         } else {
             break;
         }
