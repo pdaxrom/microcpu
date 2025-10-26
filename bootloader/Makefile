@@ -10,4 +10,4 @@ bootloader: bootloader.c
 	../asm/microasm $^ $@
 
 clean:
-	rm -f bootloader
+	rm -f bootloader ../boards/sram.mem ../boards/sram-mcu.mem
