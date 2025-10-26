@@ -211,7 +211,7 @@ static Proc *in_proc = NULL;
 }
 
 #define SKIP_TOKEN(s) { \
-    if (*(s) || isalpha(*(s)) || *(s) == '_' || *(s) == ':' || *(s) == '.') { \
+    if (isalpha(*(s)) || *(s) == '_' || *(s) == ':' || *(s) == '.') { \
 	(s)++; \
 	while (*(s) && (isalnum(*(s)) || *(s) == '_')) { \
 	    (s)++; \
@@ -265,7 +265,7 @@ static Label* find_label(Label **list, char *name)
     Label *ptr = *list;
 
     while (ptr) {
-        if (!strcmp(ptr->name, name)) {
+        if (!strcasecmp(ptr->name, name)) {
             return ptr;
         }
         ptr = ptr->prev;
@@ -472,6 +472,12 @@ static int add_macro(FILE *inf, char *name)
             mac->line = new_line;
             mac->line[mac->lines] = strdup(str);
             if (!mac->line[mac->lines]) {
+                for (int i = 0; i < mac->lines; i++) {
+                    free(mac->line[i]);
+                }
+                free(mac->line);
+                free(mac->name);
+                free(mac);
                 error = NO_MEMORY_FOR_MACRO;
                 return 1;
             }
@@ -495,7 +501,7 @@ static Proc* find_proc(Proc **list, char *name)
     Proc *ptr = *list;
 
     while (ptr) {
-        if (!strcmp(ptr->name, name)) {
+        if (!strcasecmp(ptr->name, name)) {
             return ptr;
         }
         ptr = ptr->prev;
