@@ -22,7 +22,8 @@ enum {
     EXPECTED_ARG_2,
     MISSED_REGISTER_ARG_2,
     EXPECTED_ARG_3,
-    CONSTAND_VALUE_TOO_BIG,
+    CONSTANT_VALUE_TOO_BIG,
+    OUTPUT_BUFFER_OVERFLOW,
     MISSED_NAME_FOR_EQU,
     MISSED_NAME_FOR_PROC,
     NESTED_PROC_UNSUPPORTED,
@@ -791,6 +792,10 @@ static int get_bytes(char *str)
                 break;
             }
             if (*str != delim) {
+                if (output_addr >= 65536) {
+                    error = OUTPUT_BUFFER_OVERFLOW;
+                    return 0;
+                }
                 output[output_addr++] = *str++;
                 continue;
             }
@@ -801,16 +806,23 @@ static int get_bytes(char *str)
             continue;
         } else {
             char *tmp = str;
+            if (output_addr >= 65536) {
+                error = OUTPUT_BUFFER_OVERFLOW;
+                return 0;
+            }
             output[output_addr++] = exp_(&str) & 0xFF;
 
             if (to_second_pass && src_pass == 2) {
-                char tmp1[strlen(tmp) + 1];
-                strcpy(tmp1, tmp);
-                tmp = tmp1;
-                while (*tmp && !isblank(*tmp) && *tmp != ',') {
-                    tmp++;
+                int len = str - tmp;
+                if (len > 255) len = 255;
+                char tmp1[256];
+                strncpy(tmp1, tmp, len);
+                tmp1[len] = 0;
+                char *p = tmp1;
+                while (*p && !isblank(*p) && *p != ',') {
+                    p++;
                 }
-                *tmp = 0;
+                *p = 0;
                 add_label(&refs, tmp1, output_addr - 1, src_line);
             }
             to_second_pass = 0;
@@ -1273,7 +1285,7 @@ static int do_asm(FILE *inf, char *line)
                                 to_second_pass = 0;
 
                                 if (val > 16) {
-                                    error = CONSTAND_VALUE_TOO_BIG;
+                                    error = CONSTANT_VALUE_TOO_BIG;
                                     return 1;
                                 }
                                 arg3 = ((val & 0x0f) << 1) | 0x01;
@@ -1477,8 +1489,8 @@ static char *get_error_string(int error)
         return "Missed register 2";
     case EXPECTED_ARG_3:
         return "Expected argument 3";
-    case CONSTAND_VALUE_TOO_BIG:
-        return "Constand value too big (> 16)";
+    case CONSTANT_VALUE_TOO_BIG:
+        return "Constant value too big (> 16)";
     case MISSED_NAME_FOR_EQU:
         return "Missed name for equ";
     case MISSED_NAME_FOR_PROC:
