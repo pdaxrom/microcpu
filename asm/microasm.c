@@ -310,7 +310,7 @@ static void dump_labels(Label *list)
     }
 }
 
-static int relink_refs()
+static int relink_refs(void)
 {
     Label *tmp = refs;
 
@@ -351,30 +351,6 @@ static Register* find_register(char *name)
     }
 
     return NULL;
-}
-
-static OpCode* find_opcode_in_string(char **str)
-{
-    char tmp[256];
-    char *ptr = tmp;
-    char *ptr_str = *str;
-
-    SKIP_BLANK(ptr_str);
-
-    while(*ptr_str && isalnum(*ptr_str)) {
-        if (ptr - tmp >= 255) break;
-        *ptr++ = *ptr_str++;
-    }
-
-    *ptr = 0;
-
-    OpCode* op = find_opcode(tmp);
-
-    if (op) {
-        *str = ptr_str;
-    }
-
-    return op;
 }
 
 static Register* find_register_in_string(char **str)
@@ -1490,7 +1466,7 @@ void output_binary(FILE *outf)
     }
 }
 
-void calculate_chksum()
+void calculate_chksum(void)
 {
     unsigned short chksum = 0;
     for (unsigned int i = start_addr; i < output_addr; i += 2) {
