@@ -1582,6 +1582,11 @@ int main(int argc, char *argv[])
 {
     int out_type = 0;
 
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s [-verilog|-binary] <input_file>\n", argv[0]);
+        return 1;
+    }
+
     if (!strcmp(argv[1], "-verilog")) {
         out_type = 1;
         argv++;
@@ -1640,11 +1645,14 @@ int main(int argc, char *argv[])
         in_macro = 0;
         in_proc = NULL;
 
-        if (fseek(in_file, 0, SEEK_SET) == 0) {
+        if (fseek(in_file, 0, SEEK_SET) != 0) {
+            fprintf(stderr, "Error rewinding file for pass 2\n");
+            return 1;
+        }
 
-            // Pass 2
+        // Pass 2
 
-            fprintf(stderr, "\n\nPass 2\n\n");
+        fprintf(stderr, "\n\nPass 2\n\n");
 
             do {
                 if (files) {
@@ -1704,11 +1712,8 @@ int main(int argc, char *argv[])
                     error = 1;
                     fprintf(stderr, "Can't create output file!\n");
                 }
-                free(name);
-            }
-        } else {
-            fprintf(stderr, "Source file IO error!\n");
-        }
+                 free(name);
+             }
 
         fclose(in_file);
     } else {
