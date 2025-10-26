@@ -288,6 +288,11 @@ static Label* add_label(Label **list, char *name, unsigned int address,
         return NULL;
     }
     new->name = strdup(name);
+    if (!new->name) {
+        free(new);
+        error = NO_MEMORY_FOR_LABEL;
+        return NULL;
+    }
     new->address = address;
     new->line = line;
     new->prev = *list;
@@ -424,6 +429,11 @@ static int add_macro(FILE *inf, char *name)
         }
 
         mac->name = strdup(name);
+        if (!mac->name) {
+            free(mac);
+            error = NO_MEMORY_FOR_MACRO;
+            return 1;
+        }
         mac->line = NULL;
         mac->lines = 0;
         mac->prev = macros;
@@ -452,8 +462,17 @@ static int add_macro(FILE *inf, char *name)
         }
 
         if (src_pass == 1) {
-            mac->line = realloc(mac->line, sizeof(mac->line) * (mac->lines + 1));
+            char **new_line = realloc(mac->line, sizeof(char*) * (mac->lines + 1));
+            if (!new_line) {
+                error = NO_MEMORY_FOR_MACRO;
+                return 1;
+            }
+            mac->line = new_line;
             mac->line[mac->lines] = strdup(str);
+            if (!mac->line[mac->lines]) {
+                error = NO_MEMORY_FOR_MACRO;
+                return 1;
+            }
             mac->lines++;
         }
 
@@ -496,6 +515,11 @@ static Proc* add_proc(Proc **list, char *name, int line)
         return NULL;
     }
     new->name = strdup(name);
+    if (!new->name) {
+        free(new);
+        error = NO_MEMORY_FOR_PROC;
+        return NULL;
+    }
     new->labels = NULL;
     new->globals = NULL;
     new->equs = NULL;
