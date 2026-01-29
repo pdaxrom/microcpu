@@ -1,5 +1,0 @@
-Simple assembler for microcpu
-
-Supported psudo ops:
-
-db, dw, ds, align
