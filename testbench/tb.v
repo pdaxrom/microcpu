@@ -4,6 +4,10 @@ module test_bench;
 	localparam UART_ADDR        = 16'hffe0;
 	localparam GPIO_ADDR        = 16'hffe8;
 	localparam TIMER_ADDR       = 16'hfff0;
+	localparam TEST_EXPECT_READ_ADDR_LO = 16'hfff4;
+	localparam TEST_EXPECT_READ_ADDR_HI = 16'hfff5;
+	localparam TEST_EXPECT_READ_DATA    = 16'hfff6;
+	localparam TEST_EXPECT_READ_COMMIT  = 16'hfff7;
 	localparam TEST_EXPECT_ADDR_LO = 16'hfff8;
 	localparam TEST_EXPECT_ADDR_HI = 16'hfff9;
 	localparam TEST_EXPECT_DATA    = 16'hfffa;
@@ -16,6 +20,7 @@ module test_bench;
 	localparam BOOT_BANNER      = 1;
 	localparam BOOT_SAVE        = 2;
 	localparam BOOT_GO          = 3;
+	localparam BOOT_LOAD        = 4;
 
 	reg         clk;
 	reg         rst;
@@ -45,6 +50,11 @@ module test_bench;
 	reg [15:0] expect_addr [0:15];
 	reg [7:0]  expect_data [0:15];
 	integer   expect_count;
+	reg [15:0] expect_read_addr_tmp;
+	reg [7:0]  expect_read_data_tmp;
+	reg [15:0] expect_read_addr [0:15];
+	reg [7:0]  expect_read_data [0:15];
+	integer   expect_read_count;
 
 	reg [1023:0] program_file;
 	reg [1023:0] vcd_file;
@@ -159,6 +169,33 @@ module test_bench;
 		end
 	endtask
 
+	task setup_boot_load;
+		begin
+			boot_mode = BOOT_LOAD;
+			uart_rx_len = 0;
+			uart_queue_push(8'h4c); // L
+			uart_queue_push(8'h08);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h08);
+			uart_queue_push(8'h04);
+			uart_queue_push(8'ha0);
+			uart_queue_push(8'ha1);
+			uart_queue_push(8'ha2);
+			uart_queue_push(8'ha3);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_push(8'h00);
+			uart_queue_start();
+		end
+	endtask
+
 	task expect_push;
 		begin
 			if (expect_count == 16) begin
@@ -187,6 +224,38 @@ module test_bench;
 					expect_data[j] = expect_data[j + 1];
 				end
 				expect_count = expect_count - 1;
+			end
+		end
+	endtask
+
+	task expect_read_push;
+		begin
+			if (expect_read_count == 16) begin
+				$display("FAIL: expected read queue overflow");
+				$finish_and_return(1);
+			end
+			expect_read_addr[expect_read_count] = expect_read_addr_tmp;
+			expect_read_data[expect_read_count] = expect_read_data_tmp;
+			expect_read_count = expect_read_count + 1;
+		end
+	endtask
+
+	task expect_read_check;
+		input [15:0] addr;
+		input [7:0] data;
+		integer j;
+		begin
+			if (expect_read_count > 0 && addr == expect_read_addr[0]) begin
+				if (data != expect_read_data[0]) begin
+					$display("FAIL: read got %04x=%02x expected %04x=%02x at cycle %0d",
+						addr, data, expect_read_addr[0], expect_read_data[0], cycles);
+					$finish_and_return(1);
+				end
+				for (j = 0; j < 15; j = j + 1) begin
+					expect_read_addr[j] = expect_read_addr[j + 1];
+					expect_read_data[j] = expect_read_data[j + 1];
+				end
+				expect_read_count = expect_read_count - 1;
 			end
 		end
 	endtask
@@ -224,6 +293,9 @@ module test_bench;
 		expect_addr_tmp = 0;
 		expect_data_tmp = 0;
 		expect_count = 0;
+		expect_read_addr_tmp = 0;
+		expect_read_data_tmp = 0;
+		expect_read_count = 0;
 		cycles = 0;
 		timeout_cycles = 20000;
 
@@ -252,6 +324,10 @@ module test_bench;
 			setup_boot_go();
 		end
 
+		if ($test$plusargs("BOOT_LOAD")) begin
+			setup_boot_load();
+		end
+
 		if ($value$plusargs("VCD=%s", vcd_file)) begin
 			$dumpfile(vcd_file);
 			$dumpvars(0, test_bench);
@@ -275,6 +351,11 @@ module test_bench;
 			mem[16'h0807] = 8'hc1;
 			mem[16'h0808] = 8'hb0;
 			mem[16'h0809] = 8'h00;
+		end else if (boot_mode == BOOT_LOAD) begin
+			mem[16'h0800] = 8'h00;
+			mem[16'h0801] = 8'h00;
+			mem[16'h0802] = 8'h00;
+			mem[16'h0803] = 8'h00;
 		end
 
 		repeat (4) @(posedge clk);
@@ -311,6 +392,10 @@ module test_bench;
 						$display("FAIL: %0d expected write(s) still pending at test end", expect_count);
 						$finish_and_return(1);
 					end
+					if (expect_read_count != 0) begin
+						$display("FAIL: %0d expected read(s) still pending at test end", expect_read_count);
+						$finish_and_return(1);
+					end
 					if (uart_expect_valid) begin
 						$display("FAIL: pending UART expectation %02x at test end", uart_expected);
 						$finish_and_return(1);
@@ -322,6 +407,18 @@ module test_bench;
 						$display("FAIL: %0s code=%0d at cycle %0d", program_file, dout, cycles);
 						$finish_and_return(1);
 					end
+				end
+				TEST_EXPECT_READ_ADDR_LO: begin
+					expect_read_addr_tmp[7:0] <= dout;
+				end
+				TEST_EXPECT_READ_ADDR_HI: begin
+					expect_read_addr_tmp[15:8] <= dout;
+				end
+				TEST_EXPECT_READ_DATA: begin
+					expect_read_data_tmp <= dout;
+				end
+				TEST_EXPECT_READ_COMMIT: begin
+					expect_read_push();
 				end
 				TEST_EXPECT_ADDR_LO: begin
 					expect_addr_tmp[7:0] <= dout;
@@ -377,6 +474,21 @@ module test_bench;
 								$display("PASS: bootloader save in %0d cycles", cycles);
 								$finish_and_return(0);
 							end
+						end else if (boot_mode == BOOT_LOAD) begin
+							if (dout != 8'ha3) begin
+								$display("FAIL: boot load echo got %02x expected a3", dout);
+								$finish_and_return(1);
+							end else if (mem[16'h0800] != 8'ha0 ||
+							            mem[16'h0801] != 8'ha1 ||
+							            mem[16'h0802] != 8'ha2 ||
+							            mem[16'h0803] != 8'ha3) begin
+								$display("FAIL: boot load memory got %02x %02x %02x %02x",
+									mem[16'h0800], mem[16'h0801], mem[16'h0802], mem[16'h0803]);
+								$finish_and_return(1);
+							end else begin
+								$display("PASS: bootloader load in %0d cycles", cycles);
+								$finish_and_return(0);
+							end
 						end else begin
 							$display("FAIL: unexpected boot UART TX byte %02x at index %0d", dout, boot_output_index);
 							$finish_and_return(1);
@@ -411,6 +523,10 @@ module test_bench;
 					mem[address] <= dout;
 				end
 				endcase
+			end
+
+			if (read) begin
+				expect_read_check(address, din);
 			end
 
 			if (read && address == UART_ADDR + 1) begin

@@ -9,11 +9,11 @@ TESTS    = $(patsubst programs/%.asm,%,$(PROGRAMS))
 HEXES    = $(patsubst programs/%.asm,build/%.hex,$(PROGRAMS))
 BOOTLOADER = ../bootloader/bootldr-mcu.asm
 
-.PHONY: all test clean bootloader-smoke bootloader-save bootloader-go
+.PHONY: all test clean bootloader-smoke bootloader-save bootloader-go bootloader-load
 
 all: tb.vvp
 
-test: tb.vvp $(HEXES) bootloader-smoke bootloader-save bootloader-go
+test: tb.vvp $(HEXES) bootloader-smoke bootloader-save bootloader-go bootloader-load
 	@fail=0; \
 	for test in $(TESTS); do \
 		echo "==> $$test"; \
@@ -52,6 +52,9 @@ bootloader-save: tb.vvp build/bootldr-mcu.hex
 
 bootloader-go: tb.vvp build/bootldr-mcu.hex
 	$(VVP) tb.vvp +PROGRAM=build/bootldr-mcu.hex +BOOT_GO +TIMEOUT=30000
+
+bootloader-load: tb.vvp build/bootldr-mcu.hex
+	$(VVP) tb.vvp +PROGRAM=build/bootldr-mcu.hex +BOOT_LOAD +TIMEOUT=30000
 
 run-%: tb.vvp build/%.hex
 	$(VVP) tb.vvp +PROGRAM=build/$*.hex
