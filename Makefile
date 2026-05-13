@@ -1,9 +1,15 @@
+.PHONY: all test clean
+
 all:
-	make -C asm
-	make -C bootloader
-	make -C boards
+	$(MAKE) -C asm
+	$(MAKE) -C bootloader
+	$(MAKE) -C boards
+
+test:
+	$(MAKE) -C testbench test
 
 clean:
-	make -C asm clean
-	make -C bootloader clean
-	make -C boards clean
+	$(MAKE) -C asm clean
+	$(MAKE) -C bootloader clean
+	$(MAKE) -C boards clean
+	$(MAKE) -C testbench clean
