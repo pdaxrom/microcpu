@@ -109,8 +109,8 @@ module cpu (
 					if (op[4:1] == Inst_CMP || op[4:1] == Inst_BIT) begin
 						if ((dest == Inst_CMP_EQ && flag_Z) ||
 							(dest == Inst_CMP_NE && ~flag_Z) ||
-							(dest == Inst_CMP_MI) ||
-							(dest == Inst_CMP_VS) ||
+							(dest == Inst_CMP_MI && flag_N) ||
+							(dest == Inst_CMP_VS && flag_V) ||
 							(dest == Inst_CMP_LT && (flag_N ^ flag_V)) ||
 							(dest == Inst_CMP_GE && ~(flag_N ^ flag_V)) ||
 							(dest == Inst_CMP_LTU && flag_C) ||
