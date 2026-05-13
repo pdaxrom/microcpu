@@ -4,6 +4,10 @@ module test_bench;
 	localparam UART_ADDR        = 16'hffe0;
 	localparam GPIO_ADDR        = 16'hffe8;
 	localparam TIMER_ADDR       = 16'hfff0;
+	localparam TEST_EXPECT_ADDR_LO = 16'hfff8;
+	localparam TEST_EXPECT_ADDR_HI = 16'hfff9;
+	localparam TEST_EXPECT_DATA    = 16'hfffa;
+	localparam TEST_EXPECT_COMMIT  = 16'hfffb;
 	localparam TEST_UART_EXPECT = 16'hfffc;
 	localparam TEST_INTR        = 16'hfffd;
 	localparam TEST_STATUS      = 16'hfffe;
@@ -36,6 +40,11 @@ module test_bench;
 	reg [14:0] gpio_dir;
 	reg [16:0] timer_counter;
 	reg        timer_intr;
+	reg [15:0] expect_addr_tmp;
+	reg [7:0]  expect_data_tmp;
+	reg [15:0] expect_addr [0:15];
+	reg [7:0]  expect_data [0:15];
+	integer   expect_count;
 
 	reg [1023:0] program_file;
 	reg [1023:0] vcd_file;
@@ -150,6 +159,38 @@ module test_bench;
 		end
 	endtask
 
+	task expect_push;
+		begin
+			if (expect_count == 16) begin
+				$display("FAIL: expected write queue overflow");
+				$finish_and_return(1);
+			end
+			expect_addr[expect_count] = expect_addr_tmp;
+			expect_data[expect_count] = expect_data_tmp;
+			expect_count = expect_count + 1;
+		end
+	endtask
+
+	task expect_check;
+		input [15:0] addr;
+		input [7:0] data;
+		integer j;
+		begin
+			if (expect_count > 0) begin
+				if (addr != expect_addr[0] || data != expect_data[0]) begin
+					$display("FAIL: write got %04x=%02x expected %04x=%02x at cycle %0d",
+						addr, data, expect_addr[0], expect_data[0], cycles);
+					$finish_and_return(1);
+				end
+				for (j = 0; j < 15; j = j + 1) begin
+					expect_addr[j] = expect_addr[j + 1];
+					expect_data[j] = expect_data[j + 1];
+				end
+				expect_count = expect_count - 1;
+			end
+		end
+	endtask
+
 	cpu core1 (
 		.clk(clk),
 		.rst(rst),
@@ -180,6 +221,9 @@ module test_bench;
 		gpio_dir = 0;
 		timer_counter = 17'h10000;
 		timer_intr = 0;
+		expect_addr_tmp = 0;
+		expect_data_tmp = 0;
+		expect_count = 0;
 		cycles = 0;
 		timeout_cycles = 20000;
 
@@ -263,6 +307,10 @@ module test_bench;
 
 				case (address)
 				TEST_STATUS: begin
+					if (expect_count != 0) begin
+						$display("FAIL: %0d expected write(s) still pending at test end", expect_count);
+						$finish_and_return(1);
+					end
 					if (uart_expect_valid) begin
 						$display("FAIL: pending UART expectation %02x at test end", uart_expected);
 						$finish_and_return(1);
@@ -274,6 +322,18 @@ module test_bench;
 						$display("FAIL: %0s code=%0d at cycle %0d", program_file, dout, cycles);
 						$finish_and_return(1);
 					end
+				end
+				TEST_EXPECT_ADDR_LO: begin
+					expect_addr_tmp[7:0] <= dout;
+				end
+				TEST_EXPECT_ADDR_HI: begin
+					expect_addr_tmp[15:8] <= dout;
+				end
+				TEST_EXPECT_DATA: begin
+					expect_data_tmp <= dout;
+				end
+				TEST_EXPECT_COMMIT: begin
+					expect_push();
 				end
 				TEST_UART_EXPECT: begin
 					uart_expected <= dout;
@@ -347,6 +407,7 @@ module test_bench;
 				TIMER_ADDR + 1: begin
 				end
 				default: begin
+					expect_check(address, dout);
 					mem[address] <= dout;
 				end
 				endcase
