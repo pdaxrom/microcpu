@@ -2,6 +2,7 @@
 
 module test_bench;
 	localparam UART_ADDR        = 16'hffe0;
+	localparam GPIO_ADDR        = 16'hffe8;
 	localparam TIMER_ADDR       = 16'hfff0;
 	localparam TEST_UART_EXPECT = 16'hfffc;
 	localparam TEST_INTR        = 16'hfffd;
@@ -31,6 +32,8 @@ module test_bench;
 	reg       uart_expect_valid;
 	integer   boot_mode;
 	integer   boot_output_index;
+	reg [14:0] gpio_out;
+	reg [14:0] gpio_dir;
 	reg [16:0] timer_counter;
 	reg        timer_intr;
 
@@ -50,6 +53,14 @@ module test_bench;
 				read_data = {6'b0, 1'b0, uart_rx_full};
 			end else if (addr == UART_ADDR + 1) begin
 				read_data = uart_rx_data;
+			end else if (addr == GPIO_ADDR) begin
+				read_data = {1'b1, gpio_out[14:8]};
+			end else if (addr == GPIO_ADDR + 1) begin
+				read_data = gpio_out[7:0];
+			end else if (addr == GPIO_ADDR + 2) begin
+				read_data = {1'b1, gpio_dir[14:8]};
+			end else if (addr == GPIO_ADDR + 3) begin
+				read_data = gpio_dir[7:0];
 			end else if (addr == TIMER_ADDR) begin
 				read_data = timer_counter[7:0];
 			end else if (addr == TIMER_ADDR + 1) begin
@@ -165,6 +176,8 @@ module test_bench;
 		uart_expect_valid = 0;
 		boot_mode = BOOT_NONE;
 		boot_output_index = 0;
+		gpio_out = 0;
+		gpio_dir = 0;
 		timer_counter = 17'h10000;
 		timer_intr = 0;
 		cycles = 0;
@@ -316,6 +329,18 @@ module test_bench;
 					if (!(boot_mode == BOOT_SAVE && boot_output_index >= 11)) begin
 						$write("%c", dout);
 					end
+				end
+				GPIO_ADDR: begin
+					gpio_out[14:8] <= dout[6:0];
+				end
+				GPIO_ADDR + 1: begin
+					gpio_out[7:0] <= dout;
+				end
+				GPIO_ADDR + 2: begin
+					gpio_dir[14:8] <= dout[6:0];
+				end
+				GPIO_ADDR + 3: begin
+					gpio_dir[7:0] <= dout;
 				end
 				TIMER_ADDR: begin
 				end
