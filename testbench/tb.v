@@ -25,6 +25,8 @@ module test_bench;
 	reg         clk;
 	reg         rst;
 	reg         test_intr;
+	reg         test_intr_delay_active;
+	integer     test_intr_delay;
 	wire        intr;
 	wire        read;
 	wire [15:0] address;
@@ -278,6 +280,8 @@ module test_bench;
 	initial begin
 		rst = 1;
 		test_intr = 0;
+		test_intr_delay_active = 0;
+		test_intr_delay = 0;
 		uart_rx_data = 8'h52;
 		uart_rx_full = 1;
 		uart_rx_len = 0;
@@ -437,8 +441,14 @@ module test_bench;
 					uart_expect_valid <= 1'b1;
 				end
 				TEST_INTR: begin
-					if (dout != 8'h00) begin
+					if (dout == 8'h00) begin
+						test_intr <= 1'b0;
+						test_intr_delay_active <= 1'b0;
+					end else if (dout == 8'h01) begin
 						test_intr <= 1'b1;
+					end else begin
+						test_intr_delay <= dout;
+						test_intr_delay_active <= 1'b1;
 					end
 				end
 				TEST_PUTC: begin
@@ -523,6 +533,15 @@ module test_bench;
 					mem[address] <= dout;
 				end
 				endcase
+			end
+
+			if (test_intr_delay_active) begin
+				if (test_intr_delay == 0) begin
+					test_intr <= 1'b1;
+					test_intr_delay_active <= 1'b0;
+				end else begin
+					test_intr_delay <= test_intr_delay - 1;
+				end
 			end
 
 			if (read) begin
