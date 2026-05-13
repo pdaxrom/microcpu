@@ -43,6 +43,9 @@ and `srampages`.
 
 - `board-mcu-smoke` loads `board_programs/board_uart_smoke.asm` into the
   `hc1200-mcu` zero-page SRAM and verifies a byte sent through the real UART.
+- `board-mcu-bootload-rx` boots `bootloader/bootldr-mcu.asm` on the
+  `hc1200-mcu` top-level, drives the board UART RX line with a load command,
+  checks the written SRAM bytes, then jumps to the loaded payload.
 - `board-microcomp-memmap` loads `board_programs/microcomp_memmap.asm` into the
-  `hc1200-microcomp` zero-page SRAM and verifies the memory-map interrupt,
-  remap register write, dirty flag, and UART pass byte.
+  `hc1200-microcomp` zero-page SRAM and verifies memory page boundaries,
+  memory-map interrupts for both remap slots, dirty flags, and UART pass byte.

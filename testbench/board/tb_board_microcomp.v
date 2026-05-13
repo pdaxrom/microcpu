@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 
 module tb_board_microcomp;
-	localparam integer BIT_TIME = 2300;
+	localparam integer BIT_TIME = 2310;
 
 	reg res;
 	reg rx;
