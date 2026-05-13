@@ -34,3 +34,15 @@ The harness also models the board MMIO blocks used by the programs:
 
 Bootloader smoke tests assemble `bootloader/bootldr-mcu.asm` and exercise the
 banner, `S` save, `G` go, and `L` load command paths through the UART model.
+
+## Board Smoke Tests
+
+`make -C testbench board-smoke` compiles selected board top-levels with real
+board UART/GPIO/timer modules and behavioral stubs for Lattice `OSCH`, `sram`,
+and `srampages`.
+
+- `board-mcu-smoke` loads `board_programs/board_uart_smoke.asm` into the
+  `hc1200-mcu` zero-page SRAM and verifies a byte sent through the real UART.
+- `board-microcomp-memmap` loads `board_programs/microcomp_memmap.asm` into the
+  `hc1200-microcomp` zero-page SRAM and verifies the memory-map interrupt,
+  remap register write, dirty flag, and UART pass byte.
