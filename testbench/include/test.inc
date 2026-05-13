@@ -1,5 +1,6 @@
 TEST_INTR equ $fffd
 TEST_STATUS equ $fffe
+TEST_UART_EXPECT equ $fffc
 
 macro test_pass
 	setl v3, TEST_STATUS

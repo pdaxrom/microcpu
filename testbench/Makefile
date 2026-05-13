@@ -7,12 +7,13 @@ VSRC     = ../rtl/cpu.v tb.v
 PROGRAMS = $(wildcard programs/*.asm)
 TESTS    = $(patsubst programs/%.asm,%,$(PROGRAMS))
 HEXES    = $(patsubst programs/%.asm,build/%.hex,$(PROGRAMS))
+BOOTLOADER = ../bootloader/bootldr-mcu.asm
 
 .PHONY: all test clean
 
 all: tb.vvp
 
-test: tb.vvp $(HEXES)
+test: tb.vvp $(HEXES) bootloader-smoke
 	@fail=0; \
 	for test in $(TESTS); do \
 		echo "==> $$test"; \
@@ -36,6 +37,15 @@ build/%.bin: programs/%.asm include/test.inc ../asm/include/pseudo.inc $(ASM) | 
 
 build/%.hex: build/%.bin
 	{ printf '@0000\n'; $(OD) -An -tx1 -v $<; printf '@ffff\n00\n'; } > $@
+
+build/bootldr-mcu.bin: $(BOOTLOADER) ../asm/include/pseudo.inc ../asm/include/devmap.inc $(ASM) | build
+	$(ASM) -binary $< $@ > build/bootldr-mcu.asm.log 2>&1 || { cat build/bootldr-mcu.asm.log; exit 1; }
+
+build/bootldr-mcu.hex: build/bootldr-mcu.bin
+	{ printf '@0000\n'; $(OD) -An -tx1 -v $<; printf '@ffff\n00\n'; } > $@
+
+bootloader-smoke: tb.vvp build/bootldr-mcu.hex
+	$(VVP) tb.vvp +PROGRAM=build/bootldr-mcu.hex +BOOT_BANNER +TIMEOUT=20000
 
 run-%: tb.vvp build/%.hex
 	$(VVP) tb.vvp +PROGRAM=build/$*.hex
