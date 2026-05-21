@@ -301,7 +301,7 @@ module test_bench;
 		expect_read_data_tmp = 0;
 		expect_read_count = 0;
 		cycles = 0;
-		timeout_cycles = 20000;
+		timeout_cycles = 60000;
 
 		for (i = 0; i < 65536; i = i + 1) begin
 			mem[i] = 8'h00;

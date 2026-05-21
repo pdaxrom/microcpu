@@ -3,10 +3,10 @@ CFLAGS ?= -std=c99 -Wall -Wpedantic -O2 -g
 LDFLAGS ?=
 ASM ?= ../asm/microasm
 
-.PHONY: all examples run-hello run-echo clean
+.PHONY: all examples run-hello run-echo run-calc run-calc-fis16 run-calc-fis32 clean
 
 OBJS = microemu.o microcpu_core.o hc1200_mcu.o
-EXAMPLES = hello_world uart_echo calc32
+EXAMPLES = hello_world uart_echo calc32 calc_fis16 calc_fis32
 EXAMPLE_BINS = $(patsubst %,build/examples/%.bin,$(EXAMPLES))
 
 all: microemu
@@ -31,7 +31,7 @@ $(ASM): ../asm/microasm.c
 build/examples:
 	mkdir -p $@
 
-build/examples/%.bin: examples/%.asm ../asm/include/pseudo.inc ../asm/include/devmap.inc $(ASM) | build/examples
+build/examples/%.bin: examples/%.asm ../asm/include/pseudo.inc ../asm/include/devmap.inc ../asm/include/int32.inc ../asm/include/fis.inc ../asm/include/fis16.inc ../asm/include/fis32.inc $(ASM) | build/examples
 	$(ASM) -binary $< $@ > $@.log 2>&1 || { cat $@.log; exit 1; }
 
 run-hello: microemu build/examples/hello_world.bin
@@ -42,6 +42,12 @@ run-echo: microemu build/examples/uart_echo.bin
 
 run-calc: microemu build/examples/calc32.bin
 	./microemu --format bin --stop-on-self-branch --uart-rx "12 34 +\nq" build/examples/calc32.bin
+
+run-calc-fis16: microemu build/examples/calc_fis16.bin
+	./microemu --format bin --stop-on-self-branch --uart-rx "1.5 2 *\nq" build/examples/calc_fis16.bin
+
+run-calc-fis32: microemu build/examples/calc_fis32.bin
+	./microemu --format bin --stop-on-self-branch --uart-rx "1.5 2 *\nq" build/examples/calc_fis32.bin
 
 clean:
 	rm -f microemu $(OBJS)

@@ -62,8 +62,9 @@ Run the 32-bit RPN calculator example:
 make -C microemu run-calc
 ```
 
-The calculator reads tokens from UART. Newline prints the signed decimal value
-at the top of the stack and clears the expression; `q` halts for emulator use.
+The integer calculator reads tokens from UART. Newline prints the signed
+decimal value at the top of the stack and clears the expression; `q` halts for
+emulator use.
 Examples:
 
 ```text
@@ -71,6 +72,29 @@ Examples:
 -7 3 /
 2 16 l
 ```
+
+Run the FIS16 and FIS32 RPN calculator examples:
+
+```sh
+make -C microemu run-calc-fis16
+make -C microemu run-calc-fis32
+```
+
+The floating-point calculators support `+`, `-`, `*`, `/` and decimal tokens
+with an optional fractional part. FIS32 also accepts `e`/`E` decimal exponents,
+for example:
+
+```text
+1.5 2 *
+1 3 /
+-2.25 4 +
+0.111 1e6 /
+```
+
+FIS16 prints 4 fractional digits; FIS32 prints up to 7 significant digits,
+trims trailing fractional zeroes, and switches to scientific notation for very
+small or large values. Floating overflow, decimal parse overflow, and division
+by zero print `OVF` and reset the calculator stack.
 
 Run a raw assembler binary:
 
@@ -88,6 +112,8 @@ UART TX is written to stdout. UART RX can be preloaded with text or hex bytes:
 
 ```sh
 microemu/microemu --uart-rx "100 2 /\nq" build/examples/calc32.bin
+microemu/microemu --uart-rx "1.5 2 *\nq" build/examples/calc_fis16.bin
+microemu/microemu --uart-rx "1.5 2 *\nq" build/examples/calc_fis32.bin
 microemu/microemu --uart-rx-hex '4c 08 00 08 0e' bootloader.bin
 ```
 
