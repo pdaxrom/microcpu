@@ -1,3 +1,4 @@
+#include "hc1200_cpu.h"
 #include "hc1200_mcu.h"
 #include "microcpu_core.h"
 
@@ -11,6 +12,12 @@
 #include <string.h>
 
 typedef struct {
+    uint8_t *data;
+    size_t len;
+    size_t cap;
+} byte_buffer_t;
+
+typedef struct {
     const char *board_name;
     const char *format;
     const char *program;
@@ -20,7 +27,20 @@ typedef struct {
     bool dump_regs;
     bool stop_on_self_branch;
     bool stdin_rx;
+    bool quiet_uart;
+    byte_buffer_t uart_rx;
 } config_t;
+
+typedef struct {
+    const char *name;
+    void *ctx;
+    microcpu_bus_t bus;
+    void (*load_byte)(void *ctx, uint16_t addr, uint8_t value);
+    void (*tick)(void *ctx, unsigned cycles);
+    void (*dump)(const void *ctx, FILE *out);
+    void (*set_quiet_uart)(void *ctx, bool quiet);
+    int (*uart_rx_append)(void *ctx, const uint8_t *data, size_t len);
+} board_model_t;
 
 static void usage(FILE *out)
 {
@@ -28,7 +48,8 @@ static void usage(FILE *out)
         "usage: microemu [options] <program>\n"
         "\n"
         "Options:\n"
-        "  --board hc1200-mcu          board model (default)\n"
+        "  --board hc1200-mcu|hc1200-cpu\n"
+        "                              board model (default: hc1200-mcu)\n"
         "  --format auto|bin|hex       input format (default: auto)\n"
         "  --load-addr ADDR            binary load address (default: 0)\n"
         "  --max-steps N               instruction limit, 0 means unlimited (default: 1000000)\n"
@@ -93,7 +114,56 @@ static int hex_digit(unsigned char ch)
     return -1;
 }
 
-static int append_uart_rx_text(hc1200_mcu_t *board, const char *text)
+static void byte_buffer_destroy(byte_buffer_t *buffer)
+{
+    free(buffer->data);
+    buffer->data = NULL;
+    buffer->len = 0;
+    buffer->cap = 0;
+}
+
+static int byte_buffer_reserve(byte_buffer_t *buffer, size_t len)
+{
+    if (buffer->len + len > buffer->cap) {
+        size_t new_cap = buffer->cap ? buffer->cap : 256;
+        uint8_t *new_data;
+
+        while (new_cap < buffer->len + len) {
+            new_cap *= 2;
+        }
+        new_data = realloc(buffer->data, new_cap);
+        if (new_data == NULL) {
+            perror("realloc");
+            return -1;
+        }
+        buffer->data = new_data;
+        buffer->cap = new_cap;
+    }
+    return 0;
+}
+
+static int byte_buffer_append_byte(byte_buffer_t *buffer, uint8_t value)
+{
+    if (byte_buffer_reserve(buffer, 1) < 0) {
+        return -1;
+    }
+    buffer->data[buffer->len++] = value;
+    return 0;
+}
+
+static int read_stdin_bytes(byte_buffer_t *buffer)
+{
+    int ch;
+
+    while ((ch = getchar()) != EOF) {
+        if (byte_buffer_append_byte(buffer, (uint8_t)ch) < 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int append_uart_rx_text(byte_buffer_t *buffer, const char *text)
 {
     const char *p = text;
 
@@ -152,14 +222,14 @@ static int append_uart_rx_text(hc1200_mcu_t *board, const char *text)
                 return -1;
             }
         }
-        if (hc1200_mcu_uart_rx_push(board, value) < 0) {
+        if (byte_buffer_append_byte(buffer, value) < 0) {
             return -1;
         }
     }
     return 0;
 }
 
-static int append_uart_rx_hex(hc1200_mcu_t *board, const char *value)
+static int append_uart_rx_hex(byte_buffer_t *buffer, const char *value)
 {
     const char *p;
     bool separated = false;
@@ -189,7 +259,7 @@ static int append_uart_rx_hex(hc1200_mcu_t *board, const char *value)
                 fprintf(stderr, "microemu: invalid --uart-rx-hex near '%s'\n", p);
                 return -1;
             }
-            if (hc1200_mcu_uart_rx_push(board, (uint8_t)byte) < 0) {
+            if (byte_buffer_append_byte(buffer, (uint8_t)byte) < 0) {
                 return -1;
             }
             p = end;
@@ -215,14 +285,14 @@ static int append_uart_rx_hex(hc1200_mcu_t *board, const char *value)
             fprintf(stderr, "microemu: invalid --uart-rx-hex byte '%s'\n", token);
             return -1;
         }
-        if (hc1200_mcu_uart_rx_push(board, (uint8_t)byte) < 0) {
+        if (byte_buffer_append_byte(buffer, (uint8_t)byte) < 0) {
             return -1;
         }
     }
     return 0;
 }
 
-static int parse_args(int argc, char **argv, config_t *cfg, hc1200_mcu_t *board)
+static int parse_args(int argc, char **argv, config_t *cfg)
 {
     int i;
 
@@ -273,19 +343,19 @@ static int parse_args(int argc, char **argv, config_t *cfg, hc1200_mcu_t *board)
         } else if (strcmp(arg, "--stdin-rx") == 0) {
             cfg->stdin_rx = true;
         } else if (strcmp(arg, "--quiet-uart") == 0) {
-            hc1200_mcu_set_quiet_uart(board, true);
+            cfg->quiet_uart = true;
         } else if (strcmp(arg, "--uart-rx") == 0) {
             if (require_arg(argc, argv, &i, arg, &value) < 0) {
                 return -1;
             }
-            if (append_uart_rx_text(board, value) < 0) {
+            if (append_uart_rx_text(&cfg->uart_rx, value) < 0) {
                 return -1;
             }
         } else if (strcmp(arg, "--uart-rx-hex") == 0) {
             if (require_arg(argc, argv, &i, arg, &value) < 0) {
                 return -1;
             }
-            if (append_uart_rx_hex(board, value) < 0) {
+            if (append_uart_rx_hex(&cfg->uart_rx, value) < 0) {
                 return -1;
             }
         } else if (arg[0] == '-') {
@@ -303,8 +373,9 @@ static int parse_args(int argc, char **argv, config_t *cfg, hc1200_mcu_t *board)
         usage(stderr);
         return -1;
     }
-    if (strcmp(cfg->board_name, "hc1200-mcu") != 0) {
-        fprintf(stderr, "microemu: unsupported board '%s' (only hc1200-mcu)\n",
+    if (strcmp(cfg->board_name, "hc1200-mcu") != 0 &&
+        strcmp(cfg->board_name, "hc1200-cpu") != 0) {
+        fprintf(stderr, "microemu: unsupported board '%s' (supported: hc1200-mcu, hc1200-cpu)\n",
             cfg->board_name);
         return -1;
     }
@@ -315,6 +386,87 @@ static int parse_args(int argc, char **argv, config_t *cfg, hc1200_mcu_t *board)
         return -1;
     }
     return 0;
+}
+
+static void mcu_load_byte_cb(void *ctx, uint16_t addr, uint8_t value)
+{
+    hc1200_mcu_load_byte(ctx, addr, value);
+}
+
+static void mcu_tick_cb(void *ctx, unsigned cycles)
+{
+    hc1200_mcu_tick(ctx, cycles);
+}
+
+static void mcu_dump_cb(const void *ctx, FILE *out)
+{
+    hc1200_mcu_dump(ctx, out);
+}
+
+static void mcu_set_quiet_uart_cb(void *ctx, bool quiet)
+{
+    hc1200_mcu_set_quiet_uart(ctx, quiet);
+}
+
+static int mcu_uart_rx_append_cb(void *ctx, const uint8_t *data, size_t len)
+{
+    return hc1200_mcu_uart_rx_append(ctx, data, len);
+}
+
+static void cpu_load_byte_cb(void *ctx, uint16_t addr, uint8_t value)
+{
+    hc1200_cpu_load_byte(ctx, addr, value);
+}
+
+static void cpu_tick_cb(void *ctx, unsigned cycles)
+{
+    hc1200_cpu_tick(ctx, cycles);
+}
+
+static void cpu_dump_cb(const void *ctx, FILE *out)
+{
+    hc1200_cpu_dump(ctx, out);
+}
+
+static void cpu_set_quiet_uart_cb(void *ctx, bool quiet)
+{
+    hc1200_cpu_set_quiet_uart(ctx, quiet);
+}
+
+static int cpu_uart_rx_append_cb(void *ctx, const uint8_t *data, size_t len)
+{
+    return hc1200_cpu_uart_rx_append(ctx, data, len);
+}
+
+static int select_board(const config_t *cfg, hc1200_mcu_t *mcu_board,
+    hc1200_cpu_t *cpu_board, board_model_t *board)
+{
+    memset(board, 0, sizeof(*board));
+    board->name = cfg->board_name;
+
+    if (strcmp(cfg->board_name, "hc1200-mcu") == 0) {
+        board->ctx = mcu_board;
+        board->bus = hc1200_mcu_bus(mcu_board);
+        board->load_byte = mcu_load_byte_cb;
+        board->tick = mcu_tick_cb;
+        board->dump = mcu_dump_cb;
+        board->set_quiet_uart = mcu_set_quiet_uart_cb;
+        board->uart_rx_append = mcu_uart_rx_append_cb;
+        return 0;
+    }
+    if (strcmp(cfg->board_name, "hc1200-cpu") == 0) {
+        board->ctx = cpu_board;
+        board->bus = hc1200_cpu_bus(cpu_board);
+        board->load_byte = cpu_load_byte_cb;
+        board->tick = cpu_tick_cb;
+        board->dump = cpu_dump_cb;
+        board->set_quiet_uart = cpu_set_quiet_uart_cb;
+        board->uart_rx_append = cpu_uart_rx_append_cb;
+        return 0;
+    }
+
+    fprintf(stderr, "microemu: unsupported board '%s'\n", cfg->board_name);
+    return -1;
 }
 
 static bool buffer_looks_like_hex(const uint8_t *data, size_t len)
@@ -430,7 +582,7 @@ static int parse_hex_token(const char *token, unsigned long *value)
     return 0;
 }
 
-static int load_hex_image(hc1200_mcu_t *board, const uint8_t *data, size_t len)
+static int load_hex_image(const board_model_t *board, const uint8_t *data, size_t len)
 {
     uint32_t addr = 0;
     size_t pos = 0;
@@ -467,26 +619,26 @@ static int load_hex_image(hc1200_mcu_t *board, const uint8_t *data, size_t len)
             fprintf(stderr, "microemu: invalid hex byte '%s'\n", token);
             return -1;
         }
-        hc1200_mcu_load_byte(board, (uint16_t)addr, (uint8_t)value);
+        board->load_byte(board->ctx, (uint16_t)addr, (uint8_t)value);
         addr = (addr + 1u) & 0xffffu;
     }
     return 0;
 }
 
-static int load_binary_image(hc1200_mcu_t *board, const uint8_t *data, size_t len,
+static int load_binary_image(const board_model_t *board, const uint8_t *data, size_t len,
     uint16_t load_addr)
 {
     size_t i;
     uint32_t addr = load_addr;
 
     for (i = 0; i < len; i++) {
-        hc1200_mcu_load_byte(board, (uint16_t)addr, data[i]);
+        board->load_byte(board->ctx, (uint16_t)addr, data[i]);
         addr = (addr + 1u) & 0xffffu;
     }
     return 0;
 }
 
-static int load_image(hc1200_mcu_t *board, const config_t *cfg)
+static int load_image(const board_model_t *board, const config_t *cfg)
 {
     uint8_t *data = NULL;
     size_t len = 0;
@@ -513,7 +665,9 @@ static int load_image(hc1200_mcu_t *board, const config_t *cfg)
 
 int main(int argc, char **argv)
 {
-    hc1200_mcu_t board;
+    hc1200_mcu_t mcu_board;
+    hc1200_cpu_t cpu_board;
+    board_model_t board;
     microcpu_t cpu;
     microcpu_step_options_t step_options;
     config_t cfg;
@@ -521,22 +675,45 @@ int main(int argc, char **argv)
     int exit_code = 0;
     bool stopped_on_self_branch = false;
 
-    hc1200_mcu_init(&board);
+    hc1200_mcu_init(&mcu_board);
+    hc1200_cpu_init(&cpu_board);
     memset(&cfg, 0, sizeof(cfg));
-    if (parse_args(argc, argv, &cfg, &board) < 0) {
-        hc1200_mcu_destroy(&board);
+    if (parse_args(argc, argv, &cfg) < 0) {
+        byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_cpu_destroy(&cpu_board);
+        hc1200_mcu_destroy(&mcu_board);
         return 2;
     }
-    if (cfg.stdin_rx && hc1200_mcu_uart_rx_read_stdin(&board) < 0) {
-        hc1200_mcu_destroy(&board);
+    if (select_board(&cfg, &mcu_board, &cpu_board, &board) < 0) {
+        byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_cpu_destroy(&cpu_board);
+        hc1200_mcu_destroy(&mcu_board);
+        return 2;
+    }
+    if (cfg.stdin_rx && read_stdin_bytes(&cfg.uart_rx) < 0) {
+        byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_cpu_destroy(&cpu_board);
+        hc1200_mcu_destroy(&mcu_board);
+        return 1;
+    }
+    if (cfg.quiet_uart) {
+        board.set_quiet_uart(board.ctx, true);
+    }
+    if (cfg.uart_rx.len != 0 &&
+        board.uart_rx_append(board.ctx, cfg.uart_rx.data, cfg.uart_rx.len) < 0) {
+        byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_cpu_destroy(&cpu_board);
+        hc1200_mcu_destroy(&mcu_board);
         return 1;
     }
     if (load_image(&board, &cfg) < 0) {
-        hc1200_mcu_destroy(&board);
+        byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_cpu_destroy(&cpu_board);
+        hc1200_mcu_destroy(&mcu_board);
         return 1;
     }
 
-    microcpu_init(&cpu, hc1200_mcu_bus(&board));
+    microcpu_init(&cpu, board.bus);
     memset(&step_options, 0, sizeof(step_options));
     step_options.trace = cfg.trace;
     step_options.stop_on_self_branch = cfg.stop_on_self_branch;
@@ -550,7 +727,7 @@ int main(int argc, char **argv)
             exit_code = 1;
             break;
         }
-        hc1200_mcu_tick(&board, cycles);
+        board.tick(board.ctx, cycles);
         step++;
         if (result == MICROCPU_STEP_SELF_BRANCH) {
             fprintf(stderr, "\nmicroemu: stopped on self-branch at %04x after %" PRIu64 " steps\n",
@@ -569,8 +746,10 @@ int main(int argc, char **argv)
 
     if (cfg.dump_regs || exit_code != 0) {
         microcpu_dump_regs(&cpu, stderr);
-        hc1200_mcu_dump(&board, stderr);
+        board.dump(board.ctx, stderr);
     }
-    hc1200_mcu_destroy(&board);
+    byte_buffer_destroy(&cfg.uart_rx);
+    hc1200_cpu_destroy(&cpu_board);
+    hc1200_mcu_destroy(&mcu_board);
     return exit_code;
 }

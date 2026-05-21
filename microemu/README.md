@@ -1,7 +1,9 @@
 # microemu
 
-`microemu` is a C emulator for the `microcpu` core with the `hc1200-mcu`
-board memory map:
+`microemu` is a C emulator for the `microcpu` core with selectable board
+models.
+
+`hc1200-mcu` is the default board model and uses the real board memory map:
 
 - `0x0000..0x07ff`: zero-page SRAM
 - `0x0800..0x17ff`: two SRAM pages
@@ -9,12 +11,19 @@ board memory map:
 - `0xffe8..0xffef`: 15-bit GPIO
 - `0xfff0..0xfff7`: timer
 
+`hc1200-cpu` is a synthetic board model with 64 KiB RAM and the same UART,
+GPIO, and timer peripherals mapped at `0xffe0..0xffff`. CPU accesses in that
+MMIO range go to peripherals; image loading can still initialize the backing
+RAM bytes there.
+
 The emulator is split into:
 
 - `microcpu_core.c` / `microcpu_core.h`: CPU state, instruction decode, and
   execution through `read` / `write` / `intr` bus callbacks.
 - `hc1200_mcu.c` / `hc1200_mcu.h`: the `hc1200-mcu` board wrapper, including
   SRAM, paged SRAM, UART, GPIO, and timer.
+- `hc1200_cpu.c` / `hc1200_cpu.h`: the synthetic `hc1200-cpu` wrapper,
+  including 64 KiB RAM with the `hc1200-mcu` peripherals overlaid at MMIO.
 - `microemu.c`: command-line interface and image loading.
 
 Build:
@@ -54,6 +63,19 @@ Equivalent explicit commands:
 ```sh
 asm/microasm -binary microemu/examples/uart_echo.asm microemu/build/examples/uart_echo.bin
 microemu/microemu --format bin --stop-on-self-branch --uart-rx "A" microemu/build/examples/uart_echo.bin
+```
+
+Run the synthetic 64 KiB RAM board smoke test:
+
+```sh
+make -C microemu run-ram64
+```
+
+Equivalent explicit commands:
+
+```sh
+asm/microasm -binary microemu/examples/ram64.asm microemu/build/examples/ram64.bin
+microemu/microemu --board hc1200-cpu --format bin --stop-on-self-branch microemu/build/examples/ram64.bin
 ```
 
 Run the 32-bit RPN calculator example:
