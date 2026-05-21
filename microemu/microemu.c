@@ -35,7 +35,7 @@ static void usage(FILE *out)
         "  --stop-on-self-branch       stop successfully on a 'b *' idle loop\n"
         "  --trace                     print executed instructions to stderr\n"
         "  --dump-regs                 print CPU registers at exit\n"
-        "  --uart-rx TEXT              preload UART RX bytes from text\n"
+        "  --uart-rx TEXT              preload UART RX text (supports \\n, \\r, \\t, \\\\, \\xHH)\n"
         "  --uart-rx-hex HEX           preload UART RX bytes from hex bytes\n"
         "  --stdin-rx                  read all stdin bytes into UART RX before running\n"
         "  --quiet-uart                discard UART TX instead of writing it to stdout\n"
@@ -79,9 +79,84 @@ static int require_arg(int argc, char **argv, int *index, const char *option,
     return 0;
 }
 
+static int hex_digit(unsigned char ch)
+{
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return -1;
+}
+
 static int append_uart_rx_text(hc1200_mcu_t *board, const char *text)
 {
-    return hc1200_mcu_uart_rx_append(board, (const uint8_t *)text, strlen(text));
+    const char *p = text;
+
+    while (*p != '\0') {
+        uint8_t value;
+
+        if (*p != '\\') {
+            value = (uint8_t)*p++;
+        } else {
+            p++;
+            switch (*p) {
+            case '\0':
+                fprintf(stderr, "microemu: --uart-rx ends with an incomplete escape\n");
+                return -1;
+            case 'n':
+                value = '\n';
+                p++;
+                break;
+            case 'r':
+                value = '\r';
+                p++;
+                break;
+            case 't':
+                value = '\t';
+                p++;
+                break;
+            case '0':
+                value = '\0';
+                p++;
+                break;
+            case '\\':
+                value = '\\';
+                p++;
+                break;
+            case '"':
+                value = '"';
+                p++;
+                break;
+            case 'x': {
+                int hi;
+                int lo;
+
+                p++;
+                hi = hex_digit((unsigned char)p[0]);
+                lo = hex_digit((unsigned char)p[1]);
+                if (hi < 0 || lo < 0) {
+                    fprintf(stderr, "microemu: invalid --uart-rx hex escape near '\\x%s'\n", p);
+                    return -1;
+                }
+                value = (uint8_t)((hi << 4) | lo);
+                p += 2;
+                break;
+            }
+            default:
+                fprintf(stderr, "microemu: unsupported --uart-rx escape '\\%c'\n", *p);
+                return -1;
+            }
+        }
+        if (hc1200_mcu_uart_rx_push(board, value) < 0) {
+            return -1;
+        }
+    }
+    return 0;
 }
 
 static int append_uart_rx_hex(hc1200_mcu_t *board, const char *value)

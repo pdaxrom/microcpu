@@ -56,6 +56,22 @@ asm/microasm -binary microemu/examples/uart_echo.asm microemu/build/examples/uar
 microemu/microemu --format bin --stop-on-self-branch --uart-rx "A" microemu/build/examples/uart_echo.bin
 ```
 
+Run the 32-bit RPN calculator example:
+
+```sh
+make -C microemu run-calc
+```
+
+The calculator reads tokens from UART. Newline prints the signed decimal value
+at the top of the stack and clears the expression; `q` halts for emulator use.
+Examples:
+
+```text
+12 34 +
+-7 3 /
+2 16 l
+```
+
 Run a raw assembler binary:
 
 ```sh
@@ -71,8 +87,11 @@ microemu/microemu --format hex --stop-on-self-branch testbench/build/board_uart_
 UART TX is written to stdout. UART RX can be preloaded with text or hex bytes:
 
 ```sh
+microemu/microemu --uart-rx "100 2 /\nq" build/examples/calc32.bin
 microemu/microemu --uart-rx-hex '4c 08 00 08 0e' bootloader.bin
 ```
+
+`--uart-rx` supports common escapes: `\n`, `\r`, `\t`, `\\`, and `\xHH`.
 
 Useful diagnostics:
 

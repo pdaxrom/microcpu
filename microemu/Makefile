@@ -6,7 +6,7 @@ ASM ?= ../asm/microasm
 .PHONY: all examples run-hello run-echo clean
 
 OBJS = microemu.o microcpu_core.o hc1200_mcu.o
-EXAMPLES = hello_world uart_echo
+EXAMPLES = hello_world uart_echo calc32
 EXAMPLE_BINS = $(patsubst %,build/examples/%.bin,$(EXAMPLES))
 
 all: microemu
@@ -39,6 +39,9 @@ run-hello: microemu build/examples/hello_world.bin
 
 run-echo: microemu build/examples/uart_echo.bin
 	./microemu --format bin --stop-on-self-branch --uart-rx "A" build/examples/uart_echo.bin
+
+run-calc: microemu build/examples/calc32.bin
+	./microemu --format bin --stop-on-self-branch --uart-rx "12 34 +\nq" build/examples/calc32.bin
 
 clean:
 	rm -f microemu $(OBJS)
