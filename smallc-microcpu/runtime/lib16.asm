@@ -66,6 +66,11 @@ __lneg:
 	b	__sc_true
 	b	__sc_false
 
+__neg16:
+	inv	v0, v0
+	add	v0, v0, 1
+	rts
+
 __mul16:
 	mov	v2, v0
 	clr	v0

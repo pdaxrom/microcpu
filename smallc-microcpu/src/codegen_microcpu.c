@@ -8,6 +8,36 @@
 
 extern int code[PCODES];
 
+static char *jump_if_zero()
+{
+  return "\000; if v0 == 0 goto _<n>\nne v0, 0\nb _<n>\n";
+}
+
+static char *jump_if_nonzero()
+{
+  return "\000; if v0 != 0 goto _<n>\neq v0, 0\nb _<n>\n";
+}
+
+static char *jump_if_negative()
+{
+  return "\000; if v0 < 0 goto _<n>\nge v0, 0\nb _<n>\n";
+}
+
+static char *jump_if_negative_or_zero()
+{
+  return "\000; if v0 <= 0 goto _<n>\nclr v2\nlt v2, v0\nb _<n>\n";
+}
+
+static char *jump_if_positive()
+{
+  return "\000; if v0 > 0 goto _<n>\nclr v2\nge v2, v0\nb _<n>\n";
+}
+
+static char *jump_if_positive_or_zero()
+{
+  return "\000; if v0 >= 0 goto _<n>\nlt v0, 0\nb _<n>\n";
+}
+
 int setcodes_microcpu()
 {
   int i;
@@ -19,14 +49,14 @@ int setcodes_microcpu()
   code[ADD1n]   = "\000?add v0, v0, <n>\n??";
   code[ADD21]   = "\000add v1, v1, v0\n";
   code[ADD2n]   = "\000?add v1, v1, <n>\n??";
-  code[ADDSP]   = "\000?add sp, sp, <n>\n??";
+  code[ADDSP]   = "\000?; adjust stack by <n>\nset v2, <n>\nadd sp, sp, v2\n??";
   code[AND12]   = "\000and v0, v0, v1\n";
-  code[ANEG1]   = "\000inv v0, v0\nadd v0, v0, 1\n";
+  code[ANEG1]   = "\000jsr __neg16\n";
   code[ARGCNTn] = "\000";
   code[ASL12]   = "\000jsr __shl16\n";
   code[ASR12]   = "\000jsr __sar16\n";
-  code[CALL1]   = "\000add lr, pc, 3\nmov pc, v0\n";
-  code[CALLm]   = "\000jsr <m>\n";
+  code[CALL1]   = "\000; indirect call through v0\nadd lr, pc, 3\nmov pc, v0\n";
+  code[CALLm]   = "\000; call <m>\njsr <m>\n";
   code[BYTE_]   = "\000db ";
   code[BYTEn]   = "\000db <n>\n";
   code[BYTEr0]  = "\000ds <n>\n";
@@ -38,17 +68,17 @@ int setcodes_microcpu()
   code[DECwp]   = "\000ldr v2, v1, 0\nsub v2, v2, 1\nstr v2, v1, 0\n";
   code[DIV12]   = "\000jsr __sdiv16\n";
   code[DIV12u]  = "\000jsr __udiv16\n";
-  code[ENTER]   = "\000str lr, sp, 0\nsub sp, sp, 2\nstr v4, sp, 0\nmov v4, sp\nsub sp, sp, 2\n";
-  code[EQ10f]   = "\000eq v0, 0\nb _<n>\n";
+  code[ENTER]   = "\000; function prologue\nstr lr, sp, 0\nsub sp, sp, 2\nstr v4, sp, 0\nmov v4, sp\nsub sp, sp, 2\n";
+  code[EQ10f]   = jump_if_nonzero();
   code[EQ12]    = "\000jsr __eq\n";
-  code[GE10f]   = "\000ge v0, 0\nb _<n>\n";
+  code[GE10f]   = jump_if_negative();
   code[GE12]    = "\000jsr __ge\n";
   code[GE12u]   = "\000jsr __uge\n";
-  code[GETb1m]  = "\000set v2, <m>\nldrl v0, v2, 0\nsxt v0, v0\n";
+  code[GETb1m]  = "\000set v2, <m>\nldrl v0, v2, 0\nseth v0, 0\n";
   code[GETb1mu] = "\000set v2, <m>\nldrl v0, v2, 0\nseth v0, 0\n";
-  code[GETb1p]  = "\000ldrl v0, v1, 0\nsxt v0, v0\n";
+  code[GETb1p]  = "\000ldrl v0, v1, 0\nseth v0, 0\n";
   code[GETb1pu] = "\000ldrl v0, v1, 0\nseth v0, 0\n";
-  code[GETb1s]  = "\000set v2, <n>\nadd v2, v4, v2\nldrl v0, v2, 0\nsxt v0, v0\n";
+  code[GETb1s]  = "\000set v2, <n>\nadd v2, v4, v2\nldrl v0, v2, 0\nseth v0, 0\n";
   code[GETb1su] = "\000set v2, <n>\nadd v2, v4, v2\nldrl v0, v2, 0\nseth v0, 0\n";
   code[GETw1m]  = "\000set v2, <m>\nldr v0, v2, 0\n";
   code[GETw1m_] = "\000set v2, <m>\nldr v0, v2, 0\n";
@@ -59,7 +89,7 @@ int setcodes_microcpu()
   code[GETw2n]  = "\000?set v1, <n>\n?clr v1?\n";
   code[GETw2p]  = "\000ldr v1, v1, 0\n";
   code[GETw2s]  = "\000set v2, <n>\nadd v2, v4, v2\nldr v1, v2, 0\n";
-  code[GT10f]   = "\000clr v2\nlt v2, v0\nb _<n>\n";
+  code[GT10f]   = jump_if_negative_or_zero();
   code[GT12]    = "\000jsr __gt\n";
   code[GT12u]   = "\000jsr __ugt\n";
   code[INCbp]   = "\000ldrl v2, v1, 0\nadd v2, v2, 1\nstrl v2, v1, 0\n";
@@ -69,11 +99,11 @@ int setcodes_microcpu()
   code[WORDr0]  = "\000#dw 0\n#";
   code[JMPm]    = "\000b _<n>\n";
   code[LABm]    = "\000_<n>:\n";
-  code[LE10f]   = "\000clr v2\nge v2, v0\nb _<n>\n";
+  code[LE10f]   = jump_if_positive();
   code[LE12]    = "\000jsr __le\n";
   code[LE12u]   = "\000jsr __ule\n";
   code[LNEG1]   = "\000jsr __lneg\n";
-  code[LT10f]   = "\000lt v0, 0\nb _<n>\n";
+  code[LT10f]   = jump_if_positive_or_zero();
   code[LT12]    = "\000jsr __lt\n";
   code[LT12u]   = "\000jsr __ult\n";
   code[MOD12]   = "\000jsr __smod16\n";
@@ -81,7 +111,7 @@ int setcodes_microcpu()
   code[MOVE21]  = "\000mov v1, v0\n";
   code[MUL12]   = "\000jsr __mul16\n";
   code[MUL12u]  = "\000jsr __mul16\n";
-  code[NE10f]   = "\000ne v0, 0\nb _<n>\n";
+  code[NE10f]   = jump_if_zero();
   code[NE12]    = "\000jsr __ne\n";
   code[NEARm]   = "\000dw _<n>\n";
   code[OR12]    = "\000or v0, v0, v1\n";
@@ -106,7 +136,7 @@ int setcodes_microcpu()
   code[rDEC1]   = "\000#sub v0, v0, 1\n#";
   code[rDEC2]   = "\000#sub v1, v1, 1\n#";
   code[REFm]    = "\000_<n>:\n";
-  code[RETURN]  = "\000mov sp, v4\nldr v4, sp, 0\nadd sp, sp, 2\nldr lr, sp, 0\nmov pc, lr\n";
+  code[RETURN]  = "\000; function epilogue\nmov sp, v4\nldr v4, sp, 0\nadd sp, sp, 2\nldr lr, sp, 0\nmov pc, lr\n";
   code[rINC1]   = "\000#add v0, v0, 1\n#";
   code[rINC2]   = "\000#add v1, v1, 1\n#";
   code[SUB_m_]  = "\000";

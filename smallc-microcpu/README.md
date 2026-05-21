@@ -11,47 +11,56 @@ Original copyright notices are preserved in the copied source files.
 make -C smallc-microcpu
 ```
 
-Compile and verify the initial tests:
+Compile and verify the tests:
 
 ```sh
 make -C smallc-microcpu test
 ```
 
-The test target compiles each `tests/*.c` file to readable microasm, assembles
-it with `../asm/microasm`, runs it on `../microemu/microemu`, and checks `V0`
-(`r3` in the emulator register dump).
+The test target compiles every `tests/*.c` file to readable microasm,
+assembles it with `../asm/microasm`, runs it on `../microemu/microemu` when the
+emulator is present, and checks `V0` (`r3` in the emulator register dump)
+against `tests/expected.txt`.
+
+Generated assembly is kept under `smallc-microcpu/build/*.asm` after
+`make test` so the output can be inspected directly.
 
 ## ABI
 
-- `int`, `unsigned`, and pointers are 16-bit values.
-- `char` is stored in the low byte of a 16-bit register or word.
-- Return value and expression primary register: `v0`.
-- Secondary expression register: `v1`.
-- Scratch registers: `v2`, `v3`.
-- Frame pointer: `v4`.
-- Stack pointer: `sp`.
-- Return link: `lr`.
-- Function arguments are pushed by the caller, left to right as in the
-  original Small-C calling sequence; offsets match the Hendrix frame model.
-- The callee saves `lr` and the old `v4`, then uses `v4` as the frame pointer.
-- The caller removes arguments after a call.
+The ABI is documented in `docs/ABI.md`.  In short: `int`, `unsigned`, and
+pointers are 16-bit values; plain `char` is unsigned 8-bit; `v0` is the return
+value and expression accumulator; `v4` is the frame pointer; `sp` grows
+downward; callers push arguments left to right and remove them after the call.
 
 ## Backend Scope
 
-The current backend is intentionally small and targets the first validation
-subset:
+The current backend is intentionally small and supports:
 
 - `int main()`
+- K&R-style and simple ANSI-style function argument declarations
 - constants and local/global `int` variables
-- assignment
+- local/global unsigned plain `char`
+- assignment and return values
 - addition/subtraction and bitwise operations
 - `if`/`else`
 - `while`
-- direct function calls with 0..2 arguments
-- global `int` variables
+- direct function calls, nested calls, and calls using locals/globals
+- integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- basic `int *`: address of global `int`, dereference, store through pointer
+- global `int` arrays and indexing
+- multiply, divide, and modulo through runtime helpers
 
 Multiply, divide, modulo, comparisons, and variable shifts are emitted as calls
 to simple helpers in `runtime/lib16.asm`.
+
+Intentionally unsupported at this stage:
+
+- structs, unions, typedefs, enums
+- `long`, `float`, and full libc
+- optimizer/register allocator
+- local arrays
+- self-hosting
+- broad string-literal/libc workflows
 
 Generated assembly includes:
 

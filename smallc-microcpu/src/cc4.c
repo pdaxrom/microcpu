@@ -522,8 +522,10 @@ int toseg(newseg) int newseg; {
 */
 int public(ident) int ident;{
 #ifdef TARGET_MICROCPU
-  if(ident == FUNCTION)
+  if(ident == FUNCTION) {
        toseg(CODESEG);
+       outline("align 1");
+       }
   else toseg(DATASEG);
   outname(ssname);
   colon();

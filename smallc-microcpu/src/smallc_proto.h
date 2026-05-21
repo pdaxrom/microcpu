@@ -18,6 +18,7 @@ int needsub();
 int doinclude();
 int dodefine();
 int putmac();
+int argtype();
 int dofunction();
 int doargs();
 int decl();

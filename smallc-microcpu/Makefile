@@ -27,11 +27,12 @@ TEST_ASMS := $(patsubst tests/%.c,$(BUILD)/%.asm,$(TEST_SRCS))
 TEST_BINS := $(patsubst tests/%.c,$(BUILD)/%.bin,$(TEST_SRCS))
 
 .PHONY: all test assemble run clean
+.SECONDARY: $(TEST_ASMS)
 
 all: $(CC_BIN)
 
 test: $(TEST_BINS)
-	$(PYTHON) tests/run_tests.py --emulator $(EMU) $(TEST_BINS)
+	$(PYTHON) tests/run_tests.py --expected tests/expected.txt --emulator $(EMU) $(TEST_BINS)
 
 assemble: $(TEST_BINS)
 

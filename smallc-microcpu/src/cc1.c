@@ -200,7 +200,7 @@ int typedfunc() {
 ** test for global declarations
 */
 int dodeclare(class) int class; {
-  if     (amatch("char",     4))  declglb(CHR,  class);
+  if     (amatch("char",     4))  declglb(UCHR, class);
   else if(amatch("unsigned", 8)) {
     if   (amatch("char",     4))  declglb(UCHR, class);
     else {amatch("int",      3);  declglb(UINT, class);}
@@ -354,13 +354,34 @@ int putmac(c)  char c; {
   }
 
 /*
+** parse an optional argument type in an ANSI-style function header
+*/
+int argtype(type) int *type; {
+  if(amatch("unsigned", 8)) {
+    if(amatch("char", 4)) *type = UCHR;
+    else {amatch("int", 3); *type = UINT;}
+    return 1;
+    }
+  if(amatch("int", 3)) {
+    *type = INT;
+    return 1;
+    }
+  if(amatch("char", 4)) {
+    *type = UCHR;
+    return 1;
+    }
+  return 0;
+  }
+
+/*
 ** begin a function
 **
 ** called from "parse" and tries to make a function
 ** out of the following text
 */
 int dofunction()  {
-  char *ptr;
+  int argcount, id, sz, type, typedargs;
+  char *argptr[NUMLOCS], *ptr;
   nogo   =                      /* enable goto statements */
   noloc  =                      /* enable block-local declarations */
   lastst =                      /* no statement yet */
@@ -383,12 +404,40 @@ int dofunction()  {
   else addsym(ssname, FUNCTION, INT, 0, 0, &glbptr, STATIC);
   public(FUNCTION);
   argstk = 0;                  /* init arg count */
+  argcount = typedargs = 0;
   if(match("(") == 0) error("no open paren");
   while(match(")") == 0) {     /* then count args */
-    if(symname(ssname)) {
+    type = 0;
+    if(streq(lptr, "void")) {
+      match("void");
+      need(")");
+      break;
+      }
+    if(argtype(&type)) {
+      typedargs = YES;
+      if(match("*")) {id = POINTER;  sz = BPW;}
+      else           {id = VARIABLE; sz = type >> 2;}
+      if(symname(ssname)) {
+        if(findloc(ssname)) multidef(ssname);
+        else if(argcount < NUMLOCS) {
+          argptr[argcount++] =
+            addsym(ssname, id, type, sz, argstk, &locptr, AUTOMATIC);
+          argstk += BPW;
+          }
+        else error("too many arguments");
+        }
+      else {
+        error("illegal argument name");
+        skip();
+        }
+      }
+    else if(symname(ssname)) {
       if(findloc(ssname)) multidef(ssname);
       else {
-        addsym(ssname, 0, 0, 0, argstk, &locptr, AUTOMATIC);
+        if(argcount < NUMLOCS)
+          argptr[argcount++] =
+            addsym(ssname, 0, 0, 0, argstk, &locptr, AUTOMATIC);
+        else error("too many arguments");
         argstk += BPW;
         }
       }
@@ -403,8 +452,15 @@ int dofunction()  {
     }
   csp = 0;                     /* preset stack ptr */
   argtop = argstk+BPW;         /* account for the pushed BP */
+  if(typedargs) {
+    while(argcount) {
+      ptr = argptr[--argcount];
+      putint(argtop-getint(ptr+OFFSET, 2), ptr+OFFSET, 2);
+      }
+    argstk = 0;
+    }
   while(argstk) {
-    if     (amatch("char",     4)) {doargs(CHR);  ns();}
+    if     (amatch("char",     4)) {doargs(UCHR); ns();}
     else if(amatch("int",      3)) {doargs(INT);  ns();}
     else if(amatch("unsigned", 8)) {
       if   (amatch("char", 4))     {doargs(UCHR); ns();}
@@ -478,7 +534,7 @@ int decl(type, aid, id, sz) int type, aid, *id, *sz; {
 */
 int statement() {
   if(ch == 0 && eof) return;
-  else if(amatch("char",     4)) {declloc(CHR);    ns();}
+  else if(amatch("char",     4)) {declloc(UCHR);   ns();}
   else if(amatch("int",      3)) {declloc(INT);    ns();}
   else if(amatch("unsigned", 8)) {
     if   (amatch("char",     4)) {declloc(UCHR);   ns();}

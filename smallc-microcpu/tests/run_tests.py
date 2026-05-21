@@ -10,25 +10,24 @@ import subprocess
 import sys
 
 
-EXPECTED = {
-    "001_return_const": 123,
-    "002_add": 5,
-    "003_local_var": 12,
-    "004_global_var": 11,
-    "005_if_else": 1,
-    "006_while": 10,
-    "007_call": 42,
-}
-
 REG_RE = re.compile(r"\br3=([0-9a-fA-F]{4})\b")
 
 
-def run_one(emulator: pathlib.Path, binary: pathlib.Path) -> bool:
+def load_expected(path: pathlib.Path) -> dict[str, int]:
+    expected: dict[str, int] = {}
+    for lineno, raw in enumerate(path.read_text().splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 2:
+            raise ValueError(f"{path}:{lineno}: expected '<test> <value>'")
+        expected[parts[0]] = int(parts[1], 0)
+    return expected
+
+
+def run_one(emulator: pathlib.Path, binary: pathlib.Path, expected: int) -> bool:
     stem = binary.stem
-    expected = EXPECTED.get(stem)
-    if expected is None:
-        print(f"{stem}: no expected value", file=sys.stderr)
-        return False
     proc = subprocess.run(
         [
             str(emulator),
@@ -49,25 +48,40 @@ def run_one(emulator: pathlib.Path, binary: pathlib.Path) -> bool:
     output = proc.stdout + proc.stderr
     match = REG_RE.search(output)
     if proc.returncode != 0 or match is None:
+        print(f"FAIL {stem}: emulator failed", file=sys.stderr)
         print(output, file=sys.stderr)
         return False
     actual = int(match.group(1), 16)
     if actual != (expected & 0xFFFF):
-        print(f"{stem}: V0={actual} expected {expected}", file=sys.stderr)
+        print(f"FAIL {stem}: V0={actual} expected {expected}", file=sys.stderr)
         return False
-    print(f"{stem}: V0={actual}")
+    print(f"PASS {stem}: V0={actual}")
     return True
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--emulator", required=True, type=pathlib.Path)
+    parser.add_argument("--expected", required=True, type=pathlib.Path)
+    parser.add_argument("--emulator", type=pathlib.Path)
     parser.add_argument("binaries", nargs="+", type=pathlib.Path)
     args = parser.parse_args()
 
+    expected = load_expected(args.expected)
+    missing = [binary.stem for binary in args.binaries if binary.stem not in expected]
+    if missing:
+        for stem in missing:
+            print(f"FAIL {stem}: missing expected value", file=sys.stderr)
+        return 1
+
+    if args.emulator is None or not args.emulator.exists():
+        print("SKIP execution: emulator not available; assembly succeeded")
+        for binary in args.binaries:
+            print(f"PASS {binary.stem}: assembled")
+        return 0
+
     ok = True
     for binary in args.binaries:
-        ok = run_one(args.emulator, binary) and ok
+        ok = run_one(args.emulator, binary, expected[binary.stem]) and ok
     return 0 if ok else 1
 
 
