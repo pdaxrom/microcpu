@@ -1,8 +1,12 @@
 #include "hc1200_mcu.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define TIMER_STOPPED 0x10000u
 #define TIMER_MASK 0x1ffffu
@@ -11,10 +15,28 @@ void hc1200_mcu_init(hc1200_mcu_t *board)
 {
     memset(board, 0, sizeof(*board));
     board->timer_counter = TIMER_STOPPED;
+    board->uart_stdin_fd = -1;
+}
+
+static void restore_interactive_uart(hc1200_mcu_t *board)
+{
+    if (board->uart_stdin_termios_saved) {
+        tcsetattr(board->uart_stdin_fd, TCSANOW, &board->uart_stdin_termios);
+        board->uart_stdin_termios_saved = false;
+    }
+    if (board->uart_stdin_flags_saved) {
+        fcntl(board->uart_stdin_fd, F_SETFL, board->uart_stdin_flags);
+        board->uart_stdin_flags_saved = false;
+    }
+    board->interactive_uart = false;
+    board->interactive_uart_stdio = false;
+    board->uart_stdin_eof = false;
+    board->uart_stdin_fd = -1;
 }
 
 void hc1200_mcu_destroy(hc1200_mcu_t *board)
 {
+    restore_interactive_uart(board);
     free(board->uart_rx.data);
     board->uart_rx.data = NULL;
     board->uart_rx.len = 0;
@@ -38,8 +60,82 @@ void hc1200_mcu_set_quiet_uart(hc1200_mcu_t *board, bool quiet)
     board->quiet_uart = quiet;
 }
 
+int hc1200_mcu_set_interactive_uart(hc1200_mcu_t *board, bool interactive)
+{
+    struct termios raw;
+    int flags;
+
+    if (!interactive) {
+        restore_interactive_uart(board);
+        return 0;
+    }
+    if (board->interactive_uart) {
+        return 0;
+    }
+
+    board->uart_stdin_fd = STDIN_FILENO;
+    flags = fcntl(board->uart_stdin_fd, F_GETFL);
+    if (flags < 0) {
+        perror("fcntl(F_GETFL)");
+        board->uart_stdin_fd = -1;
+        return -1;
+    }
+    board->uart_stdin_flags = flags;
+    board->uart_stdin_flags_saved = true;
+    if (fcntl(board->uart_stdin_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        perror("fcntl(F_SETFL)");
+        restore_interactive_uart(board);
+        return -1;
+    }
+
+    if (isatty(board->uart_stdin_fd)) {
+        if (tcgetattr(board->uart_stdin_fd, &board->uart_stdin_termios) < 0) {
+            perror("tcgetattr");
+            restore_interactive_uart(board);
+            return -1;
+        }
+        board->uart_stdin_termios_saved = true;
+        raw = board->uart_stdin_termios;
+        raw.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+        raw.c_iflag &= (tcflag_t)~IXON;
+        raw.c_cc[VMIN] = 0;
+        raw.c_cc[VTIME] = 0;
+        if (tcsetattr(board->uart_stdin_fd, TCSANOW, &raw) < 0) {
+            perror("tcsetattr");
+            restore_interactive_uart(board);
+            return -1;
+        }
+    }
+
+    board->interactive_uart = true;
+    board->interactive_uart_stdio = board->uart_rx.pos >= board->uart_rx.len;
+    board->uart_stdin_eof = false;
+    return 0;
+}
+
+static bool is_would_block(int error)
+{
+    if (error == EAGAIN) {
+        return true;
+    }
+#ifdef EWOULDBLOCK
+    if (error == EWOULDBLOCK) {
+        return true;
+    }
+#endif
+    return false;
+}
+
 static int queue_reserve(hc1200_byte_queue_t *queue, size_t len)
 {
+    if (queue->pos == queue->len) {
+        queue->pos = 0;
+        queue->len = 0;
+    } else if (queue->pos > 0 && queue->pos >= queue->cap / 2) {
+        memmove(queue->data, queue->data + queue->pos, queue->len - queue->pos);
+        queue->len -= queue->pos;
+        queue->pos = 0;
+    }
     if (queue->len + len > queue->cap) {
         size_t new_cap = queue->cap ? queue->cap : 256;
         uint8_t *new_data;
@@ -56,6 +152,54 @@ static int queue_reserve(hc1200_byte_queue_t *queue, size_t len)
         queue->cap = new_cap;
     }
     return 0;
+}
+
+static void update_interactive_uart_stdio(hc1200_mcu_t *board)
+{
+    if (!board->interactive_uart || board->interactive_uart_stdio) {
+        return;
+    }
+    if (board->uart_rx.pos >= board->uart_rx.len) {
+        board->uart_rx.pos = 0;
+        board->uart_rx.len = 0;
+        board->interactive_uart_stdio = true;
+    }
+}
+
+static void poll_interactive_uart(hc1200_mcu_t *board)
+{
+    uint8_t buf[256];
+
+    if (!board->interactive_uart || board->uart_stdin_eof) {
+        return;
+    }
+    update_interactive_uart_stdio(board);
+    if (!board->interactive_uart_stdio) {
+        return;
+    }
+
+    for (;;) {
+        ssize_t got = read(board->uart_stdin_fd, buf, sizeof(buf));
+
+        if (got > 0) {
+            if (hc1200_mcu_uart_rx_append(board, buf, (size_t)got) < 0) {
+                board->uart_stdin_eof = true;
+                return;
+            }
+            continue;
+        }
+        if (got == 0) {
+            if (!isatty(board->uart_stdin_fd)) {
+                board->uart_stdin_eof = true;
+            }
+            return;
+        }
+        if (is_would_block(errno)) {
+            return;
+        }
+        board->uart_stdin_eof = true;
+        return;
+    }
 }
 
 int hc1200_mcu_uart_rx_push(hc1200_mcu_t *board, uint8_t value)
@@ -125,13 +269,23 @@ static uint8_t read_uart(hc1200_mcu_t *board, uint16_t addr)
     bool a0 = (addr & 1u) != 0;
 
     if (!a0) {
+        poll_interactive_uart(board);
         bool rx_full = board->uart_rx.pos < board->uart_rx.len;
+        if (!rx_full && board->interactive_uart && board->interactive_uart_stdio &&
+            !board->uart_stdin_eof) {
+            usleep(1000);
+        }
         return rx_full ? 0x01u : 0x00u;
     }
 
+    poll_interactive_uart(board);
     if (board->uart_rx.pos < board->uart_rx.len) {
-        return board->uart_rx.data[board->uart_rx.pos++];
+        uint8_t value = board->uart_rx.data[board->uart_rx.pos++];
+
+        update_interactive_uart_stdio(board);
+        return value;
     }
+    update_interactive_uart_stdio(board);
     return 0;
 }
 
@@ -200,7 +354,8 @@ static void write_uart(hc1200_mcu_t *board, uint16_t addr, uint8_t value)
 {
     bool a0 = (addr & 1u) != 0;
 
-    if (a0 && !board->quiet_uart) {
+    if (a0 && !board->quiet_uart &&
+        (!board->interactive_uart || board->interactive_uart_stdio)) {
         fputc(value, stdout);
         fflush(stdout);
     }

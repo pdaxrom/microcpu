@@ -21,6 +21,7 @@ void hc1200_cpu_destroy(hc1200_cpu_t *board);
 microcpu_bus_t hc1200_cpu_bus(hc1200_cpu_t *board);
 
 void hc1200_cpu_set_quiet_uart(hc1200_cpu_t *board, bool quiet);
+int hc1200_cpu_set_interactive_uart(hc1200_cpu_t *board, bool interactive);
 int hc1200_cpu_uart_rx_append(hc1200_cpu_t *board, const uint8_t *data, size_t len);
 int hc1200_cpu_uart_rx_read_stdin(hc1200_cpu_t *board);
 

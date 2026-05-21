@@ -37,6 +37,11 @@ void hc1200_cpu_set_quiet_uart(hc1200_cpu_t *board, bool quiet)
     hc1200_mcu_set_quiet_uart(&board->periph, quiet);
 }
 
+int hc1200_cpu_set_interactive_uart(hc1200_cpu_t *board, bool interactive)
+{
+    return hc1200_mcu_set_interactive_uart(&board->periph, interactive);
+}
+
 int hc1200_cpu_uart_rx_append(hc1200_cpu_t *board, const uint8_t *data, size_t len)
 {
     return hc1200_mcu_uart_rx_append(&board->periph, data, len);

@@ -495,6 +495,7 @@ getchar_wait:
 	bitne	getchar_wait, v0, 1
 	ldrl	v0, v1, 1
 	seth	v0, 0
+	strl	v0, v1, 1
 	rts
 	endp
 

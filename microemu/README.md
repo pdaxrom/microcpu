@@ -120,11 +120,44 @@ microemu/microemu --board hc1200-microcomp --format auto --stdin-rx \
   < microemu/build/calc_fis32_boot.uart
 ```
 
+The same preload stream can be passed without redirecting stdin:
+
+```sh
+microemu/microemu --board hc1200-microcomp --format auto \
+  --uart-rx-file microemu/build/calc_fis32_boot.uart \
+  --stop-on-self-branch --max-steps 200000000 boards/sram.mem
+```
+
 The shorter make target for the same FIS32 bootloader smoke test is:
 
 ```sh
 make -C microemu run-boot-calc-fis32
 ```
+
+For an interactive calculator session, generate a bootloader stream without
+appended calculator input and let the emulator switch UART RX/TX to the
+terminal after the preload bytes are consumed:
+
+```sh
+python3 microemu/scripts/boot_uart.py --start 0x0800 \
+  --output microemu/build/calc_fis32_boot_interactive.uart \
+  microemu/build/calc_fis32_0800.bin
+microemu/microemu --board hc1200-microcomp --format auto \
+  --uart-rx-file microemu/build/calc_fis32_boot_interactive.uart \
+  --interactive-uart --stop-on-self-branch boards/sram.mem
+```
+
+The equivalent make target is:
+
+```sh
+make -C microemu run-boot-calc-fis32-interactive
+```
+
+In interactive mode `--max-steps` defaults to unlimited. Press `q` in the
+calculator to halt normally, or `Ctrl-C` to interrupt the emulator and restore
+the terminal. `--stdin-rx` cannot be combined with `--interactive-uart`; use
+`--uart-rx-file` for the bootloader preload so stdin stays available for the
+interactive UART.
 
 Run the virtual-memory FRAM smoke test:
 
@@ -189,6 +222,18 @@ digits, trims trailing fractional zeroes, and switches to scientific notation
 for very small or large values. Floating overflow, decimal parse overflow, and
 division by zero print `OVF` and reset the calculator stack.
 
+Run arithmetic microbenchmarks:
+
+```sh
+make -C microemu bench
+```
+
+The benchmark runner generates temporary assembler programs under
+`microemu/build/bench`, runs them on the synthetic `hc1200-cpu` board with
+`--stats`, and prints estimated net instruction/cycle cost per operation after
+subtracting the generated loop/setup baseline. The suite covers `int32.inc`
+add/sub/mul/div/shifts plus FIS16 and FIS32 add/sub/mul/div.
+
 Run a raw assembler binary:
 
 ```sh
@@ -208,12 +253,16 @@ microemu/microemu --uart-rx "100 2 /\nq" build/examples/calc32.bin
 microemu/microemu --uart-rx "1.5 2 *\nq" build/examples/calc_fis16.bin
 microemu/microemu --uart-rx "1.5 2 *\nq" build/examples/calc_fis32.bin
 microemu/microemu --uart-rx-hex '4c 08 00 08 0e' bootloader.bin
+microemu/microemu --uart-rx-file bootload.uart boards/sram.mem
 ```
 
 `--uart-rx` supports common escapes: `\n`, `\r`, `\t`, `\\`, and `\xHH`.
+`--interactive-uart` keeps preloaded RX bytes separate from terminal input:
+UART TX is suppressed until that preload drains, then UART RX reads stdin
+non-blockingly and UART TX writes stdout.
 
 Useful diagnostics:
 
 ```sh
-microemu/microemu --trace --dump-regs --max-steps 2000 firmware.bin
+microemu/microemu --trace --dump-regs --stats --max-steps 2000 firmware.bin
 ```

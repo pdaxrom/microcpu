@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -26,9 +27,12 @@ typedef struct {
     uint64_t max_steps;
     bool trace;
     bool dump_regs;
+    bool stats;
     bool stop_on_self_branch;
+    bool max_steps_set;
     bool stdin_rx;
     bool quiet_uart;
+    bool interactive_uart;
     byte_buffer_t uart_rx;
 } config_t;
 
@@ -40,8 +44,11 @@ typedef struct {
     void (*tick)(void *ctx, unsigned cycles);
     void (*dump)(const void *ctx, FILE *out);
     void (*set_quiet_uart)(void *ctx, bool quiet);
+    int (*set_interactive_uart)(void *ctx, bool interactive);
     int (*uart_rx_append)(void *ctx, const uint8_t *data, size_t len);
 } board_model_t;
+
+static volatile sig_atomic_t stop_requested;
 
 static void usage(FILE *out)
 {
@@ -57,11 +64,20 @@ static void usage(FILE *out)
         "  --stop-on-self-branch       stop successfully on a 'b *' idle loop\n"
         "  --trace                     print executed instructions to stderr\n"
         "  --dump-regs                 print CPU registers at exit\n"
+        "  --stats                     print executed instruction and cycle counts\n"
         "  --uart-rx TEXT              preload UART RX text (supports \\n, \\r, \\t, \\\\, \\xHH)\n"
         "  --uart-rx-hex HEX           preload UART RX bytes from hex bytes\n"
+        "  --uart-rx-file FILE         preload UART RX bytes from a binary file\n"
         "  --stdin-rx                  read all stdin bytes into UART RX before running\n"
+        "  --interactive-uart          switch UART stdin/stdout on after preloaded RX drains\n"
         "  --quiet-uart                discard UART TX instead of writing it to stdout\n"
         "  --help                      show this help\n");
+}
+
+static void handle_stop_signal(int signum)
+{
+    (void)signum;
+    stop_requested = 1;
 }
 
 static bool parse_u64(const char *text, uint64_t *value)
@@ -161,6 +177,39 @@ static int read_stdin_bytes(byte_buffer_t *buffer)
             return -1;
         }
     }
+    return 0;
+}
+
+static int append_uart_rx_file(byte_buffer_t *buffer, const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+    uint8_t chunk[4096];
+
+    if (fp == NULL) {
+        perror(path);
+        return -1;
+    }
+    for (;;) {
+        size_t got = fread(chunk, 1, sizeof(chunk), fp);
+
+        if (got != 0) {
+            if (byte_buffer_reserve(buffer, got) < 0) {
+                fclose(fp);
+                return -1;
+            }
+            memcpy(buffer->data + buffer->len, chunk, got);
+            buffer->len += got;
+        }
+        if (got < sizeof(chunk)) {
+            if (ferror(fp)) {
+                perror(path);
+                fclose(fp);
+                return -1;
+            }
+            break;
+        }
+    }
+    fclose(fp);
     return 0;
 }
 
@@ -335,14 +384,19 @@ static int parse_args(int argc, char **argv, config_t *cfg)
                 fprintf(stderr, "microemu: invalid --max-steps '%s'\n", value);
                 return -1;
             }
+            cfg->max_steps_set = true;
         } else if (strcmp(arg, "--trace") == 0) {
             cfg->trace = true;
         } else if (strcmp(arg, "--dump-regs") == 0) {
             cfg->dump_regs = true;
+        } else if (strcmp(arg, "--stats") == 0) {
+            cfg->stats = true;
         } else if (strcmp(arg, "--stop-on-self-branch") == 0) {
             cfg->stop_on_self_branch = true;
         } else if (strcmp(arg, "--stdin-rx") == 0) {
             cfg->stdin_rx = true;
+        } else if (strcmp(arg, "--interactive-uart") == 0) {
+            cfg->interactive_uart = true;
         } else if (strcmp(arg, "--quiet-uart") == 0) {
             cfg->quiet_uart = true;
         } else if (strcmp(arg, "--uart-rx") == 0) {
@@ -357,6 +411,13 @@ static int parse_args(int argc, char **argv, config_t *cfg)
                 return -1;
             }
             if (append_uart_rx_hex(&cfg->uart_rx, value) < 0) {
+                return -1;
+            }
+        } else if (strcmp(arg, "--uart-rx-file") == 0) {
+            if (require_arg(argc, argv, &i, arg, &value) < 0) {
+                return -1;
+            }
+            if (append_uart_rx_file(&cfg->uart_rx, value) < 0) {
                 return -1;
             }
         } else if (arg[0] == '-') {
@@ -387,6 +448,17 @@ static int parse_args(int argc, char **argv, config_t *cfg)
         fprintf(stderr, "microemu: unsupported format '%s'\n", cfg->format);
         return -1;
     }
+    if (cfg->interactive_uart && cfg->stdin_rx) {
+        fprintf(stderr, "microemu: --interactive-uart cannot be used with --stdin-rx; use --uart-rx-file for the preload stream\n");
+        return -1;
+    }
+    if (cfg->interactive_uart && cfg->quiet_uart) {
+        fprintf(stderr, "microemu: --interactive-uart cannot be used with --quiet-uart\n");
+        return -1;
+    }
+    if (cfg->interactive_uart && !cfg->max_steps_set) {
+        cfg->max_steps = 0;
+    }
     return 0;
 }
 
@@ -408,6 +480,11 @@ static void mcu_dump_cb(const void *ctx, FILE *out)
 static void mcu_set_quiet_uart_cb(void *ctx, bool quiet)
 {
     hc1200_mcu_set_quiet_uart(ctx, quiet);
+}
+
+static int mcu_set_interactive_uart_cb(void *ctx, bool interactive)
+{
+    return hc1200_mcu_set_interactive_uart(ctx, interactive);
 }
 
 static int mcu_uart_rx_append_cb(void *ctx, const uint8_t *data, size_t len)
@@ -435,6 +512,11 @@ static void cpu_set_quiet_uart_cb(void *ctx, bool quiet)
     hc1200_cpu_set_quiet_uart(ctx, quiet);
 }
 
+static int cpu_set_interactive_uart_cb(void *ctx, bool interactive)
+{
+    return hc1200_cpu_set_interactive_uart(ctx, interactive);
+}
+
 static int cpu_uart_rx_append_cb(void *ctx, const uint8_t *data, size_t len)
 {
     return hc1200_cpu_uart_rx_append(ctx, data, len);
@@ -460,6 +542,11 @@ static void microcomp_set_quiet_uart_cb(void *ctx, bool quiet)
     hc1200_microcomp_set_quiet_uart(ctx, quiet);
 }
 
+static int microcomp_set_interactive_uart_cb(void *ctx, bool interactive)
+{
+    return hc1200_microcomp_set_interactive_uart(ctx, interactive);
+}
+
 static int microcomp_uart_rx_append_cb(void *ctx, const uint8_t *data, size_t len)
 {
     return hc1200_microcomp_uart_rx_append(ctx, data, len);
@@ -479,6 +566,7 @@ static int select_board(const config_t *cfg, hc1200_mcu_t *mcu_board,
         board->tick = mcu_tick_cb;
         board->dump = mcu_dump_cb;
         board->set_quiet_uart = mcu_set_quiet_uart_cb;
+        board->set_interactive_uart = mcu_set_interactive_uart_cb;
         board->uart_rx_append = mcu_uart_rx_append_cb;
         return 0;
     }
@@ -489,6 +577,7 @@ static int select_board(const config_t *cfg, hc1200_mcu_t *mcu_board,
         board->tick = cpu_tick_cb;
         board->dump = cpu_dump_cb;
         board->set_quiet_uart = cpu_set_quiet_uart_cb;
+        board->set_interactive_uart = cpu_set_interactive_uart_cb;
         board->uart_rx_append = cpu_uart_rx_append_cb;
         return 0;
     }
@@ -499,6 +588,7 @@ static int select_board(const config_t *cfg, hc1200_mcu_t *mcu_board,
         board->tick = microcomp_tick_cb;
         board->dump = microcomp_dump_cb;
         board->set_quiet_uart = microcomp_set_quiet_uart_cb;
+        board->set_interactive_uart = microcomp_set_interactive_uart_cb;
         board->uart_rx_append = microcomp_uart_rx_append_cb;
         return 0;
     }
@@ -720,8 +810,10 @@ int main(int argc, char **argv)
     microcpu_step_options_t step_options;
     config_t cfg;
     uint64_t step = 0;
+    uint64_t cycle_count = 0;
     int exit_code = 0;
     bool stopped_on_self_branch = false;
+    bool interrupted = false;
 
     hc1200_mcu_init(&mcu_board);
     hc1200_cpu_init(&cpu_board);
@@ -766,6 +858,35 @@ int main(int argc, char **argv)
         hc1200_mcu_destroy(&mcu_board);
         return 1;
     }
+    if (cfg.interactive_uart) {
+        stop_requested = 0;
+        if (signal(SIGINT, handle_stop_signal) == SIG_ERR ||
+            signal(SIGTERM, handle_stop_signal) == SIG_ERR) {
+            perror("signal");
+            byte_buffer_destroy(&cfg.uart_rx);
+            hc1200_microcomp_destroy(&microcomp_board);
+            hc1200_cpu_destroy(&cpu_board);
+            hc1200_mcu_destroy(&mcu_board);
+            return 1;
+        }
+#ifdef SIGHUP
+        if (signal(SIGHUP, handle_stop_signal) == SIG_ERR) {
+            perror("signal");
+            byte_buffer_destroy(&cfg.uart_rx);
+            hc1200_microcomp_destroy(&microcomp_board);
+            hc1200_cpu_destroy(&cpu_board);
+            hc1200_mcu_destroy(&mcu_board);
+            return 1;
+        }
+#endif
+        if (board.set_interactive_uart(board.ctx, true) < 0) {
+            byte_buffer_destroy(&cfg.uart_rx);
+            hc1200_microcomp_destroy(&microcomp_board);
+            hc1200_cpu_destroy(&cpu_board);
+            hc1200_mcu_destroy(&mcu_board);
+            return 1;
+        }
+    }
 
     microcpu_init(&cpu, board.bus);
     memset(&step_options, 0, sizeof(step_options));
@@ -773,7 +894,7 @@ int main(int argc, char **argv)
     step_options.stop_on_self_branch = cfg.stop_on_self_branch;
     step_options.trace_file = stderr;
 
-    while (cfg.max_steps == 0 || step < cfg.max_steps) {
+    while (!stop_requested && (cfg.max_steps == 0 || step < cfg.max_steps)) {
         unsigned cycles = 0;
         microcpu_step_result_t result = microcpu_step(&cpu, step, &step_options, &cycles);
 
@@ -782,6 +903,7 @@ int main(int argc, char **argv)
             break;
         }
         board.tick(board.ctx, cycles);
+        cycle_count += cycles;
         step++;
         if (result == MICROCPU_STEP_SELF_BRANCH) {
             fprintf(stderr, "\nmicroemu: stopped on self-branch at %04x after %" PRIu64 " steps\n",
@@ -792,13 +914,24 @@ int main(int argc, char **argv)
         }
     }
 
+    if (stop_requested && exit_code == 0) {
+        fprintf(stderr, "\nmicroemu: interrupted\n");
+        exit_code = 130;
+        interrupted = true;
+    }
+
     if (!stopped_on_self_branch && (cfg.max_steps != 0 && step >= cfg.max_steps) &&
         exit_code == 0) {
         fprintf(stderr, "\nmicroemu: max steps reached (%" PRIu64 ")\n", cfg.max_steps);
         exit_code = 124;
     }
 
-    if (cfg.dump_regs || exit_code != 0) {
+    if (cfg.stats) {
+        fprintf(stderr, "microemu: stats: steps=%" PRIu64 " cycles=%" PRIu64 "\n",
+            step, cycle_count);
+    }
+
+    if (cfg.dump_regs || (exit_code != 0 && !interrupted)) {
         microcpu_dump_regs(&cpu, stderr);
         board.dump(board.ctx, stderr);
     }

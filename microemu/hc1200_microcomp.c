@@ -274,6 +274,12 @@ void hc1200_microcomp_set_quiet_uart(hc1200_microcomp_t *board, bool quiet)
     hc1200_mcu_set_quiet_uart(&board->uart, quiet);
 }
 
+int hc1200_microcomp_set_interactive_uart(hc1200_microcomp_t *board,
+    bool interactive)
+{
+    return hc1200_mcu_set_interactive_uart(&board->uart, interactive);
+}
+
 int hc1200_microcomp_uart_rx_append(hc1200_microcomp_t *board,
     const uint8_t *data, size_t len)
 {
