@@ -3,7 +3,8 @@
 ;
 ; Input uses reverse Polish notation. Tokens are whitespace-separated.
 ; Numbers are decimal, with an optional fractional part. Newline prints the top
-; of the stack as fixed decimal with 4 fractional digits and clears the line.
+; of the stack as rounded fixed decimal with 4 fractional digits and clears the
+; line.
 ; `q` halts.
 ;
 ; Example UART input:
@@ -611,6 +612,10 @@ print_fis16_negative:
 	and	v1, v1, v4
 
 print_fis16_abs_ready:
+	set	v2, $d1b7
+	set	v3, $0071
+	jsr	fadd
+
 	mov	v4, v1
 	set	v3, $00ff
 	and	v4, v4, v3

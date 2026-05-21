@@ -65,7 +65,7 @@ org $0000
 	set v2, $c000
 	set v3, $0080
 	bsr fdiv
-	check_eq16 v0, $aaaa, 13
+	check_eq16 v0, $aaab, 13
 	check_eq16 v1, $007f, 14
 
 	; -6.0 / 2.0 = -3.0

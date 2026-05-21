@@ -91,10 +91,10 @@ for example:
 0.111 1e6 /
 ```
 
-FIS16 prints 4 fractional digits; FIS32 prints up to 7 significant digits,
-trims trailing fractional zeroes, and switches to scientific notation for very
-small or large values. Floating overflow, decimal parse overflow, and division
-by zero print `OVF` and reset the calculator stack.
+FIS16 prints rounded 4 fractional digits; FIS32 prints up to 7 significant
+digits, trims trailing fractional zeroes, and switches to scientific notation
+for very small or large values. Floating overflow, decimal parse overflow, and
+division by zero print `OVF` and reset the calculator stack.
 
 Run a raw assembler binary:
 

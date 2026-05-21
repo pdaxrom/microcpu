@@ -372,6 +372,61 @@ fdiv_rhs_nonzero:
 	setl	v3, 0
 	seth	v3, 0
 	jsr	u32_div
+	fis_addr	v4, FIS_LMANT
+	str	v0, v4, 0
+	mov	v0, v2
+	mov	v1, v3
+	jsr	u32_shl1
+	fis_addr	v4, FIS_RMANT
+	ldr	v2, v4, 0
+	fis_addr	v4, FIS_LMANT
+	ldr	v4, v4, 0
+	ge	v4, 0
+	b	fdiv_round_compare_hi
+	jsr	u32_shl1
+	ne	v1, 0
+	b	fdiv_round_compare_low_shifted
+	b	fdiv_round_up_shifted
+fdiv_round_compare_low_shifted:
+	ltu	v0, v2
+	b	fdiv_round_up_shifted
+	b	fdiv_round_done
+fdiv_round_compare_hi:
+	ne	v1, 0
+	b	fdiv_round_compare_low
+	b	fdiv_round_up
+fdiv_round_compare_low:
+	ltu	v0, v2
+	b	fdiv_round_up
+	b	fdiv_round_done
+fdiv_round_up:
+	fis_addr	v4, FIS_LMANT
+	ldr	v0, v4, 0
+	add	v0, v0, 1
+	eq	v0, 0
+	b	fdiv_round_store
+	set	v0, $8000
+	fis_addr	v4, FIS_EXP
+	ldr	v1, v4, 0
+	add	v1, v1, 1
+	str	v1, v4, 0
+fdiv_round_store:
+	fis_addr	v4, FIS_LMANT
+	str	v0, v4, 0
+	b	fdiv_round_done
+fdiv_round_up_shifted:
+	fis_addr	v4, FIS_LMANT
+	ldr	v0, v4, 0
+	shl	v0, v0, 1
+	add	v0, v0, 1
+	fis_addr	v4, FIS_EXP
+	ldr	v1, v4, 0
+	sub	v1, v1, 1
+	str	v1, v4, 0
+	b	fdiv_pack
+fdiv_round_done:
+	fis_addr	v4, FIS_LMANT
+	ldr	v0, v4, 0
 
 	ge	v0, 0
 	b	fdiv_pack
