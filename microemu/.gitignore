@@ -1,3 +1,5 @@
 /microemu
 /*.o
 /build
+__pycache__/
+*.pyc

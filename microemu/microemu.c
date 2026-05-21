@@ -1,4 +1,5 @@
 #include "hc1200_cpu.h"
+#include "hc1200_microcomp.h"
 #include "hc1200_mcu.h"
 #include "microcpu_core.h"
 
@@ -48,7 +49,7 @@ static void usage(FILE *out)
         "usage: microemu [options] <program>\n"
         "\n"
         "Options:\n"
-        "  --board hc1200-mcu|hc1200-cpu\n"
+        "  --board hc1200-mcu|hc1200-cpu|hc1200-microcomp\n"
         "                              board model (default: hc1200-mcu)\n"
         "  --format auto|bin|hex       input format (default: auto)\n"
         "  --load-addr ADDR            binary load address (default: 0)\n"
@@ -374,8 +375,9 @@ static int parse_args(int argc, char **argv, config_t *cfg)
         return -1;
     }
     if (strcmp(cfg->board_name, "hc1200-mcu") != 0 &&
-        strcmp(cfg->board_name, "hc1200-cpu") != 0) {
-        fprintf(stderr, "microemu: unsupported board '%s' (supported: hc1200-mcu, hc1200-cpu)\n",
+        strcmp(cfg->board_name, "hc1200-cpu") != 0 &&
+        strcmp(cfg->board_name, "hc1200-microcomp") != 0) {
+        fprintf(stderr, "microemu: unsupported board '%s' (supported: hc1200-mcu, hc1200-cpu, hc1200-microcomp)\n",
             cfg->board_name);
         return -1;
     }
@@ -438,8 +440,34 @@ static int cpu_uart_rx_append_cb(void *ctx, const uint8_t *data, size_t len)
     return hc1200_cpu_uart_rx_append(ctx, data, len);
 }
 
+static void microcomp_load_byte_cb(void *ctx, uint16_t addr, uint8_t value)
+{
+    hc1200_microcomp_load_byte(ctx, addr, value);
+}
+
+static void microcomp_tick_cb(void *ctx, unsigned cycles)
+{
+    hc1200_microcomp_tick(ctx, cycles);
+}
+
+static void microcomp_dump_cb(const void *ctx, FILE *out)
+{
+    hc1200_microcomp_dump(ctx, out);
+}
+
+static void microcomp_set_quiet_uart_cb(void *ctx, bool quiet)
+{
+    hc1200_microcomp_set_quiet_uart(ctx, quiet);
+}
+
+static int microcomp_uart_rx_append_cb(void *ctx, const uint8_t *data, size_t len)
+{
+    return hc1200_microcomp_uart_rx_append(ctx, data, len);
+}
+
 static int select_board(const config_t *cfg, hc1200_mcu_t *mcu_board,
-    hc1200_cpu_t *cpu_board, board_model_t *board)
+    hc1200_cpu_t *cpu_board, hc1200_microcomp_t *microcomp_board,
+    board_model_t *board)
 {
     memset(board, 0, sizeof(*board));
     board->name = cfg->board_name;
@@ -464,6 +492,16 @@ static int select_board(const config_t *cfg, hc1200_mcu_t *mcu_board,
         board->uart_rx_append = cpu_uart_rx_append_cb;
         return 0;
     }
+    if (strcmp(cfg->board_name, "hc1200-microcomp") == 0) {
+        board->ctx = microcomp_board;
+        board->bus = hc1200_microcomp_bus(microcomp_board);
+        board->load_byte = microcomp_load_byte_cb;
+        board->tick = microcomp_tick_cb;
+        board->dump = microcomp_dump_cb;
+        board->set_quiet_uart = microcomp_set_quiet_uart_cb;
+        board->uart_rx_append = microcomp_uart_rx_append_cb;
+        return 0;
+    }
 
     fprintf(stderr, "microemu: unsupported board '%s'\n", cfg->board_name);
     return -1;
@@ -479,7 +517,7 @@ static bool buffer_looks_like_hex(const uint8_t *data, size_t len)
 
         if (isxdigit(ch)) {
             has_hex = true;
-        } else if (isspace(ch) || ch == '@' || ch == '_' || ch == '/' ||
+        } else if (isspace(ch) || ch == '@' || ch == ':' || ch == '_' || ch == '/' ||
                    ch == '*' || ch == '#') {
             continue;
         } else {
@@ -615,6 +653,15 @@ static int load_hex_image(const board_model_t *board, const uint8_t *data, size_
             addr = (uint32_t)value;
             continue;
         }
+        if (tlen > 1 && token[tlen - 1] == ':') {
+            token[tlen - 1] = '\0';
+            if (parse_hex_token(token, &value) < 0 || value > 0xffffu) {
+                fprintf(stderr, "microemu: invalid hex address '%s:'\n", token);
+                return -1;
+            }
+            addr = (uint32_t)value;
+            continue;
+        }
         if (parse_hex_token(token, &value) < 0 || value > 0xffu) {
             fprintf(stderr, "microemu: invalid hex byte '%s'\n", token);
             return -1;
@@ -667,6 +714,7 @@ int main(int argc, char **argv)
 {
     hc1200_mcu_t mcu_board;
     hc1200_cpu_t cpu_board;
+    hc1200_microcomp_t microcomp_board;
     board_model_t board;
     microcpu_t cpu;
     microcpu_step_options_t step_options;
@@ -677,21 +725,25 @@ int main(int argc, char **argv)
 
     hc1200_mcu_init(&mcu_board);
     hc1200_cpu_init(&cpu_board);
+    hc1200_microcomp_init(&microcomp_board);
     memset(&cfg, 0, sizeof(cfg));
     if (parse_args(argc, argv, &cfg) < 0) {
         byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_microcomp_destroy(&microcomp_board);
         hc1200_cpu_destroy(&cpu_board);
         hc1200_mcu_destroy(&mcu_board);
         return 2;
     }
-    if (select_board(&cfg, &mcu_board, &cpu_board, &board) < 0) {
+    if (select_board(&cfg, &mcu_board, &cpu_board, &microcomp_board, &board) < 0) {
         byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_microcomp_destroy(&microcomp_board);
         hc1200_cpu_destroy(&cpu_board);
         hc1200_mcu_destroy(&mcu_board);
         return 2;
     }
     if (cfg.stdin_rx && read_stdin_bytes(&cfg.uart_rx) < 0) {
         byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_microcomp_destroy(&microcomp_board);
         hc1200_cpu_destroy(&cpu_board);
         hc1200_mcu_destroy(&mcu_board);
         return 1;
@@ -702,12 +754,14 @@ int main(int argc, char **argv)
     if (cfg.uart_rx.len != 0 &&
         board.uart_rx_append(board.ctx, cfg.uart_rx.data, cfg.uart_rx.len) < 0) {
         byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_microcomp_destroy(&microcomp_board);
         hc1200_cpu_destroy(&cpu_board);
         hc1200_mcu_destroy(&mcu_board);
         return 1;
     }
     if (load_image(&board, &cfg) < 0) {
         byte_buffer_destroy(&cfg.uart_rx);
+        hc1200_microcomp_destroy(&microcomp_board);
         hc1200_cpu_destroy(&cpu_board);
         hc1200_mcu_destroy(&mcu_board);
         return 1;
@@ -749,6 +803,7 @@ int main(int argc, char **argv)
         board.dump(board.ctx, stderr);
     }
     byte_buffer_destroy(&cfg.uart_rx);
+    hc1200_microcomp_destroy(&microcomp_board);
     hc1200_cpu_destroy(&cpu_board);
     hc1200_mcu_destroy(&mcu_board);
     return exit_code;

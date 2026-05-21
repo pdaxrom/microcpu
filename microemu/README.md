@@ -16,6 +16,17 @@ GPIO, and timer peripherals mapped at `0xffe0..0xffff`. CPU accesses in that
 MMIO range go to peripherals; image loading can still initialize the backing
 RAM bytes there.
 
+`hc1200-microcomp` models the MachXO2-1200 microcomp board:
+
+- `0x0000..0x07ff`: permanent zero-page SRAM
+- two 2 KiB SRAM windows selected by MMAP registers at `0xfff8..0xfffa`
+- UART at `0xffe0..0xffe1`
+- microcomp GPIO at `0xffe8..0xffef`
+- timer at `0xfff0..0xfff2`
+- 128 KiB SPI FRAM connected to the GPIO SPI pins
+
+Display GPIO writes are stored but the display itself is not rendered.
+
 The emulator is split into:
 
 - `microcpu_core.c` / `microcpu_core.h`: CPU state, instruction decode, and
@@ -24,6 +35,8 @@ The emulator is split into:
   SRAM, paged SRAM, UART, GPIO, and timer.
 - `hc1200_cpu.c` / `hc1200_cpu.h`: the synthetic `hc1200-cpu` wrapper,
   including 64 KiB RAM with the `hc1200-mcu` peripherals overlaid at MMIO.
+- `hc1200_microcomp.c` / `hc1200_microcomp.h`: the `hc1200-microcomp`
+  wrapper, including MMAP page faults and bit-banged SPI FRAM.
 - `microemu.c`: command-line interface and image loading.
 
 Build:
@@ -77,6 +90,50 @@ Equivalent explicit commands:
 asm/microasm -binary microemu/examples/ram64.asm microemu/build/examples/ram64.bin
 microemu/microemu --board hc1200-cpu --format bin --stop-on-self-branch microemu/build/examples/ram64.bin
 ```
+
+Run the `hc1200-microcomp` bootloader image:
+
+```sh
+make -C bootloader ../boards/sram.mem
+microemu/microemu --board hc1200-microcomp --format auto --uart-rx "z" --max-steps 5000000 boards/sram.mem
+```
+
+The `boards/sram.mem` address-label format (`0000: ...`) is accepted by the
+hex loader. Sending `z` enters serial bootloader mode and prints the bootloader
+banner. The emulated SPI FRAM is used by the bootloader when it loads or saves
+virtual memory pages.
+
+Load and run a program through the `hc1200-microcomp` UART bootloader:
+
+```sh
+make -C asm microasm
+python3 microemu/scripts/set_org.py --org 0x0800 \
+  microemu/examples/calc_fis32.asm microemu/build/calc_fis32_0800.asm
+asm/microasm -binary microemu/build/calc_fis32_0800.asm \
+  microemu/build/calc_fis32_0800.bin
+python3 microemu/scripts/boot_uart.py --start 0x0800 \
+  --append-text "1.5 2 *\nq" \
+  --output microemu/build/calc_fis32_boot.uart \
+  microemu/build/calc_fis32_0800.bin
+microemu/microemu --board hc1200-microcomp --format auto --stdin-rx \
+  --stop-on-self-branch --max-steps 200000000 boards/sram.mem \
+  < microemu/build/calc_fis32_boot.uart
+```
+
+The shorter make target for the same FIS32 bootloader smoke test is:
+
+```sh
+make -C microemu run-boot-calc-fis32
+```
+
+`set_org.py` only rewrites the first `org` directive in a generated source
+copy. For normal `asm/examples` programs that already have the correct `org`,
+skip that step and pass the matching address to `boot_uart.py --start`.
+`boot_uart.py` emits the bootloader RX bytes: startup `z`, `L start end`, the
+binary payload padded to 14-byte packets, optional `G`, and optional program
+input from `--append-text` or `--append-hex`. Bootloader sync bytes are printed
+on UART TX during loading, so raw emulator stdout contains binary noise before
+the loaded program starts.
 
 Run the 32-bit RPN calculator example:
 

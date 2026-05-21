@@ -210,6 +210,15 @@ microcpu_step_result_t microcpu_step(microcpu_t *cpu, uint64_t step,
 
     op_byte = bus_read(cpu, pc);
     arg_byte = bus_read(cpu, (uint16_t)(pc + 1u));
+
+    if (!cpu->super_mode && bus_intr(cpu)) {
+        cpu->user_pc = pc;
+        cpu->r[0] = 0x0002u;
+        cpu->super_mode = true;
+        *cycles = 1;
+        return MICROCPU_STEP_OK;
+    }
+
     op5 = op_byte >> 3;
     dest = op_byte & 7u;
     kind = op5 >> 1;
