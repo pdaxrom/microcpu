@@ -4,10 +4,10 @@ LDFLAGS ?=
 ASM ?= ../asm/microasm
 PYTHON ?= python3
 
-.PHONY: all examples run-hello run-echo run-calc run-calc-fis16 run-calc-fis32 run-boot-calc-fis32 run-ram64 clean
+.PHONY: all examples run-hello run-echo run-calc run-calc-fis16 run-calc-fis32 run-boot-calc-fis32 run-boot-fram-vm run-ram64 clean
 
 OBJS = microemu.o microcpu_core.o hc1200_mcu.o hc1200_cpu.o hc1200_microcomp.o
-EXAMPLES = hello_world uart_echo calc32 calc_fis16 calc_fis32 ram64
+EXAMPLES = hello_world uart_echo calc32 calc_fis16 calc_fis32 ram64 fram_vm
 EXAMPLE_BINS = $(patsubst %,build/examples/%.bin,$(EXAMPLES))
 
 all: microemu
@@ -56,6 +56,9 @@ build/calc_fis32_0800.bin: build/calc_fis32_0800.asm ../asm/include/pseudo.inc .
 build/boot/calc_fis32_0800.uart: build/calc_fis32_0800.bin scripts/boot_uart.py | build/boot
 	$(PYTHON) scripts/boot_uart.py --start 0x0800 --append-text "1.5 2 *\nq" --output $@ $<
 
+build/boot/fram_vm.uart: build/examples/fram_vm.bin scripts/boot_uart.py | build/boot
+	$(PYTHON) scripts/boot_uart.py --start 0x0800 --output $@ $<
+
 run-hello: microemu build/examples/hello_world.bin
 	./microemu --format bin --stop-on-self-branch build/examples/hello_world.bin
 
@@ -73,6 +76,9 @@ run-calc-fis32: microemu build/examples/calc_fis32.bin
 
 run-boot-calc-fis32: microemu build/boot/calc_fis32_0800.uart
 	./microemu --board hc1200-microcomp --format auto --stdin-rx --stop-on-self-branch --max-steps 200000000 ../boards/sram.mem < build/boot/calc_fis32_0800.uart
+
+run-boot-fram-vm: microemu build/boot/fram_vm.uart
+	./microemu --board hc1200-microcomp --format auto --stdin-rx --stop-on-self-branch --max-steps 200000000 ../boards/sram.mem < build/boot/fram_vm.uart
 
 run-ram64: microemu build/examples/ram64.bin
 	./microemu --board hc1200-cpu --format bin --stop-on-self-branch build/examples/ram64.bin

@@ -126,6 +126,20 @@ The shorter make target for the same FIS32 bootloader smoke test is:
 make -C microemu run-boot-calc-fis32
 ```
 
+Run the virtual-memory FRAM smoke test:
+
+```sh
+make -C microemu run-boot-fram-vm
+```
+
+This test loads `examples/fram_vm.asm` through the UART bootloader, writes
+patterns to the normal virtual pages from `0x1000` through `0xf000`, evicts and
+reloads them through the bootloader's memory-violation ISR, then jumps to a
+routine on another virtual code page. It then overwrites and verifies every
+byte of both 64 KiB FRAM banks through direct SPI, covering the full 128 KiB
+device. Success prints `FRAM VM OK`; failures print `FRAM VM ERR` and stop the
+emulator with an odd-PC error.
+
 `set_org.py` only rewrites the first `org` directive in a generated source
 copy. For normal `asm/examples` programs that already have the correct `org`,
 skip that step and pass the matching address to `boot_uart.py --start`.
