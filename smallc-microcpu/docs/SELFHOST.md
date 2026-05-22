@@ -227,6 +227,33 @@ semantics if needed, target-hosted file I/O/argv support, and final image
 layout.  There is not much size margin left for real hosted I/O, so further
 splitting or data-layout work may still be needed.
 
+The p-code execution smoke is:
+
+```sh
+make -C smallc-microcpu selfhost-pcode-exec-smoke
+```
+
+It writes `build/selfhost-pcode-exec/report.txt` and remains report-only unless
+`STRICT=1` is set.  The target relinks each split p-code image with
+`runtime/hosted_io.asm`, a tiny native hosted layer that maps standard streams
+to UART and treats UART RX byte `0x04` as EOF.  It does not provide a real
+filesystem; `fopen` still returns 0.
+
+Current execution status:
+
+- `smallcpp`: links and starts on `hc1200-cpu`; it prints the banner through
+  UART, then halts with `V0=0xca10`.
+- `smallcc`: links and starts on `hc1200-cpu`; it prints the banner through
+  UART, then halts with `V0=0xca10`.
+
+`V0=0xca10` is the hosted runtime's explicit heap-exhaustion marker.  The
+minimal bump allocator starts after `__pcd_gend` and refuses allocations that
+would pass the `0xfde0` MMIO guard or wrap the 16-bit address space.  The next
+selfhost blocker is therefore not missing bytecode lowering or basic hosted
+I/O, but the runtime RAM footprint of the compiler tables.  Solving that
+requires smaller/lazier tables, a different data layout, or an explicitly
+larger hosted memory model.
+
 The global symbol table was raised from 200 to 300 entries only after the
 self-host report showed real compiler frontend pressure with include guards
 working, zero repeated includes, and the controlled headers already minimized.
@@ -236,6 +263,8 @@ working, zero repeated includes, and the controlled headers already minimized.
 The most likely next blockers are:
 
 - target-hosted file I/O, diagnostics, and command-line runtime support
+- runtime heap/table footprint for running `smallcpp` and `smallcc` inside a
+  16-bit address space
 - preserving enough p-code `smallcc` size margin for real hosted I/O
 - link-time layout for larger compiler data
 - full `#if` expressions and richer conditional preprocessing

@@ -356,3 +356,31 @@ yet.  The report is written to `build/selfhost-pcode-link/report.txt`; it
 includes detailed p-code size diagnostics and classifies failures as missing
 p-code modules, unresolved symbols, size overflow, symbol collision, relocation
 limitation, linker failure, or other.
+
+For execution smoke, use:
+
+```sh
+make -C smallc-microcpu selfhost-pcode-exec-smoke
+```
+
+This target first refreshes the p-code link smoke, then relinks each split tool
+with `runtime/hosted_io.asm` instead of the generated link-only stubs:
+
+```text
+pcode_interpreter.o
+hosted_io.o
+<tool>.pcode.o
+```
+
+`hosted_io.o` is a minimal native hosted-service layer, not a libc.  It maps
+`stdin`, `stdout`, and `stderr` to UART, treats UART RX byte `0x04` as EOF,
+implements simple UART `fgetc`/`fgets`/`fputc`/`fputs`, ASCII ctype helpers,
+small string helpers, and a bump `calloc` that starts after `__pcd_gend`.
+`fopen` still returns 0 because no filesystem model exists yet.  `calloc`
+halts with `V0=0xca10` if allocation would pass the hosted heap limit or wrap
+the 16-bit address space.
+
+The current execution smoke is report-only and intentionally honest: both
+split tools start, print the Small-C banner through UART, and then hit
+`V0=0xca10` before processing the tiny input.  This means the immediate blocker
+has moved from bytecode/link size to runtime RAM footprint and data layout.

@@ -7,6 +7,8 @@ EMU_BOARD ?= hc1200-mcu
 MAX_STEPS ?= 1000000
 TRACE ?= 0
 SELFHOST_TIMEOUT ?= 3
+SELFHOST_EMU_BOARD ?= hc1200-cpu
+SELFHOST_EXEC_MAX_STEPS ?= 20000000
 OBJECT_MODE ?= 0
 PREPROCESS_MODE ?= 1
 PCODE_OPT ?= 1
@@ -17,6 +19,7 @@ MULTI_TEST_BUILD := $(BUILD)/tests-multi
 SELFHOST_BUILD := $(BUILD)/selfhost-smoke
 SELFHOST_PCODE_BUILD := $(BUILD)/selfhost-pcode
 SELFHOST_PCODE_LINK_BUILD := $(BUILD)/selfhost-pcode-link
+SELFHOST_PCODE_EXEC_BUILD := $(BUILD)/selfhost-pcode-exec
 PCODE_BUILD := $(BUILD)/pcode
 CPP_BIN := $(BUILD)/smallcpp
 CC_ONLY_BIN := $(BUILD)/smallcc
@@ -149,7 +152,7 @@ PCODE_MULTI_RUNNER_ARGS := --expected pcode-tests-multi/expected.txt \
 	--build-dir $(BUILD)/pcode-multi --include-dir include \
 	--runtime-dir runtime $(PCODE_OPT_ARG)
 
-.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu test-pcode-native test-pcode-multi selfhost-smoke selfhost-link-smoke selfhost-pcode-smoke selfhost-pcode-link-smoke assemble run clean
+.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu test-pcode-native test-pcode-multi selfhost-smoke selfhost-link-smoke selfhost-pcode-smoke selfhost-pcode-link-smoke selfhost-pcode-exec-smoke assemble run clean
 
 all: $(CPP_BIN) $(CC_ONLY_BIN)
 
@@ -232,6 +235,14 @@ selfhost-pcode-link-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD)
 		--build-dir $(SELFHOST_PCODE_LINK_BUILD) $(STRICT_ARG) $(PCODE_OPT_ARG) \
 		--smallcpp-pcas $(SELFHOST_CPP_PCAS) \
 		--smallcc-pcas $(SELFHOST_CC_PCAS)
+
+selfhost-pcode-exec-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD) $(EMU)
+	$(MAKE) selfhost-pcode-link-smoke STRICT=0
+	$(PYTHON) selfhost/run_pcode_exec_smoke.py \
+		--assembler $(ASM) --linker $(LD) --emulator $(EMU) \
+		--board $(SELFHOST_EMU_BOARD) --max-steps $(SELFHOST_EXEC_MAX_STEPS) \
+		--runtime-dir runtime --link-build-dir $(SELFHOST_PCODE_LINK_BUILD) \
+		--build-dir $(SELFHOST_PCODE_EXEC_BUILD) $(STRICT_ARG)
 
 assemble: test
 

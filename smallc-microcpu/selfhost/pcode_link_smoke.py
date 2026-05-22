@@ -22,6 +22,27 @@ import run_pcode_microemu as pcode  # noqa: E402
 UNRESOLVED_RE = re.compile(r"(?:unresolved|undefined).*?([A-Za-z_.$][A-Za-z0-9_.$]*)", re.IGNORECASE)
 UNRESOLVED_COLON_RE = re.compile(r"(?:unresolved|undefined).*?:\s*([A-Za-z_.$][A-Za-z0-9_.$]*)", re.IGNORECASE)
 
+HOSTED_BEHAVIOR = {
+    "_stdin": "implemented: UART-backed stdin handle",
+    "_stdout": "implemented: UART-backed stdout handle",
+    "_stderr": "implemented: UART-backed stderr handle",
+    "_calloc": "implemented: bump allocator after __pcd_gend, halts with V0=0xca10 on overflow",
+    "_fopen": "implemented smoke stub: returns 0; no filesystem yet",
+    "_fclose": "implemented smoke stub: returns 0",
+    "_fgetc": "implemented: UART RX, byte 0x04 is EOF",
+    "_fgets": "implemented: UART RX line read, byte 0x04 is EOF",
+    "_fputc": "implemented: UART TX",
+    "_fputs": "implemented: UART TX",
+    "_exit": "implemented: halts with requested code in V0",
+    "_toupper": "implemented: ASCII",
+    "_isdigit": "implemented: ASCII",
+    "_isalpha": "implemented: ASCII",
+    "_isxdigit": "implemented: ASCII",
+    "_strcpy": "implemented",
+    "_strncpy": "implemented",
+    "_memset": "implemented",
+}
+
 
 def shell_join(argv: list[str]) -> str:
     return " ".join(shlex.quote(arg) for arg in argv)
@@ -282,6 +303,30 @@ def write_tool_report(fp, result: dict[str, object]) -> None:
     fp.write(f"  log: {result['log']}\n\n")
 
 
+def write_hosted_symbols(path: pathlib.Path, results: list[dict[str, object]]) -> None:
+    users: dict[str, set[str]] = {}
+    kinds: dict[str, set[str]] = {}
+    for result in results:
+        tool = str(result["name"])
+        for symbol in result["natives"]:
+            users.setdefault(symbol, set()).add(tool)
+            kinds.setdefault(symbol, set()).add("function")
+        for symbol in result["extern_data"]:
+            users.setdefault(symbol, set()).add(tool)
+            kinds.setdefault(symbol, set()).add("data")
+
+    with path.open("w") as fp:
+        fp.write("Hosted symbols for p-code selfhost tools\n")
+        fp.write("Source: build/selfhost-pcode-link/report.txt native/extern references\n")
+        fp.write("Functional smoke runtime: runtime/hosted_io.asm\n\n")
+        for symbol in sorted(users):
+            fp.write(f"{symbol}:\n")
+            fp.write(f"  referenced by: {', '.join(sorted(users[symbol]))}\n")
+            fp.write(f"  kind: {', '.join(sorted(kinds[symbol]))}\n")
+            fp.write(f"  status: {HOSTED_BEHAVIOR.get(symbol, 'link stub only; implement when execution reaches it')}\n")
+            fp.write("\n")
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assembler", required=True, type=pathlib.Path)
@@ -310,6 +355,8 @@ def main(argv: list[str]) -> int:
         results.append(link_tool(args, "smallcc", args.smallcc_pcas, interp_obj))
 
     all_ok = bool(results) and all(result["link_ok"] for result in results)
+    if results:
+        write_hosted_symbols(args.build_dir / "hosted-symbols.txt", results)
     with report.open("w") as fp:
         fp.write("Self-host p-code link smoke report\n")
         fp.write(f"Strict: {'yes' if args.strict else 'no'}\n")

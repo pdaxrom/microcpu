@@ -270,8 +270,9 @@ P-code data model:
 The first host interpreter keeps a p-code operand stack plus per-call frame
 temporary/local slots.  The backend maps the internal primary and secondary
 register values to reserved frame temporary slots, then materializes those
-slots onto the VM stack when emitting stack operations.  This is deliberately
-correctness-first; peephole compaction is future work.
+slots onto the VM stack when emitting stack operations.  The optional p-code
+compaction pass keeps the same ABI and currently performs only local safe
+bytecode rewrites plus compact opcode selection.
 
 P-code direct calls use the same source-order argument convention as the native
 ABI.  The caller pushes argument values in source order; the interpreter maps
@@ -296,6 +297,18 @@ native symbol, restores interpreter state, and pushes the 16-bit `v0` return
 value onto the p-code stack.  Native callees may use normal global data and may
 return pointers to native or p-code data; p-code global-address operands in the
 microcpu object path are linked absolute target addresses.
+
+For p-code selfhost execution smoke, `runtime/hosted_io.asm` provides a tiny
+native hosted-service ABI through ordinary `NCALL` entries.  It is linked
+before the p-code object and uses the same native source-order argument stack:
+for an N-argument native call, argument 1 is deepest on the stack and argument N
+is at `SP+2`.  The service maps `_stdin`, `_stdout`, and `_stderr` to small
+integer handles, implements UART-backed `_fgetc`, `_fgets`, `_fputc`, and
+`_fputs`, treats UART RX byte `0x04` as EOF, and provides a bump `_calloc` that
+starts after `__pcd_gend`.  `_calloc` halts in a self-branch with
+`V0=0xca10` if the allocation would pass the hosted heap guard or wrap the
+16-bit address space.  `_fopen` is currently a smoke stub that returns 0; no
+filesystem ABI is defined yet.
 
 For microcpu p-code tests the linked image starts in
 `runtime/pcode_interpreter.asm`.  When p-code `main` returns, the interpreter

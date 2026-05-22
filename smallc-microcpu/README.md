@@ -182,6 +182,24 @@ current conservative compaction pass, this link smoke reports both `smallcpp`
 and `smallcc` below the 64K binary limit; `smallcc` is still a smoke image, not
 a runnable target-hosted compiler.
 
+To run the split p-code images far enough to exercise hosted startup and
+UART-backed stdio:
+
+```sh
+make -C smallc-microcpu selfhost-pcode-exec-smoke
+```
+
+This writes `build/selfhost-pcode-exec/report.txt` and remains report-only by
+default.  It links the p-code interpreter, `runtime/hosted_io.asm`, and each
+tool p-code object, then runs the images on the synthetic `hc1200-cpu` 64 KiB
+RAM board.  The hosted model is intentionally tiny: `stdin`, `stdout`, and
+`stderr` are UART-backed, UART RX byte `0x04` is EOF, `fopen` is still a
+nonfunctional smoke stub, and `calloc` is a bump allocator after the p-code
+payload.  The current execution smoke reaches the compiler banners and then
+halts with `V0=0xca10`, which marks hosted heap exhaustion.  This identifies
+the next blocker as runtime RAM footprint/data layout, not p-code bytecode
+link size.
+
 ## Self-hosting smoke checks
 
 The port is not self-hosting yet.  A non-default smoke target checks source
