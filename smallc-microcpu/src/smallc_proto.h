@@ -11,6 +11,7 @@
 int parse();
 int typedfunc();
 int dodeclare();
+int dostatic();
 int doenum();
 int addenum();
 int dotypedef();

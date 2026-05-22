@@ -209,6 +209,14 @@ def classify_next_step(reason: str, text: str) -> str:
         return "add #undef support or hide host-only remapping from self-host inputs"
     if stripped.startswith("static "):
         return "add static declaration/function parsing"
+    if "**" in stripped:
+        return "add pointer-to-pointer declarator support"
+    if "wrong number of arguments" in reason and "intptr_t" in stripped:
+        return "support typedef names in K&R-style argument type declarations or avoid int remapping for selfhost inputs"
+    if stripped.startswith("const "):
+        return "support or strip the const qualifier in selfhost inputs"
+    if "literal queue overflow" in reason:
+        return "raise literal-pool capacity or split large generated string tables"
     if "global symbol table overflow" in reason:
         return "increase symbol capacity or avoid importing the full prototype list during smoke"
     if "already defined" in reason:
@@ -237,6 +245,14 @@ def classify_root_cause(reason: str, text: str) -> str:
         return "unsupported conditional preprocessing"
     if stripped.startswith("static "):
         return "unsupported static declaration parsing"
+    if "**" in stripped:
+        return "unsupported pointer-to-pointer declarator"
+    if "wrong number of arguments" in reason and "intptr_t" in stripped:
+        return "unsupported typedef name in K&R argument declaration"
+    if stripped.startswith("const "):
+        return "unsupported const qualifier"
+    if "literal queue overflow" in reason:
+        return "literal pool capacity limit"
     return "unsupported source construct"
 
 
@@ -382,8 +398,8 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
             report.write("Defines: " + ", ".join(args.define) + "\n")
         report.write(f"Strict: {'yes' if args.strict else 'no'}\n")
         report.write("Conclusion:\n")
-        report.write("  root cause: host-only prototype imports and strict duplicate prototype handling\n")
-        report.write("  fix applied: selfhost defines SMALLC_SELFHOST, host_compat.h skips smallc_proto.h, repeated prototypes are declarations\n")
+        report.write("  resolved: host-only prototype imports, strict duplicate prototype handling, 8-character identifier collisions, minimal void/static parsing, multiline function headers\n")
+        report.write("  current blockers: see per-file root cause and next-step entries below\n")
         report.write("\n")
         for result in results:
             name = result["name"]

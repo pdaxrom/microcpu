@@ -188,3 +188,17 @@
 188_multiline_prototype 188
 189_prototype_then_oldstyle_definition 189
 190_repeated_multiline_prototype 190
+191_identifier_long_distinct 191
+192_identifier_collision_prefix 192
+193_identifier_macro_arg_names 193
+194_void_function_call 194
+195_void_prototype_void_args 195
+196_void_return_plain 196
+197_void_multiple_calls 197
+199_static_function 199
+200_static_void_function 200
+201_static_prototype 201
+202_static_global 202
+203_multiline_function_definition 203
+204_multiline_static_void_definition 204
+205_multiline_pointer_return_definition 205

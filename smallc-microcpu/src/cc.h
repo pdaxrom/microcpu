@@ -20,8 +20,8 @@
 #define OFFSET   5
 #define NAME     7
 
-#define SYMAVG  12
-#define SYMMAX  16
+#define SYMAVG  40
+#define SYMMAX  40
 
 /*
 ** symbol table parameters
@@ -32,13 +32,13 @@
 #define NUMGLBS   200
 #define STARTGLB  ENDLOC
 #define ENDGLB    (ENDLOC+(NUMGLBS-1)*SYMMAX)
-#define SYMTBSZ   3050  /* (NUMLOCS*SYMAVG + NUMGLBS*SYMMAX) */
+#define SYMTBSZ   9000  /* (NUMLOCS*SYMAVG + NUMGLBS*SYMMAX) */
 
 /*
 ** system wide name size (for symbols)
 */
-#define NAMESIZE 9
-#define NAMEMAX  8
+#define NAMESIZE 32
+#define NAMEMAX  31
  
 /*
 ** values for "IDENT"
@@ -57,6 +57,7 @@
 */
 /*      LABEL   0 */
 #define CHR     (  1 << 2)
+#define VOID    0
 #define INT     (BPW << 2)
 #define UCHR   ((  1 << 2) + 1)
 #define UINT   ((BPW << 2) + 1)

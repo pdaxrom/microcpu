@@ -113,8 +113,10 @@ The current backend is intentionally small and supports:
 
 - `int main()`
 - K&R-style and simple ANSI-style function argument declarations
+- simple multiline ANSI-style function definitions
 - constants and local/global `int` variables
 - local/global unsigned plain `char`
+- 31 significant identifier characters
 - assignment and return values
 - unary `-`, `!`, and `~`
 - arithmetic, bitwise, and shift operators: `+`, `-`, `*`, `/`, `%`, `&`, `|`,
@@ -135,6 +137,8 @@ The current backend is intentionally small and supports:
 - direct function calls, nested calls, and calls using locals/globals
 - repeated compatible function prototypes, prototypes before definitions, and
   multiline prototypes
+- `void` function return type, `void` parameter lists, and plain `return;`
+- file-scope `static` globals, `static` functions, and static prototypes
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
 - address of local variables
@@ -169,12 +173,14 @@ Right shift is currently arithmetic.
 
 Current fixed compiler metadata limits are `NUMGLBS=200`, `NUMLOCS=25`,
 `MACNBR=300`, `MAXINCLUDE=8`, `MAXTYPEDEFS=40`, `MAXSTRUCTS=20`, and
-`MAXFIELDS=160`.  Symbol names are significant to 8 characters, matching the
-old Small-C table format.
+`MAXFIELDS=160`.  Symbol names are significant to 31 characters.  The limit is
+31, not 63, because the original variable-length local symbol table stores a
+binary name length that must stay below ASCII space.
 
-The current Small-C frontend does not provide a real `void`/`void *` type, so
-memory helpers are declared in tests with temporary compatible prototypes such
-as `char *memset(char *s, int c, int n);` and
+The current Small-C frontend supports `void` for function return types and
+`foo(void)` parameter lists.  It does not yet support full `void *` semantics,
+so memory helpers are declared in tests with temporary compatible prototypes
+such as `char *memset(char *s, int c, int n);` and
 `char *memcpy(char *dst, char *src, int n);`.  `memcpy` does not support
 overlapping regions; add `memmove` separately when overlap is needed.
 The UART helpers use temporary Small-C-compatible prototypes:
@@ -192,8 +198,8 @@ Intentionally unsupported at this stage:
 - struct initializers
 - `long`, `float`, and full libc
 - optimizer/register allocator
-- function pointers
-- `void` and `void *` type semantics
+- function pointers and pointer-to-pointer declarators
+- full `void *` type semantics
 - `memmove`, `printf`, `scanf`, UART line buffering, `malloc`, and `free`
 - macro stringification, token pasting, variadic macros, predefined macros,
   and full `#if` preprocessor expressions

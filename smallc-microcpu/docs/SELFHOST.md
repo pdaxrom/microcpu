@@ -79,23 +79,32 @@ compatible function prototypes are treated as declarations, multiline
 prototypes are skipped correctly, and a prototype followed by the actual
 function definition no longer reports `already defined`.
 
-The current report advances to later blockers.  The most important one is the
-original 8-character Small-C symbol-name limit: long compiler implementation
-names such as `typedef_count`, `typedef_type`, `macro_argc`, and
-`macro_argfirst` collide after truncation.  Other files expose the next parser
-gaps, including `static` functions in `codegen_microcpu.c`, multiline ANSI
-function definitions in `host_compat.c`, and cases where the hosted source is
-made harder by macro-remapping `int` to `intptr_t`.
+The current report advances beyond the old symbol/prototype blockers.  The
+compiler now keeps 31 significant identifier characters, so names such as
+`typedef_count`, `typedef_type`, `macro_argc`, and `macro_argfirst` no longer
+collide.  Minimal `void` functions, file-scope `static` functions/globals, and
+multiline ANSI function definitions are also accepted.
+
+The next blockers are more specific self-hosting issues:
+
+- `cc1.c` reaches `char **host_argv`, which needs pointer-to-pointer
+  declarator support.
+- `cc2.c`, `cc3.c`, and `cc4.c` reach K&R argument type declarations that use
+  the `intptr_t` typedef introduced by the host `int` remapping.
+- `host_compat.c` reaches `const char *src`, so either `const` must be parsed
+  as a qualifier or the self-host input must hide it.
+- `codegen_microcpu.c` now reaches a literal pool capacity limit from the large
+  backend string table.
 
 ## Known blockers
 
 The most likely next blockers are:
 
 - full `#if` expressions and richer conditional preprocessing
-- the 8-character symbol-name limit in real compiler sources
-- multiline ANSI function definitions, or converting those files to old-style
-  definitions for self-hosting
-- `static` declarations and static functions
+- pointer-to-pointer declarators such as `char **argv`
+- typedef names in K&R-style argument type declarations
+- `const` qualifiers in declarations
+- literal pool capacity for large generated string tables
 - `extern` declarations
 - multiple translation units and cross-unit symbol resolution
 - link-time layout for larger compiler data
@@ -134,10 +143,12 @@ style so the code moves toward eventual self-hosting:
 
 The next self-hosting steps should be incremental:
 
-1. Remove or shim host-only function-like macros for the self-host subset.
-2. Teach the frontend only the smallest missing declaration/preprocessor
-   features required by the compiler sources.
-3. Compile individual translation units to assembly consistently.
-4. Add an assembler/linker flow for multiple generated units.
-5. Add enough target runtime for compiler input, output, diagnostics, and
+1. Add pointer-to-pointer declarators and typedef-name K&R argument
+   declarations.
+2. Decide whether to parse `const` as an ignored qualifier or hide it from
+   self-host inputs.
+3. Raise or restructure literal storage for large backend string tables.
+4. Compile individual translation units to assembly consistently.
+5. Add an assembler/linker flow for multiple generated units.
+6. Add enough target runtime for compiler input, output, diagnostics, and
    command-line handling.

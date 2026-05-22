@@ -9,6 +9,8 @@ exists now; future backend changes must update this file.
 - `int`: 16-bit signed two's-complement value.
 - `unsigned`: 16-bit unsigned value.
 - `char`: 8-bit value.
+- `void`: only supported as a function return type and as an empty parameter
+  list marker in declarations such as `f(void)`.
 - Plain `char`: unsigned 8-bit value.  Loads zero-extend to 16 bits.
 - Pointer: 16-bit byte address.
 - `sizeof(int) == 2`, `sizeof(unsigned) == 2`, `sizeof(char) == 1`,
@@ -32,6 +34,8 @@ exists now; future backend changes must update this file.
 currently treated as `int` when used as a declaration type.  `typedef` names
 are compile-time aliases for the recorded base type plus pointer/non-pointer
 declarator shape; they do not create distinct ABI types.
+
+Identifiers are significant to 31 characters in the compiler symbol tables.
 
 ## Expression Results
 
@@ -66,6 +70,10 @@ The stack grows downward.  A push stores at `[sp]` and then subtracts 2 from
 Function arguments are pushed by the caller in source order, left to right, to
 match the original Small-C calling sequence.  The caller removes the arguments
 after the call.
+
+`void` functions use the same call and return sequence as `int` functions.
+They do not define a meaningful `v0` value on return.  A plain `return;`
+emits the normal function epilogue without preparing `v0`.
 
 For leaf runtime functions that do not build a generated Small-C frame, the
 last argument is at `sp + 2`, the previous argument is at `sp + 4`, and so on.
@@ -119,6 +127,11 @@ The caller then adds the argument byte count to `sp`.
 Small-C external names are emitted with a leading underscore.  For example,
 the C function `main` is emitted as `_main`, and a global variable `g` is
 emitted as `_g`.
+
+File-scope `static` variables and functions currently use the same generated
+label form as non-static symbols.  The current test model compiles one
+translation unit at a time, so `static` affects frontend parsing and duplicate
+declaration handling but not linker visibility yet.
 
 Compiler-generated numeric labels use the form `_<number>`.  Literal/string
 data labels use the same numeric label space.  String literals are emitted as

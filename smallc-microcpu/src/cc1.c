@@ -52,6 +52,9 @@ int
   skip_count, /* number of argv indexes consumed by options */
   macro_param_count, /* next function-like macro parameter slot */
   include_open_count, /* number of include files opened */
+  functype,  /* return type of next function */
+  curtype,   /* return type of current function */
+  funcclass, /* storage class of next function */
   usexpr  = YES, /* true if value of expression is used */
   ccode   = YES, /* true while parsing C code */
  *snext,    /* next addr in stage */
@@ -184,8 +187,10 @@ int main(int host_argc, char **host_argv)
 **      definitions are legal...
 */
 int parse() {
+  int k;
   while (eof == 0) {
-    if     (typedfunc())         dofunction();
+    if     (dostatic())          ;
+    else if(k = typedfunc())     {if(k == 1) dofunction();}
     else if(amatch("extern", 6)) dodeclare(EXTERNAL);
     else if(doenum())            ;
     else if(dostruct())          ;
@@ -195,7 +200,7 @@ int parse() {
     else if( match("#include"))  doinclude();
     else if( match("#define"))   dodefine();
     else if( match("#undef"))    doundef();
-    else                         dofunction();
+    else                         {functype = INT; funcclass = STATIC; dofunction();}
     blanks();                 /* force eof if pending */
     }
   }
@@ -210,12 +215,12 @@ int parse() {
 */
 int typedfunc() {
   char *save_lptr, *p;
-  int save_ch, save_nch, type, id, sz;
+  int c, depth, k, save_ch, save_nch, type, id, sz;
+  char fname[NAMESIZE], header[LINESIZE];
   save_lptr = lptr;
   save_ch = ch;
   save_nch = nch;
-  if(match("void")) ;
-  else if(decltype(&type, &id, &sz) == 0) {
+  if(decltype(&type, &id, &sz) == 0) {
     return 0;
     }
   while(ch && ch <= ' ') gch();
@@ -236,10 +241,14 @@ int typedfunc() {
     lptr = save_lptr; ch = save_ch; nch = save_nch;
     return 0;
     }
-  while(an(*p)) ++p;
+  k = 0;
+  while(an(*p)) {
+    if(k < NAMEMAX) fname[k++] = *p;
+    ++p;
+    }
+  fname[k] = 0;
   while(*p && *p <= ' ') ++p;
   if(*p == '(') {
-    int depth;
     depth = 1;
     ++p;
     while(*p && depth) {
@@ -247,12 +256,68 @@ int typedfunc() {
       else if(*p == ')') --depth;
       ++p;
       }
-    if(depth) {
-      lptr = save_lptr; ch = save_ch; nch = save_nch;
-      return 0;
-      }
     while(*p && *p <= ' ') ++p;
-    if(*p != ';') return 1;
+    if(depth == 0 && *p != ';') {
+      functype = type;
+      funcclass = STATIC;
+      return 1;
+      }
+    }
+  else {
+    lptr = save_lptr; ch = save_ch; nch = save_nch;
+    return 0;
+    }
+
+  if(depth == 0) {
+    lptr = save_lptr; ch = save_ch; nch = save_nch;
+    return 0;
+    }
+
+  k = 0;
+  depth = 0;
+  p = lptr;
+  while(1) {
+    while(*p) {
+      c = *p++;
+      if(k < LINEMAX) header[k++] = c;
+      if(c == '(') ++depth;
+      else if(c == ')' && --depth == 0) break;
+      }
+    if(depth == 0) break;
+    if(k < LINEMAX) header[k++] = ' ';
+    preprocess();
+    if(eof) break;
+    p = lptr;
+    }
+  while(*p && *p <= ' ') ++p;
+  while(*p == 0 && eof == 0) {
+    preprocess();
+    p = lptr;
+    while(*p && *p <= ' ') ++p;
+    }
+  if(*p == '{') {
+    if(k < LINEMAX) header[k++] = ' ';
+    if(k < LINEMAX) header[k++] = '{';
+    header[k] = 0;
+    k = 0;
+    while(header[k]) {
+      pline[k] = header[k];
+      ++k;
+      }
+    pline[k] = 0;
+    line = pline;
+    bump(0);
+    functype = type;
+    funcclass = STATIC;
+    return 1;
+    }
+  if(*p == ';') {
+    if(cptr = findglb(fname)) {
+      if(cptr[IDENT] != FUNCTION) multidef(fname);
+      }
+    else addsym(fname, FUNCTION, type, 0, 0, &glbptr, AUTOEXT);
+    kill();
+    return 2;
     }
   lptr = save_lptr; ch = save_ch; nch = save_nch;
   return 0;
@@ -286,6 +351,22 @@ int dodeclare(class) int class; {
   else if(class == EXTERNAL)      declglb(INT, class);
   else return 0;
   ns();
+  return 1;
+  }
+
+int dostatic() {
+  int k;
+  if(amatch("static", 6) == 0) return 0;
+  funcclass = STATIC;
+  k = typedfunc();
+  if(k == 1) {
+    dofunction();
+    return 1;
+    }
+  if(k == 2) return 1;
+  if(dodeclare(STATIC)) return 1;
+  error("bad static declaration");
+  kill();
   return 1;
   }
 
@@ -392,6 +473,12 @@ int decltype(type, id, sz) int *type, *id, *sz; {
     *type = UCHR;
     *id = VARIABLE;
     *sz = 1;
+    return 1;
+    }
+  if(amatch("void", 4)) {
+    *type = VOID;
+    *id = VARIABLE;
+    *sz = 0;
     return 1;
     }
   if(amatch("enum", 4)) {
@@ -611,6 +698,11 @@ int declglb2(type, class, baseid)  int type, class, baseid; {
     else if(id == VARIABLE && match("[")) {
       id = ARRAY;
       dim = needsub();
+      }
+    if(type == VOID && id != POINTER) {
+      error("void object");
+      type = INT;
+      dim = 1;
       }
     if     (class == EXTERNAL) external(ssname, typesize(type, id), id);
     else if(   id != FUNCTION) {
@@ -922,6 +1014,10 @@ int argtype(type) int *type; {
     *type = UCHR;
     return 1;
     }
+  if(amatch("void", 4)) {
+    *type = VOID;
+    return 1;
+    }
   if(typedeftype(type, &id, &sz)) return 1;
   return 0;
   }
@@ -933,7 +1029,7 @@ int argtype(type) int *type; {
 ** out of the following text
 */
 int dofunction()  {
-  int argcount, id, sz, type, typedargs;
+  int argcount, id, rettype, sz, type, typedargs;
   char *argptr[NUMLOCS], *ptr;
   nogo   =                      /* enable goto statements */
   noloc  =                      /* enable block-local declarations */
@@ -941,7 +1037,9 @@ int dofunction()  {
   litptr = 0;                   /* clear lit pool */
   litlab = getlabel();          /* label next lit pool */
   locptr = STARTLOC;            /* clear local variables */
-  if(match("void")) blanks();   /* skip "void" & locate header */
+  rettype = functype;
+  if(match("void")) {rettype = VOID; blanks();}   /* old direct path */
+  curtype = rettype;
   if(monitor) lout(line, stderr);
   if(symname(ssname) == 0) {
     error("illegal function or declaration");
@@ -950,11 +1048,15 @@ int dofunction()  {
     return;
     }
   if(ptr = findglb(ssname)) {   /* already in symbol table? */
-    if(ptr[CLASS] == AUTOEXT)
+    if(ptr[IDENT] != FUNCTION)
+         multidef(ssname);
+    else if(ptr[CLASS] == AUTOEXT) {
          ptr[CLASS] = STATIC;
+         ptr[TYPE] = rettype;
+         }
     else multidef(ssname);
     }
-  else addsym(ssname, FUNCTION, INT, 0, 0, &glbptr, STATIC);
+  else addsym(ssname, FUNCTION, rettype, 0, 0, &glbptr, funcclass);
   public(FUNCTION);
   argstk = 0;                  /* init arg count */
   argcount = typedargs = 0;
@@ -962,14 +1064,26 @@ int dofunction()  {
   while(match(")") == 0) {     /* then count args */
     type = 0;
     if(streq(lptr, "void")) {
+      char *save_lptr;
+      int save_ch, save_nch;
+      save_lptr = lptr;
+      save_ch = ch;
+      save_nch = nch;
       match("void");
-      need(")");
-      break;
+      blanks();
+      if(streq(lptr, ")")) {
+        need(")");
+        break;
+        }
+      lptr = save_lptr;
+      ch = save_ch;
+      nch = save_nch;
       }
     if(argtype(&type)) {
       typedargs = YES;
       if(match("*")) {id = POINTER;  sz = BPW;}
       else           {id = VARIABLE; sz = type >> 2;}
+      if(type == VOID && id != POINTER) error("void argument");
       if(symname(ssname)) {
         if(findloc(ssname)) multidef(ssname);
         else if(argcount < NUMLOCS) {
@@ -1030,6 +1144,9 @@ int dofunction()  {
     gen(REFm, litlab);
     dumplits(1);               /* dump literals */
     }
+  functype = INT;
+  curtype = INT;
+  funcclass = STATIC;
   }
 
 /*
@@ -1141,8 +1258,11 @@ int declloc2(type, baseid)  int type, baseid;  {
   while(1) {
     if(endst()) return;
     decl2(type, ARRAY, &id, &sz, baseid);
-    declared += sz;
-    addsym(ssname, id, type,  sz, csp - declared, &locptr, AUTOMATIC);
+    if(type == VOID && id != POINTER) error("void object");
+    else {
+      declared += sz;
+      addsym(ssname, id, type,  sz, csp - declared, &locptr, AUTOMATIC);
+      }
     if(match(",") == 0) return;
     }
   }
@@ -1332,7 +1452,10 @@ int addlabel(def) int def; {
 
 int doreturn()  {
   int savcsp;
-  if(endst() == 0) doexpr(YES);
+  if(endst() == 0) {
+    if(curtype == VOID) error("void return value");
+    doexpr(YES);
+    }
   savcsp = csp;
   gen(RETURN, 0);
   csp = savcsp;

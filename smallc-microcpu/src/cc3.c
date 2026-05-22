@@ -487,7 +487,8 @@ int callfunc(ptr)  char *ptr; {      /* symbol table entry or 0 */
     if(match(",") == 0) break;
     }
   need(")");
-  if(streq(ptr + NAME, "CCARGC") == 0) gen(ARGCNTn, nargs >> LBPW);
+  if(ptr == 0 || streq(ptr + NAME, "CCARGC") == 0)
+    gen(ARGCNTn, nargs >> LBPW);
   if(ptr) gen(CALLm, ptr);
   else    gen(CALL1, 0);
   gen(ADDSP, csp + nargs);
