@@ -18,6 +18,8 @@
   * [Assembler macro definition](#assembler-macro-definition)
   * [Assembler procedures](#assembler-procedures)
   * [Command line options](#command-line-options)
+  * [Object files and linker](#object-files-and-linker)
+  * [Disassembler](#disassembler)
 * [Bootloader](#bootloader)
   * [Bootloader options](#bootloader-options)
 * [Lattice Diamond programmer and ftdi jtag dual channel board](#lattice-diamond-programmer-and-ftdi-jtag-dual-channel-board)
@@ -215,6 +217,9 @@ Directive | Description
 `IFNDEF <symbol>`|Assemble following lines if symbol is not defined
 `ELSE`|Switch to alternate conditional assembly branch
 `ENDIF`|End conditional assembly block
+`EXTERN <symbol>[,<symbol>...]`|Declare symbols resolved from another object module
+`PUBLIC <symbol>[,<symbol>...]`|Export symbols from the current object module
+`ENTRY <exp>`|Set object entry point
 
 Examples:
 ```
@@ -311,16 +316,20 @@ get_2 SET V0, 2
     ENDP
 ```
 
+`GLOBAL` controls procedure-local label visibility. It is not an object export
+directive; use `PUBLIC` to export symbols from an object file.
+
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
 ### Command line options
 
-`microasm [-verilog|-binary] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]`
+`microasm [-verilog|-binary|-object] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]`
 
-`microasm [-verilog|-binary] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]`
+`microasm [-verilog|-binary|-obj] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]`
 
 * -verilog - create verilog ram file
 * -binary  - create binary file
+* -object, -obj - create object file
 * -D, --define - define a global constant before pass 1. If value is omitted,
   it defaults to 1. The expression may reference earlier command-line defines.
 * -U, --undef - remove a command-line define before pass 1.
@@ -332,6 +341,36 @@ Examples:
 microasm -D DEBUG -D ROM_BASE='$8000' source.asm out.mem
 microasm --define=FEATURE_UART=1 --undef DEBUG source.asm
 ```
+
+[Top](#microcpu---16-bit-risc-cpu-version-2)
+
+### Object files and linker
+
+Object files use a UniCROSS-style format with public symbols, external symbols,
+one code segment, and relocation records. `microasm -object` creates object
+files; `microlink` links one or more object files into a final image.
+
+`microlink [-verilog|-binary] [-symbols] [-org address] [-o output] <input.obj>...`
+
+* default output is a hex `.mem` file
+* -binary - create binary file
+* -verilog - create verilog ram file
+* -symbols - print the resolved public symbol table to stdout
+* -org - set the final load address, default `$0000`
+* -o - set output path
+
+`microlink` does not create relocatable output files.
+
+[Top](#microcpu---16-bit-risc-cpu-version-2)
+
+### Disassembler
+
+`microdis [-binary|-object] [-org address] <input.bin|input.obj>`
+
+`microdis` disassembles raw binary files and object files. Input mode is
+auto-detected by default; `-binary` and `-object` force a mode. `-org` sets the
+base address printed in the listing. Object disassembly prints public labels,
+external declarations, entry point information, and relocation comments.
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 

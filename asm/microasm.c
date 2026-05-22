@@ -37,6 +37,15 @@ enum {
     UNMATCHED_ENDIF,
     DUPLICATE_ELSE,
     UNTERMINATED_IF,
+    NO_MEMORY_FOR_RELOC,
+    NO_MEMORY_FOR_SYMBOL,
+    EXTERN_REDEFINED,
+    PUBLIC_NOT_DEFINED,
+    ORG_NOT_ALLOWED_IN_OBJECT,
+    CHKSUM_NOT_ALLOWED_IN_OBJECT,
+    EXTERN_NOT_ALLOWED_HERE,
+    INVALID_ENTRY_POINT,
+    SYMBOL_NAME_TOO_LONG,
     EXTRA_SYMBOLS,
     SYNTAX_ERROR,
     CANNOT_OPEN_FILE,
@@ -67,6 +76,9 @@ enum {
     pseudo_ifndef,
     pseudo_else,
     pseudo_endif,
+    pseudo_extern,
+    pseudo_public,
+    pseudo_entry,
 };
 
 typedef struct {
@@ -137,6 +149,9 @@ static OpCode opcode_table[] = {
     { "ifndef", pseudo_ifndef, 0x0, 0x0 },
     { "else", pseudo_else, 0x0, 0x0 },
     { "endif", pseudo_endif, 0x0, 0x0 },
+    { "extern", pseudo_extern, 0x0, 0x0 },
+    { "public", pseudo_public, 0x0, 0x0 },
+    { "entry", pseudo_entry, 0x0, 0x0 },
 };
 
 typedef struct Register {
@@ -176,8 +191,18 @@ typedef struct Label {
     unsigned int address;
     int line;
     int resolved;
+    int external;
+    int absolute;
     struct Label *prev;
 } Label;
+
+typedef struct Reloc {
+    unsigned char type;
+    unsigned int offset;
+    char *name;
+    int external;
+    struct Reloc *next;
+} Reloc;
 
 typedef struct CondRecord {
     int condition_true;
@@ -225,15 +250,34 @@ static int src_line = 1;
 static Label *labels = NULL;
 static Label *equs = NULL;
 static Label *refs = NULL;
+static Label *externs = NULL;
+static Label *publics = NULL;
 static Proc *procs = NULL;
 static Macro *macros = NULL;
 static File *files = NULL;
+static Reloc *relocs = NULL;
+static Reloc *relocs_tail = NULL;
 
 static int error = 0;
 static int to_second_pass = 0;
 
 static int in_macro = 0;
 static Proc *in_proc = NULL;
+static int out_type = 0;
+static int has_entry = 0;
+static unsigned int entry_addr = 0;
+static Label *expr_reloc_label = NULL;
+static int expr_reloc_count = 0;
+static int expr_high_byte = 0;
+
+#define OUT_MEM 0
+#define OUT_VERILOG 1
+#define OUT_BINARY 2
+#define OUT_OBJECT 3
+
+#define RELOC_LSB 0x01
+#define RELOC_MSB 0x02
+#define RELOC_WORD 0x03
 
 #define COND_NESTING_LIMIT 32
 
@@ -335,6 +379,8 @@ static Label* add_label_ex(Label **list, char *name, unsigned int address,
     new->address = address;
     new->line = line;
     new->resolved = resolved;
+    new->external = 0;
+    new->absolute = 0;
     new->prev = *list;
 
     *list = new;
@@ -384,6 +430,127 @@ static void delete_label(Label **list, char *name)
     }
 }
 
+static Label* find_any_symbol(char *name)
+{
+    Label *label = NULL;
+
+    if (in_proc) {
+        label = find_label(&in_proc->labels, name);
+
+        if (!label) {
+            label = find_label(&in_proc->equs, name);
+        }
+    }
+
+    if (!label) {
+        label = find_label(&labels, name);
+    }
+
+    if (!label) {
+        label = find_label(&equs, name);
+    }
+
+    if (!label) {
+        label = find_label(&externs, name);
+    }
+
+    return label;
+}
+
+static int count_labels(Label *list)
+{
+    int count = 0;
+
+    while (list) {
+        count++;
+        list = list->prev;
+    }
+
+    return count;
+}
+
+static int label_index(Label *list, char *name)
+{
+    int index = 0;
+
+    while (list) {
+        if (!strcasecmp(list->name, name)) {
+            return index;
+        }
+        index++;
+        list = list->prev;
+    }
+
+    return -1;
+}
+
+static void reset_expr_reloc(void)
+{
+    expr_reloc_label = NULL;
+    expr_reloc_count = 0;
+    expr_high_byte = 0;
+}
+
+static void note_expr_reloc(Label *label)
+{
+    if (out_type != OUT_OBJECT || label->absolute) {
+        return;
+    }
+
+    if (expr_reloc_label && expr_reloc_label != label) {
+        error = SYNTAX_ERROR;
+        return;
+    }
+
+    expr_reloc_label = label;
+    expr_reloc_count++;
+}
+
+static int check_expr_reloc(void)
+{
+    if (expr_reloc_count > 1) {
+        error = SYNTAX_ERROR;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int add_reloc(unsigned char type, unsigned int offset, Label *label)
+{
+    Reloc *record;
+
+    if (out_type != OUT_OBJECT || !label || label->absolute) {
+        return 0;
+    }
+
+    record = malloc(sizeof(Reloc));
+    if (!record) {
+        error = NO_MEMORY_FOR_RELOC;
+        return 1;
+    }
+
+    record->type = type;
+    record->offset = offset - start_addr;
+    record->name = strdup(label->name);
+    if (!record->name) {
+        free(record);
+        error = NO_MEMORY_FOR_RELOC;
+        return 1;
+    }
+    record->external = label->external;
+    record->next = NULL;
+
+    if (relocs_tail) {
+        relocs_tail->next = record;
+    } else {
+        relocs = record;
+    }
+    relocs_tail = record;
+
+    return 0;
+}
+
 static void dump_labels(Label *list)
 {
     while (list) {
@@ -398,6 +565,7 @@ static int relink_refs(void)
 
     while (tmp) {
         char *ptr = tmp->name;
+        reset_expr_reloc();
         int val = exp_(&ptr);
         if (error == 0 && to_second_pass == 0) {
             output[tmp->address] = val;
@@ -723,26 +891,18 @@ static int operand(char **str)
     }
     *ptr1 = 0;
 
-    Label *label = NULL;
-
-    if (in_proc) {
-        label = find_label(&in_proc->labels, tmp);
-
-        if (!label) {
-            label = find_label(&in_proc->equs, tmp);
-        }
-    }
-
-    if (!label) {
-        label = find_label(&labels, tmp);
-    }
-
-    if (!label) {
-        label = find_label(&equs, tmp);
-    }
+    Label *label = find_any_symbol(tmp);
 
     if (label) {
         *str = ptr;
+        if (label->external) {
+            if (out_type != OUT_OBJECT) {
+                error = CANNOT_RESOLVE_REF;
+                return 0;
+            }
+            note_expr_reloc(label);
+            return 0;
+        }
         if (!label->resolved) {
             if (src_pass == 2) {
                 error = CANNOT_RESOLVE_REF;
@@ -751,6 +911,7 @@ static int operand(char **str)
             }
             return 0;
         }
+        note_expr_reloc(label);
         return label->address;
     } else if (match(str, '$')) {
         return hexnum(str);
@@ -890,6 +1051,7 @@ static int exp2_(char **str)
 static int exp_(char **str)
 {
     if (match(str, '/')) {
+        expr_high_byte = 1;
         return (exp2_(str) >> 8);
     } else {
         return (exp2_(str));
@@ -924,11 +1086,20 @@ static int get_bytes(char *str)
             continue;
         } else {
             char *tmp = str;
+            unsigned int reloc_offset = output_addr;
             if (output_addr >= 65536) {
                 error = OUTPUT_BUFFER_OVERFLOW;
                 return 0;
             }
+            reset_expr_reloc();
             output[output_addr++] = exp_(&str) & 0xFF;
+            if (check_expr_reloc()) {
+                return 0;
+            }
+            if (src_pass == 2 && expr_reloc_label) {
+                add_reloc(expr_high_byte ? RELOC_MSB : RELOC_LSB,
+                          reloc_offset, expr_reloc_label);
+            }
 
             if (to_second_pass && src_pass == 2) {
                 int len = str - tmp;
@@ -968,7 +1139,16 @@ static int get_words(char *str)
 
     while (nbytes < linesize) {
         char *tmp = str;
+        unsigned int reloc_offset = output_addr;
+        reset_expr_reloc();
         word = exp_(&str);
+        if (check_expr_reloc()) {
+            return 0;
+        }
+
+        if (src_pass == 2 && expr_reloc_label) {
+            add_reloc(RELOC_WORD, reloc_offset, expr_reloc_label);
+        }
 
         if (to_second_pass && src_pass == 2) {
             char tmp1[strlen(tmp) + 1];
@@ -1080,6 +1260,21 @@ static char *get_file_path(char *name)
     return name;
 }
 
+static void restore_root_file(void)
+{
+    while (files) {
+        File *tmp;
+
+        fclose(in_file);
+        in_file = files->in_file;
+        in_file_path = files->in_file_path;
+        src_line = files->src_line;
+        tmp = files->prev;
+        free(files);
+        files = tmp;
+    }
+}
+
 static int is_conditional_opcode(OpCode *opcode)
 {
     return opcode &&
@@ -1158,6 +1353,7 @@ static int symbol_defined(char *name)
 
     return find_label(&labels, name) ||
            find_label(&equs, name) ||
+           find_label(&externs, name) ||
            find_proc(&procs, name) ||
            find_macro(name);
 }
@@ -1179,6 +1375,7 @@ static int eval_if_condition(char *str, int parent_active,
     }
 
     to_second_pass = 0;
+    reset_expr_reloc();
     val = exp_(&str);
     if (error != NO_ERROR) {
         to_second_pass = 0;
@@ -1334,6 +1531,89 @@ static int handle_conditional_directive(OpCode *opcode, char *str, char *line)
     return 0;
 }
 
+static int parse_symbol_list(char *str, int (*handler)(char *name))
+{
+    int got_name = 0;
+
+    do {
+        char *name;
+        char last;
+
+        SKIP_BLANK(str);
+        name = str;
+        SKIP_TOKEN(str);
+        if (str == name) {
+            error = SYNTAX_ERROR;
+            return 1;
+        }
+
+        last = *str;
+        if (last) {
+            *str++ = 0;
+        }
+
+        if (handler(name)) {
+            return 1;
+        }
+        got_name = 1;
+
+        if (!last) {
+            break;
+        }
+        if (last != ',') {
+            SKIP_BLANK(str);
+            if (*str) {
+                error = EXTRA_SYMBOLS;
+                return 1;
+            }
+            break;
+        }
+    } while (*str);
+
+    if (!got_name) {
+        error = SYNTAX_ERROR;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int add_extern_symbol(char *name)
+{
+    Label *label;
+
+    if (find_label(&labels, name) || find_label(&equs, name)) {
+        error = EXTERN_REDEFINED;
+        return 1;
+    }
+
+    if (find_label(&externs, name)) {
+        return 0;
+    }
+
+    label = add_label_ex(&externs, name, 0, src_line, 0);
+    if (!label) {
+        return 1;
+    }
+    label->external = 1;
+    label->absolute = 0;
+
+    return 0;
+}
+
+static int add_public_symbol(char *name)
+{
+    if (find_label(&publics, name)) {
+        return 0;
+    }
+
+    if (!add_label_ex(&publics, name, 0, src_line, 1)) {
+        return 1;
+    }
+
+    return 0;
+}
+
 static int do_asm(FILE *inf, char *line)
 {
     char last;
@@ -1404,6 +1684,10 @@ static int do_asm(FILE *inf, char *line)
 
             if (src_pass == 1 &&
                     (mac || !(opcode && !strcasecmp(opcode->name, "equ")))) {
+                if (find_label(&externs, label)) {
+                    error = EXTERN_REDEFINED;
+                    return 1;
+                }
                 if (in_proc) {
                     Label *global = find_label(&in_proc->globals, label);
                     if (global) {
@@ -1452,26 +1736,106 @@ static int do_asm(FILE *inf, char *line)
 
             in_file_path = get_file_path(name);
             return 0;
+        } else if (opcode && !strcmp(opcode->name, "extern")) {
+            if (label) {
+                error = SYNTAX_ERROR;
+                return 1;
+            }
+            if (out_type != OUT_OBJECT) {
+                error = EXTERN_NOT_ALLOWED_HERE;
+                return 1;
+            }
+            if (src_pass == 1) {
+                if (parse_symbol_list(str, add_extern_symbol)) {
+                    return 1;
+                }
+            }
+            if (src_pass == 2) {
+                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+            }
+        } else if (opcode && !strcmp(opcode->name, "public")) {
+            if (label) {
+                error = SYNTAX_ERROR;
+                return 1;
+            }
+            if (out_type != OUT_OBJECT) {
+                error = EXTERN_NOT_ALLOWED_HERE;
+                return 1;
+            }
+            if (src_pass == 1) {
+                if (parse_symbol_list(str, add_public_symbol)) {
+                    return 1;
+                }
+            }
+            if (src_pass == 2) {
+                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+            }
+        } else if (opcode && !strcmp(opcode->name, "entry")) {
+            if (label) {
+                error = SYNTAX_ERROR;
+                return 1;
+            }
+            if (out_type != OUT_OBJECT) {
+                error = EXTERN_NOT_ALLOWED_HERE;
+                return 1;
+            }
+            SKIP_BLANK(str);
+            if (!*str) {
+                error = MISSED_OPCODE_PARAM_1;
+                return 1;
+            }
+            reset_expr_reloc();
+            entry_addr = exp_(&str);
+            if (check_expr_reloc()) {
+                return 1;
+            }
+            if (expr_reloc_label && expr_reloc_label->external) {
+                error = INVALID_ENTRY_POINT;
+                return 1;
+            }
+            SKIP_BLANK(str);
+            if (*str) {
+                error = EXTRA_SYMBOLS;
+                return 1;
+            }
+            has_entry = 1;
+            if (src_pass == 2) {
+                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+            }
         } else if (opcode && !strcmp(opcode->name, "equ")) {
             if (!label) {
                 error = MISSED_NAME_FOR_EQU;
+            } else if (src_pass == 1 && find_label(&externs, label)) {
+                error = EXTERN_REDEFINED;
+                return 1;
             } else {
                 SKIP_BLANK(str);
+                reset_expr_reloc();
                 unsigned int val = exp_(&str);
                 int resolved = !to_second_pass && error == NO_ERROR;
 
                 if (src_pass == 1 && error == NO_ERROR) {
+                    Label *equ;
                     if (in_proc) {
-                        add_label_ex(&in_proc->equs, label, val, src_line,
-                                     resolved);
+                        equ = add_label_ex(&in_proc->equs, label, val,
+                                           src_line, resolved);
                     } else {
-                        add_label_ex(&equs, label, val, src_line, resolved);
+                        equ = add_label_ex(&equs, label, val, src_line,
+                                           resolved);
+                    }
+                    if (equ) {
+                        equ->absolute = 1;
                     }
                 } else if (src_pass == 2 && error == NO_ERROR) {
+                    Label *equ;
                     if (in_proc) {
-                        set_label(&in_proc->equs, label, val, src_line, 1);
+                        equ = set_label(&in_proc->equs, label, val,
+                                        src_line, 1);
                     } else {
-                        set_label(&equs, label, val, src_line, 1);
+                        equ = set_label(&equs, label, val, src_line, 1);
+                    }
+                    if (equ) {
+                        equ->absolute = 1;
                     }
                 }
                 to_second_pass = 0;
@@ -1530,13 +1894,22 @@ static int do_asm(FILE *inf, char *line)
             }
             return add_macro(inf, name);
         } else if (opcode && !strcmp(opcode->name, "org")) {
+            if (out_type == OUT_OBJECT) {
+                error = ORG_NOT_ALLOWED_IN_OBJECT;
+                return 1;
+            }
             SKIP_BLANK(str);
+            reset_expr_reloc();
             start_addr = exp_(&str);
             output_addr = start_addr;
             if (src_pass == 2) {
                 fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
             }
         } else if (opcode && opcode->type == pseudo_chksum) {
+            if (out_type == OUT_OBJECT) {
+                error = CHKSUM_NOT_ALLOWED_IN_OBJECT;
+                return 1;
+            }
             use_chksum = 1;
             chksum_addr = output_addr;
             output[output_addr++] = 0;
@@ -1565,10 +1938,20 @@ static int do_asm(FILE *inf, char *line)
                 int count, fill;
 
                 fill = 0;
+                reset_expr_reloc();
                 count = exp_(&str);
+                if (expr_reloc_label) {
+                    error = SYNTAX_ERROR;
+                    return 1;
+                }
 
                 if (match(&str, ',')) {
+                    reset_expr_reloc();
                     fill = exp_(&str) & 0xFF;
+                    if (expr_reloc_label) {
+                        error = SYNTAX_ERROR;
+                        return 1;
+                    }
                 }
 
                 if (opcode->type == pseudo_align) {
@@ -1587,7 +1970,15 @@ static int do_asm(FILE *inf, char *line)
 
                 char *tmp = str;
 
+                reset_expr_reloc();
                 int val = exp_(&str);
+                if (check_expr_reloc()) {
+                    return 1;
+                }
+                if (expr_reloc_label && expr_reloc_label->external) {
+                    error = EXTERN_NOT_ALLOWED_HERE;
+                    return 1;
+                }
 
                 if (to_second_pass && src_pass == 2) {
                     add_label(&refs, tmp, output_addr + 1, src_line);
@@ -1644,7 +2035,17 @@ static int do_asm(FILE *inf, char *line)
 
                 if (opcode->type == op_reg_const) {
                     char *tmp = str;
+                    unsigned int reloc_offset = output_addr + 1;
+                    reset_expr_reloc();
                     int val = exp_(&str);
+                    if (check_expr_reloc()) {
+                        return 1;
+                    }
+
+                    if (src_pass == 2 && expr_reloc_label) {
+                        add_reloc(expr_high_byte ? RELOC_MSB : RELOC_LSB,
+                                  reloc_offset, expr_reloc_label);
+                    }
 
                     if (to_second_pass && src_pass == 2) {
                         add_label(&refs, tmp, output_addr + 1, src_line);
@@ -1674,7 +2075,13 @@ static int do_asm(FILE *inf, char *line)
                                 arg3 = reg->n << 2;
                             } else {
                                 char *tmp = str;
+                                reset_expr_reloc();
                                 int val = exp_(&str);
+
+                                if (expr_reloc_label) {
+                                    error = SYNTAX_ERROR;
+                                    return 1;
+                                }
 
                                 if (to_second_pass && src_pass == 2) {
                                     add_label(&refs, tmp, output_addr + 1,
@@ -1832,6 +2239,153 @@ void output_binary(FILE *outf)
     }
 }
 
+static void write_u16(FILE *outf, unsigned int val)
+{
+    fputc(val & 0xff, outf);
+    fputc((val >> 8) & 0xff, outf);
+}
+
+static void write_u32(FILE *outf, unsigned int val)
+{
+    write_u16(outf, val & 0xffff);
+    write_u16(outf, (val >> 16) & 0xffff);
+}
+
+static int write_obj_name(FILE *outf, char *name)
+{
+    unsigned char buf[16];
+    size_t len = strlen(name);
+
+    if (len >= sizeof(buf)) {
+        error = SYMBOL_NAME_TOO_LONG;
+        return 1;
+    }
+
+    memset(buf, 0, sizeof(buf));
+    memcpy(buf, name, len);
+    fwrite(buf, 1, sizeof(buf), outf);
+    return 0;
+}
+
+static Label *find_public_target(char *name)
+{
+    Label *label = find_label(&labels, name);
+
+    if (!label) {
+        label = find_label(&equs, name);
+    }
+
+    return label;
+}
+
+static int validate_publics(void)
+{
+    Label *pub = publics;
+
+    while (pub) {
+        Label *target = find_public_target(pub->name);
+
+        if (!target || target->external) {
+            error = PUBLIC_NOT_DEFINED;
+            return 1;
+        }
+
+        pub = pub->prev;
+    }
+
+    return 0;
+}
+
+static int output_object(FILE *outf)
+{
+    unsigned int ent_count = count_labels(publics);
+    unsigned int ext_count = count_labels(externs);
+    unsigned int code_len = output_addr - start_addr;
+    unsigned int code_offset = 0x20 + (ent_count + ext_count) * 20;
+    unsigned int entry_offset = 0xffff;
+    Label *ptr;
+    Reloc *reloc;
+    unsigned int reloc_count = 0;
+
+    if (validate_publics()) {
+        return 1;
+    }
+
+    if (has_entry) {
+        if (entry_addr < start_addr || entry_addr > output_addr) {
+            error = INVALID_ENTRY_POINT;
+            return 1;
+        }
+        entry_offset = code_offset + (entry_addr - start_addr);
+    }
+
+    write_u16(outf, 0x5aa5);
+    write_u16(outf, 0x0001);
+    write_u16(outf, ent_count);
+    write_u16(outf, ext_count);
+    write_u16(outf, code_len);
+    write_u32(outf, code_offset);
+    write_u16(outf, entry_offset);
+    write_u16(outf, 0);
+    for (int i = 0; i < 14; i++) {
+        fputc(0, outf);
+    }
+
+    ptr = publics;
+    while (ptr) {
+        Label *target = find_public_target(ptr->name);
+
+        if (write_obj_name(outf, ptr->name)) {
+            return 1;
+        }
+        write_u16(outf, target->address - (target->absolute ? 0 : start_addr));
+        write_u16(outf, target->absolute ? 0xffff : 0x0000);
+        ptr = ptr->prev;
+    }
+
+    ptr = externs;
+    while (ptr) {
+        if (write_obj_name(outf, ptr->name)) {
+            return 1;
+        }
+        write_u32(outf, 0);
+        ptr = ptr->prev;
+    }
+
+    for (unsigned int i = start_addr; i < output_addr; i++) {
+        fwrite(&output[i], 1, 1, outf);
+    }
+
+    reloc = relocs;
+    while (reloc) {
+        reloc_count++;
+        reloc = reloc->next;
+    }
+    write_u16(outf, reloc_count);
+
+    reloc = relocs;
+    while (reloc) {
+        unsigned int val = 0;
+
+        if (reloc->external) {
+            int index = label_index(externs, reloc->name);
+            if (index < 0) {
+                error = CANNOT_RESOLVE_REF;
+                return 1;
+            }
+            val = index;
+        }
+
+        fputc((reloc->external ? 0x80 : 0x00) | (reloc->type & 0x03), outf);
+        write_u16(outf, val);
+        write_u16(outf, reloc->offset);
+        reloc = reloc->next;
+    }
+
+    fputc(0, outf);
+    return ferror(outf) ? 1 : 0;
+}
+
 void calculate_chksum(void)
 {
     unsigned short chksum = 0;
@@ -1909,6 +2463,24 @@ static char *get_error_string(int error)
         return "Duplicate ELSE";
     case UNTERMINATED_IF:
         return "Unterminated IF";
+    case NO_MEMORY_FOR_RELOC:
+        return "No memory for relocation";
+    case NO_MEMORY_FOR_SYMBOL:
+        return "No memory for symbol";
+    case EXTERN_REDEFINED:
+        return "External symbol already defined";
+    case PUBLIC_NOT_DEFINED:
+        return "Public symbol is not defined";
+    case ORG_NOT_ALLOWED_IN_OBJECT:
+        return "ORG is not allowed in object output";
+    case CHKSUM_NOT_ALLOWED_IN_OBJECT:
+        return "CHKSUM is not allowed in object output";
+    case EXTERN_NOT_ALLOWED_HERE:
+        return "External symbols are not allowed here";
+    case INVALID_ENTRY_POINT:
+        return "Invalid entry point";
+    case SYMBOL_NAME_TOO_LONG:
+        return "Symbol name too long for object file";
     case EXTRA_SYMBOLS:
         return "Extra symbols";
     case SYNTAX_ERROR:
@@ -1941,9 +2513,9 @@ static char *get_out_name(char *in_str, char *ext)
 static void print_usage(char *prog)
 {
     fprintf(stderr,
-            "Usage: %s [-verilog|-binary] [-D name[=expr]|--define name[=expr]] "
+            "Usage: %s [-verilog|-binary|-object] [-D name[=expr]|--define name[=expr]] "
             "[-U name|--undef name] <input_file> [output_file]\n"
-            "       %s [-verilog|-binary] [-Dname[=expr]|--define=name[=expr]] "
+            "       %s [-verilog|-binary|-obj] [-Dname[=expr]|--define=name[=expr]] "
             "[-Uname|--undef=name] <input_file> [output_file]\n",
             prog, prog);
 }
@@ -2005,6 +2577,7 @@ static int add_cmdline_define(char *arg)
         char *ptr = expr;
 
         to_second_pass = 0;
+        reset_expr_reloc();
         val = exp_(&ptr);
         if (error != NO_ERROR) {
             free(copy);
@@ -2025,7 +2598,10 @@ static int add_cmdline_define(char *arg)
         }
     }
 
-    set_label(&equs, copy, val, 0, 1);
+    Label *label = set_label(&equs, copy, val, 0, 1);
+    if (label) {
+        label->absolute = 1;
+    }
     free(copy);
     return error != NO_ERROR;
 }
@@ -2057,7 +2633,6 @@ static int remove_cmdline_define(char *arg)
 
 int main(int argc, char *argv[])
 {
-    int out_type = 0;
     char *input_name = NULL;
     char *output_name = NULL;
 
@@ -2068,9 +2643,11 @@ int main(int argc, char *argv[])
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-verilog")) {
-            out_type = 1;
+            out_type = OUT_VERILOG;
         } else if (!strcmp(argv[i], "-binary")) {
-            out_type = 2;
+            out_type = OUT_BINARY;
+        } else if (!strcmp(argv[i], "-object") || !strcmp(argv[i], "-obj")) {
+            out_type = OUT_OBJECT;
         } else if (!strcmp(argv[i], "-D") || !strcmp(argv[i], "--define")) {
             if (++i >= argc || add_cmdline_define(argv[i])) {
                 fprintf(stderr, "Invalid define option: %s\n",
@@ -2149,6 +2726,9 @@ int main(int argc, char *argv[])
         cond_records = NULL;
         cond_records_tail = NULL;
         cond_replay = NULL;
+        relocs = NULL;
+        relocs_tail = NULL;
+        has_entry = 0;
 
         // Pass 1
 
@@ -2185,6 +2765,8 @@ int main(int argc, char *argv[])
             return 1;
         }
 
+        restore_root_file();
+
         output_addr = start_addr;
         src_pass = 2;
         src_line = 1;
@@ -2192,6 +2774,7 @@ int main(int argc, char *argv[])
         in_proc = NULL;
         cond_depth = 0;
         cond_replay = cond_records;
+        has_entry = 0;
 
         if (fseek(in_file, 0, SEEK_SET) != 0) {
             fprintf(stderr, "Error rewinding file for pass 2\n");
@@ -2259,14 +2842,20 @@ int main(int argc, char *argv[])
             if (output_name) {
                 name = strdup(output_name);
             } else {
-                name = get_out_name(input_name, (out_type == 2) ? ".bin" : (out_type == 1) ? ".v" : ".mem");
+                name = get_out_name(input_name,
+                                    (out_type == OUT_BINARY) ? ".bin" :
+                                    (out_type == OUT_VERILOG) ? ".v" :
+                                    (out_type == OUT_OBJECT) ? ".obj" :
+                                    ".mem");
             }
             FILE *outf = fopen(name, "wb");
             if (outf) {
-                if (out_type == 2) {
+                if (out_type == OUT_BINARY) {
                     output_binary(outf);
-                } else if (out_type) {
+                } else if (out_type == OUT_VERILOG) {
                     output_verilog(outf);
+                } else if (out_type == OUT_OBJECT) {
+                    output_object(outf);
                 } else {
                     output_hex(outf);
                 }

@@ -541,6 +541,29 @@ These mnemonics are not ISA instructions; they are assembler directives.
 - Checksum algorithm: sum all 16-bit words from `start_addr` to `output_addr`
   (inclusive of the reserved word), then bitwise invert (`^ 0xFFFF`).
 
+### `extern`
+- Syntax: `extern <symbol>[, <symbol>...]`
+- Effect: declares symbols defined by another object module.
+- Constraints: only valid with `-object` output. External symbols may be used in
+  absolute byte/word operands, but not in relative branches or other fields that
+  cannot be relocated.
+
+### `public`
+- Syntax: `public <symbol>[, <symbol>...]`
+- Effect: exports labels or constants from the current object module.
+- Constraints: only valid with `-object` output. Every public symbol must be
+  defined by the end of assembly.
+
+### `entry`
+- Syntax: `entry <expression>`
+- Effect: stores the object entry point in the object header.
+- Constraints: only valid with `-object` output. The expression must resolve to
+  an address inside the generated code segment and cannot reference an external
+  symbol. If `entry` is omitted, the object header entry point is `$FFFF`
+  (none).
+- Compatibility: `end` is not a directive; existing sources may use `end` as a
+  label.
+
 ### Conditional assembly
 - Syntax:
   - `IF <expression>`
@@ -556,6 +579,22 @@ These mnemonics are not ISA instructions; they are assembler directives.
 - `IFDEF` and `IFNDEF` test labels, constants, procedures, and macros that have
   already been seen by pass 1, including command-line defines.
 - Nesting limit: 32 conditional levels.
+
+### Object Output
+- Syntax: `microasm -object <input_file> [output_file]`
+- Alias: `-obj`
+- Default extension: `.obj`
+- Format: UniCROSS-style object file:
+  - magic `$5AA5`, version `$0001`
+  - internal (`public`) and external (`extern`) symbol tables
+  - one code segment
+  - relocation records for words, low bytes, and high bytes
+- The assembler currently emits no separate data segment; the object data
+  length field is zero.
+- `org` and `chksum` are rejected in object output.
+- High-byte relocations (`/symbol`) add the linked symbol high byte to the
+  encoded high byte. Expressions that require carry propagation across split
+  low/high relocations should use a word relocation instead.
 
 ## 6. Macros and Procedures
 
@@ -585,18 +624,21 @@ These mnemonics are not ISA instructions; they are assembler directives.
 - Limitations:
   - Nested procedures are rejected (`NESTED_PROC_UNSUPPORTED`).
   - `global` outside a proc is an error (`ONLY_INSIDE_PROC`).
+  - `global` is procedure-local visibility, not an object export directive.
+    Use `public` to export object symbols.
 
 ## 7. Command-Line Interface
 
 Usage (as implemented):
 
 ```
-microasm [-verilog|-binary] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input_file> [output_file]
-microasm [-verilog|-binary] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input_file> [output_file]
+microasm [-verilog|-binary|-object] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input_file> [output_file]
+microasm [-verilog|-binary|-obj] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input_file> [output_file]
 ```
 
 - `-verilog`: output a Verilog `sram` module with memory initialization.
 - `-binary`: output raw binary bytes.
+- `-object` / `-obj`: output an object file for `microlink`.
 - default: output a `.mem` hex file with address and bytes.
 - `-D` / `--define`: define a global constant before pass 1. If `=expr` is
   omitted, the value is `1`. The expression may reference earlier command-line
@@ -604,7 +646,48 @@ microasm [-verilog|-binary] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef
 - `-U` / `--undef`: remove a command-line define before pass 1.
 
 If `output_file` is omitted, the assembler derives it from the input name and
-appends `.v`, `.bin`, or `.mem` depending on the output type.
+appends `.v`, `.bin`, `.obj`, or `.mem` depending on the output type.
+
+### `microlink`
+
+Usage:
+
+```
+microlink [-verilog|-binary] [-symbols] [-org address] [-o output_file] <input.obj>...
+```
+
+- default: output a `.mem` hex file with address and bytes.
+- `-binary`: output raw binary bytes.
+- `-verilog`: output a Verilog `sram` module with memory initialization.
+- `-symbols` / `--symbols`: print the resolved public symbol table to stdout.
+- `-org <address>`: base address for the linked code image (default `$0000`).
+- `-o <output_file>`: explicit output path. If omitted, the linker derives the
+  output name from the first object input.
+
+`microlink` consumes one or more object files, concatenates their code segments
+in input order, resolves `extern` references from `public` symbols, applies
+relocations, and writes a final non-relocatable output image. It does not emit
+relocatable output files.
+
+### `microdis`
+
+Usage:
+
+```
+microdis [-binary|-object] [-org address] <input.bin|input.obj>
+```
+
+- default input mode is auto-detect: object files are recognized by their
+  `$5AA5`/version header, otherwise the input is treated as raw binary.
+- `-binary`: force raw binary input.
+- `-object` / `-obj`: force object input.
+- `-org <address>`: base address shown in disassembly (default `$0000`).
+
+`microdis` writes disassembly to stdout. For object files it also prints
+`extern`/`public` declarations, absolute exported constants, the object entry
+point, labels from the public symbol table, and relocation comments. It does
+not infer which bytes are data; without debug metadata every two-byte word is
+decoded as an instruction, with a trailing odd byte emitted as `db`.
 
 ## 8. Smoke Tests
 
