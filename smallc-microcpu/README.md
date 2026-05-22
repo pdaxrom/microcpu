@@ -120,13 +120,16 @@ the result under `microemu`:
 make -C smallc-microcpu test-pcode-native
 ```
 
-The initial p-code test suite lives under `pcode-tests/` and currently covers
-return constants, integer constants, local variables, arithmetic, comparisons,
-`if`/`else`, `while`, direct C calls, string literals passed to native
-`strlen`, and native `putchar` UART output.  The microcpu interpreter uses the
-same bytecode semantics as the host interpreter and currently supports
-`NCALL_U8` through a link-time native table, including optional user native
-objects.  P-code is not used by the normal native test flow yet.
+The p-code test suite lives under `pcode-tests/` and currently covers return
+constants, local/global variables, arithmetic, comparisons, short-circuit
+logical operators, bitwise and shift operators, `if`/`else`, `while`, `switch`,
+direct C calls, arrays, basic pointers, string indexing, enum/typedef basics,
+simple struct access, static and void functions, pointer-to-pointer loads,
+casts, native `strlen`/`strcpy`, and native `putchar` UART output.  The
+microcpu interpreter uses the same bytecode semantics as the host interpreter
+and currently supports `NCALL_U8` through a link-time native table, including
+optional user native objects.  P-code is not used by the normal native test
+flow yet.
 
 `build/pcode/size-report.txt` records raw bytecode bytes, global data bytes,
 native table bytes, total p-code object data size, and a comparison with the

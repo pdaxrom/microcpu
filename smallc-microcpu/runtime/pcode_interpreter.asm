@@ -53,6 +53,8 @@ __pcode_loop:
 	pcode_dispatch	$19, __pcode_op_slocal_s8
 	pcode_dispatch	$1a, __pcode_op_llocal_u16
 	pcode_dispatch	$1b, __pcode_op_slocal_u16
+	pcode_dispatch	$1c, __pcode_op_addr_local_s8
+	pcode_dispatch	$1d, __pcode_op_addr_local_u16
 	pcode_dispatch	$20, __pcode_op_lglobal_u16
 	pcode_dispatch	$21, __pcode_op_sglobal_u16
 	pcode_dispatch	$22, __pcode_op_addr_global_u16
@@ -167,6 +169,16 @@ __pcode_op_slocal_u16:
 	add	v1, v4, v0
 	bsr	__pcode_pop_v0
 	str	v0, v1, 0
+	b	__pcode_loop
+__pcode_op_addr_local_s8:
+	bsr	__pcode_fetch_s8
+	add	v0, v4, v0
+	bsr	__pcode_push_v0
+	b	__pcode_loop
+__pcode_op_addr_local_u16:
+	bsr	__pcode_fetch_u16
+	add	v0, v4, v0
+	bsr	__pcode_push_v0
 	b	__pcode_loop
 
 __pcode_op_lglobal_u16:

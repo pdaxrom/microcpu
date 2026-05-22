@@ -15,10 +15,14 @@ stack as needed.  Unsupported internal opcodes produce a compiler error:
 unsupported internal pcode for stack backend: <opcode>
 ```
 
-The current supported subset is intentionally small: constants, local/global
-integer variables, assignment, add/sub/and/or/xor, comparisons, `if`/`else`,
-`while`, simple direct calls, native calls such as `strlen` and `putchar`, and
-string literals for native calls.
+The current supported subset is still deliberately conservative, but now covers
+more of the already-supported C frontend: constants, local/global integer
+variables, assignment, arithmetic/bitwise/shift operations, comparisons,
+short-circuit logical operators, `if`/`else`, `while`, `switch`, simple direct
+calls, native calls, global/local int and char arrays, basic pointer operations,
+string indexing, enum/typedef basics, simple struct field access, static
+functions, void functions, pointer-to-pointer loads, and casts used by the
+current tests.
 
 ## Encoding
 
@@ -136,6 +140,7 @@ p-code tests:
 - `_puts`
 - `_getchar`
 - `_strcmp`
+- `_strcpy`
 
 The target microcpu interpreter uses the same bytecode semantics.  The p-code
 object emits a native table with relocations to linked object symbols such as
@@ -200,9 +205,16 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..008`: constants, locals, p-code direct calls, conditional
-branches, arithmetic/logical comparisons, byte/word memory operations,
-global-data addressing, `RET`, and `NCALL_U8`.
+`pcode-tests/001..033`: constants, local/global loads and stores, local/global
+addressing, p-code direct calls, conditional branches, arithmetic/logical
+comparisons, byte/word memory operations, `RET`, and `NCALL_U8`.  `switch` is
+lowered by the p-code backend into an explicit compare-and-branch chain, not a
+dedicated VM opcode.
+
+Opcodes defined in the bytecode table but not yet exercised by the target test
+suite remain implementation candidates for later coverage expansion.  The
+backend still fails explicitly if it encounters an internal pseudo-code opcode
+that has not been translated to the external stack VM.
 
 `make -C smallc-microcpu test-pcode-native` validates native object calls with:
 

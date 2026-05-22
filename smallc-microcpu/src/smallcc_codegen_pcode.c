@@ -13,6 +13,8 @@ extern char *symtab, *cptr, *litq, ssname[NAMESIZE];
 #define PCTMP0 0
 #define PCTMP1 2
 
+int pcode_switch_mode, pcode_switch_label, pcode_switch_have_label;
+
 int pcode_label(n) int n; {
   outstr("L");
   outdec(n);
@@ -84,6 +86,9 @@ int pcode_emit_data_prefix(op) char *op; {
   }
 
 int pcode_header() {
+  pcode_switch_mode = 0;
+  pcode_switch_label = 0;
+  pcode_switch_have_label = 0;
   outline("; Small-C p-code assembly");
   outline("; Encoded by pcinterp as 8-bit opcodes with little-endian operands");
   outline("entry _main");
@@ -429,6 +434,27 @@ int pcode_outcode(pcode, value) int pcode, value; {
       return 0;
 
     case WORDn:
+      if(pcode_switch_mode) {
+        if(value == 0) {
+          pcode_switch_mode = 0;
+          pcode_switch_have_label = 0;
+          return 0;
+          }
+        if(pcode_switch_have_label == 0) {
+          error("bad switch table");
+          return 0;
+          }
+        pcode_load_tmp(0);
+        outstr("iconst ");
+        outdec(value);
+        newline();
+        outline("eq");
+        outstr("jnz ");
+        pcode_label(pcode_switch_label);
+        newline();
+        pcode_switch_have_label = 0;
+        return 0;
+        }
       outstr("data16 ");
       outdec(value);
       newline();
@@ -448,9 +474,16 @@ int pcode_outcode(pcode, value) int pcode, value; {
     case BYTE_:
     case COMMAn:
     case NEARm:
+      if(pcode_switch_mode) {
+        pcode_switch_label = value;
+        pcode_switch_have_label = 1;
+        return 0;
+        }
       return 0;
     case SWITCH:
-      return pcode_unsupported(pcode);
+      pcode_switch_mode = 1;
+      pcode_switch_have_label = 0;
+      return 0;
     }
   return pcode_unsupported(pcode);
   }

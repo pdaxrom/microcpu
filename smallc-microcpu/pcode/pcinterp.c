@@ -930,6 +930,17 @@ static int native_call(id, argc) int id, argc; {
     uart_append('\n');
     return 0;
   }
+  if(str_eq(native_name[id], "_strcpy") || str_eq(native_name[id], "strcpy")) {
+    addr = args[0];
+    addr2 = args[1];
+    n = 0;
+    do {
+      c = mem_read8(addr2 + n);
+      mem_write8(addr + n, c);
+      ++n;
+    } while(c != 0);
+    return addr;
+  }
   if(str_eq(native_name[id], "_getchar") || str_eq(native_name[id], "getchar")) {
     if(uart_in_pos >= uart_in_len) return 0xffff;
     return uart_in[uart_in_pos++] & 255;
