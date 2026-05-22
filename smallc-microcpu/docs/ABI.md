@@ -282,10 +282,13 @@ result as a 16-bit VM cell.
 Native p-code calls use `NCALL` with a compact native-table id and argument
 count.  Host p-code tests provide native implementations for `_strlen`,
 `_putchar`, `_puts`, `_getchar`, and `_strcmp`.  The microcpu interpreter
-resolves the native table to linked object symbols.  For each `NCALL_U8`, it
-pops p-code arguments, rebuilds the ordinary native source-order argument
-stack, calls the native symbol, restores interpreter state, and pushes the
-16-bit `v0` return value onto the p-code stack.
+resolves the native table to linked object symbols from either runtime helpers
+or user-provided native object files.  For each `NCALL_U8`, it pops p-code
+arguments, rebuilds the ordinary native source-order argument stack, calls the
+native symbol, restores interpreter state, and pushes the 16-bit `v0` return
+value onto the p-code stack.  Native callees may use normal global data and may
+return pointers to native or p-code data; p-code global-address operands in the
+microcpu object path are linked absolute target addresses.
 
 For microcpu p-code tests the linked image starts in
 `runtime/pcode_interpreter.asm`.  When p-code `main` returns, the interpreter

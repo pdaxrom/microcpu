@@ -143,10 +143,26 @@ runtime libc helpers or optional user native objects.  The current microcpu
 interpreter implements `NCALL_U8`; `NCALL_U16` is reserved for a later larger
 native table.
 
+Optional native objects are linked between the runtime and the p-code object:
+
+```text
+pcode_interpreter.o
+runtime_object.o
+optional_native_objects.o...
+pcode.o
+```
+
+Normal external C declarations in p-code are emitted as `NCALL` entries when
+the function body is not present in the p-code module.  `microlink` resolves
+those native table entries against runtime helpers or user-provided native
+objects.  Native functions use the ordinary microcpu Small-C ABI; their `v0`
+return value is pushed back onto the p-code stack.  The interpreter saves its
+IP, operand stack pointer, and frame pointer around each native call.
+
 ## Microcpu interpreter
 
 `runtime/pcode_interpreter.asm` is a compact assembly interpreter for the
-microcpu target.  The p-code test link order is:
+microcpu target.  The simple p-code test link order is:
 
 ```text
 pcode_interpreter.o
@@ -165,9 +181,11 @@ __pcd_global    p-code global/string data
 __pcd_gend      end of p-code data
 ```
 
-`ADDR_GLOBAL_U16`, `LGLOBAL_U16`, and `SGLOBAL_U16` operands are offsets from
-`__pcd_global` in the target object path.  This avoids byte-splitting absolute
-relocations inside the 8-bit bytecode stream.
+`ADDR_GLOBAL_U16`, `LGLOBAL_U16`, and `SGLOBAL_U16` operands are linked
+absolute target addresses in the microcpu object path.  Internal p-code data
+labels and external native globals both use ordinary object relocations, so
+p-code can pass pointers to native code and can read native globals declared
+with `extern`.
 
 Interpreter state:
 
@@ -186,12 +204,20 @@ The microcpu interpreter currently covers the opcodes emitted by
 branches, arithmetic/logical comparisons, byte/word memory operations,
 global-data addressing, `RET`, and `NCALL_U8`.
 
+`make -C smallc-microcpu test-pcode-native` validates native object calls with:
+
+- a native arithmetic function,
+- a native function that writes a native global read back by p-code,
+- a native function returning a pointer to native string data,
+- p-code string data passed into a native function.
+
 ## Size report
 
 `make -C smallc-microcpu test-pcode-host` writes
 `build/pcode/size-report.txt`.  `make -C smallc-microcpu
-test-pcode-microemu` writes `build/pcode-microemu/size-report.txt`.  For each
-p-code test the reports record:
+test-pcode-microemu` writes `build/pcode-microemu/size-report.txt`.
+`make -C smallc-microcpu test-pcode-native` writes
+`build/pcode-native/size-report.txt`.  For each p-code test the reports record:
 
 - raw bytecode bytes
 - global data bytes

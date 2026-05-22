@@ -129,7 +129,14 @@ PCODE_MICROEMU_RUNNER_ARGS := --expected pcode-tests/expected.txt \
 	--build-dir $(BUILD)/pcode-microemu --include-dir include \
 	--runtime-dir runtime
 
-.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu selfhost-smoke selfhost-link-smoke assemble run clean
+PCODE_NATIVE_RUNNER_ARGS := --expected pcode-tests-native/expected.txt \
+	--preprocessor $(CPP_BIN) --cc-only $(CC_ONLY_BIN) \
+	--assembler $(ASM) --linker $(LD) --emulator $(EMU) \
+	--board $(EMU_BOARD) --max-steps $(MAX_STEPS) \
+	--build-dir $(BUILD)/pcode-native --include-dir include \
+	--runtime-dir runtime
+
+.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu test-pcode-native selfhost-smoke selfhost-link-smoke assemble run clean
 
 all: $(CPP_BIN) $(CC_ONLY_BIN)
 
@@ -166,6 +173,10 @@ test-pcode-host: $(CPP_BIN) $(CC_ONLY_BIN) $(PCINTERP_BIN) $(ASM)
 
 test-pcode-microemu: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD) $(EMU)
 	$(PYTHON) tests/run_pcode_microemu.py $(PCODE_MICROEMU_RUNNER_ARGS) \
+		$(TEST_ARG)
+
+test-pcode-native: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD) $(EMU)
+	$(PYTHON) tests/run_pcode_native_tests.py $(PCODE_NATIVE_RUNNER_ARGS) \
 		$(TEST_ARG)
 
 selfhost-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM)

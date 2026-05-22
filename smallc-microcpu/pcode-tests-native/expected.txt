@@ -1,0 +1,4 @@
+001_native_add 123
+002_native_global 124
+003_native_string 66
+004_native_strlen_like 66

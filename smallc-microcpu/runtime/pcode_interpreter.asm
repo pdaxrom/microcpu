@@ -7,7 +7,6 @@ include ../../asm/include/pseudo.inc
 
 extern __pcode_entry
 extern __pcode_start
-extern __pcd_global
 extern __pcd_native
 
 PCODE_FRAME_SIZE	equ	64
@@ -172,22 +171,18 @@ __pcode_op_slocal_u16:
 
 __pcode_op_lglobal_u16:
 	bsr	__pcode_fetch_u16
-	set	v1, __pcd_global
-	add	v1, v1, v0
+	mov	v1, v0
 	ldr	v0, v1, 0
 	bsr	__pcode_push_v0
 	b	__pcode_loop
 __pcode_op_sglobal_u16:
 	bsr	__pcode_fetch_u16
-	set	v1, __pcd_global
-	add	v1, v1, v0
+	mov	v1, v0
 	bsr	__pcode_pop_v0
 	str	v0, v1, 0
 	b	__pcode_loop
 __pcode_op_addr_global_u16:
 	bsr	__pcode_fetch_u16
-	set	v1, __pcd_global
-	add	v0, v1, v0
 	bsr	__pcode_push_v0
 	b	__pcode_loop
 __pcode_op_lbyte:
