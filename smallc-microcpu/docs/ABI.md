@@ -152,6 +152,9 @@ current object-file symbol-name limit, the backend emits a deterministic
 shortened form consisting of the leading underscore, a readable prefix, and a
 hash suffix plus a collision suffix.  Definitions and references use the same
 shortened name, and colliding long names are assigned different object symbols.
+Object-mode generated jumps use the `jmp` macro form for compiler-emitted
+branches so large translation units are not constrained by the short relative
+range of the raw `b` instruction.
 
 Compiler-generated numeric labels use the form `_<number>`.  Literal/string
 data labels use the same numeric label space.  String literals are emitted as

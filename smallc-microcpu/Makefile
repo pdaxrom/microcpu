@@ -39,6 +39,26 @@ SELFHOST_SRCS := \
 	src/codegen_microcpu.c \
 	src/host_compat.c
 
+SELFHOST_CC1_OBJECT_SRCS := \
+	src/cc1_main.c \
+	src/cc1_types.c \
+	src/cc1_decl.c \
+	src/cc1_preproc.c \
+	src/cc1_func.c \
+	src/cc1_stmt.c \
+	src/cc1_io.c
+
+SELFHOST_OBJECT_SRCS := \
+	$(SELFHOST_CC1_OBJECT_SRCS) \
+	src/cc2.c \
+	src/cc3.c \
+	src/cc4.c \
+	src/codegen_microcpu.c \
+	src/host_compat.c
+
+SELFHOST_INPUTS := $(if $(filter 1,$(OBJECT_MODE)),$(SELFHOST_OBJECT_SRCS),$(SELFHOST_SRCS))
+SELFHOST_OBJECT_FILES := $(patsubst src/%.c,$(SELFHOST_BUILD)/%.o,$(SELFHOST_OBJECT_SRCS))
+
 EMU_SRCS := \
 	../microemu/microemu.c \
 	../microemu/microcpu_core.c \
@@ -61,7 +81,7 @@ TEST_RUNNER_ARGS := --expected tests/expected.txt \
 	--max-steps $(MAX_STEPS) --build-dir $(TEST_BUILD) \
 	--include-dir tests/include --include-dir include --runtime-dir runtime
 
-.PHONY: all test test-object test-multi selfhost-smoke assemble run clean
+.PHONY: all test test-object test-multi selfhost-smoke selfhost-link-smoke assemble run clean
 
 all: $(CC_BIN)
 
@@ -85,7 +105,13 @@ selfhost-smoke: $(CC_BIN) $(ASM)
 		--build-dir $(SELFHOST_BUILD) --include-dir include \
 		--define SMALLC_SELFHOST \
 		--timeout-seconds $(SELFHOST_TIMEOUT) \
-		$(OBJECT_ARG) $(STRICT_ARG) $(SELFHOST_SRCS)
+		$(OBJECT_ARG) $(STRICT_ARG) $(SELFHOST_INPUTS)
+
+selfhost-link-smoke: $(CC_BIN) $(ASM) $(LD)
+	$(MAKE) selfhost-smoke OBJECT_MODE=1
+	$(PYTHON) selfhost/link_smoke.py --assembler $(ASM) --linker $(LD) \
+		--build-dir $(SELFHOST_BUILD) --runtime-dir runtime \
+		$(STRICT_ARG) $(SELFHOST_OBJECT_FILES)
 
 assemble: test
 

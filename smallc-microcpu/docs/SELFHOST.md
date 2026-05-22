@@ -49,6 +49,18 @@ To also assemble successful smoke outputs to microasm object files:
 make -C smallc-microcpu selfhost-smoke OBJECT_MODE=1
 ```
 
+After all object smoke inputs compile, a report-only link experiment is
+available:
+
+```sh
+make -C smallc-microcpu selfhost-link-smoke
+```
+
+This target first runs `selfhost-smoke OBJECT_MODE=1`, then links the emitted
+compiler objects with the current runtime objects.  It writes
+`build/selfhost-smoke/link-report.txt`.  The target exits 0 by default even
+when linking fails; use `STRICT=1` to make a link failure fail the make target.
+
 ## Current inputs
 
 The smoke check currently attempts the real compiler implementation files:
@@ -59,6 +71,21 @@ The smoke check currently attempts the real compiler implementation files:
 - `src/cc4.c`
 - `src/codegen_microcpu.c`
 - `src/host_compat.c`
+
+For `OBJECT_MODE=1`, `src/cc1.c` is split into wrapper translation units:
+
+- `src/cc1_main.c`
+- `src/cc1_types.c`
+- `src/cc1_decl.c`
+- `src/cc1_preproc.c`
+- `src/cc1_func.c`
+- `src/cc1_stmt.c`
+- `src/cc1_io.c`
+
+Each wrapper defines one `CC1_*` section macro and includes the original
+`cc1.c`.  Normal host builds and non-object selfhost smoke still use `cc1.c`
+directly.  The split is intentionally mechanical: it avoids a single oversized
+object without rewriting the compiler frontend.
 
 These are host-buildable C sources, not yet target-ready translation units.
 Early failures are expected while the frontend lacks the preprocessing and
@@ -116,16 +143,40 @@ to generated microasm:
 - `codegen_microcpu.c`: PASS to `.asm`
 - `host_compat.c`: PASS to `.asm`
 
-With `OBJECT_MODE=1`, five of the six selected files now assemble to object
-files:
+With `OBJECT_MODE=1`, all selected compiler modules now assemble to object
+files.  The former `cc1.c` single-object 64K blocker is resolved by the split
+wrapper modules:
 
-- `cc1.c`: FAIL after generating a large `.asm`; object assembly appears to
-  hit the current single-object 64K code-size limit.
+- `cc1_main.c`: PASS to `.o`
+- `cc1_types.c`: PASS to `.o`
+- `cc1_decl.c`: PASS to `.o`
+- `cc1_preproc.c`: PASS to `.o`
+- `cc1_func.c`: PASS to `.o`
+- `cc1_stmt.c`: PASS to `.o`
+- `cc1_io.c`: PASS to `.o`
 - `cc2.c`: PASS to `.o`
 - `cc3.c`: PASS to `.o`
 - `cc4.c`: PASS to `.o`
 - `codegen_microcpu.c`: PASS to `.o`
 - `host_compat.c`: PASS to `.o`
+
+The split also exposed a separate object-assembler branch-range limit in
+large generated functions.  Object-mode backend output now uses the existing
+microasm `jmp` macro for compiler-generated jumps, so branch targets are not
+limited by the short relative `b` range.  Normal binary-mode output keeps the
+short `b` form.
+
+The link smoke currently fails after object compilation with:
+
+```text
+Output buffer overflow
+```
+
+That means object compilation coverage has advanced past the `cc1.c` blocker,
+but the full compiler image/link layout is still future work.  This is not a
+request to increase a limit blindly; the linked compiler image and target
+runtime/hosting plan need to be designed before the compiler can run on the
+target.
 
 The global symbol table was raised from 200 to 300 entries only after the
 self-host report showed that `cc1.c` was legitimately using about 253 global
@@ -136,9 +187,8 @@ headers already minimized.
 
 The most likely next blockers are:
 
-- splitting or otherwise shrinking `cc1.c` enough for single-object assembly,
-  or extending the object format/toolchain to represent larger modules
-- full compiler linking and cross-unit runtime layout
+- final linked compiler image size and linker output layout
+- full compiler linking and target runtime layout
 - link-time layout for larger compiler data
 - full `#if` expressions and richer conditional preprocessing
 - large switch tables
@@ -176,9 +226,10 @@ style so the code moves toward eventual self-hosting:
 
 The next self-hosting steps should be incremental:
 
-1. Split or shrink `cc1.c`, or extend object handling for modules whose
-   generated code exceeds 64K.
-2. Add a non-default link-only selfhost smoke once all objects can be emitted.
-3. Link multiple generated compiler units with runtime objects.
+1. Decide how a full compiler image should fit into the target memory model,
+   or define an overlay/banked/tool-hosted strategy explicitly.
+2. Add or stub the target runtime pieces needed for compiler diagnostics and
+   host-style I/O.
+3. Link multiple generated compiler units with a target-appropriate runtime.
 4. Add enough target runtime for compiler input, output, diagnostics, and
    command-line handling.

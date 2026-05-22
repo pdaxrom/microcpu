@@ -6,35 +6,47 @@
 #include "cc.h"
 #include "host_compat.h"
 
-extern int code[PCODES];
+extern int code[PCODES], objectmode;
 
 static char *jump_if_zero()
 {
+  if(objectmode)
+    return "\000; if v0 == 0 goto _<n>\neq v0, 0\nb *+6\njmp _<n>\n";
   return "\000; if v0 == 0 goto _<n>\nne v0, 0\nb _<n>\n";
 }
 
 static char *jump_if_nonzero()
 {
+  if(objectmode)
+    return "\000; if v0 != 0 goto _<n>\nne v0, 0\nb *+6\njmp _<n>\n";
   return "\000; if v0 != 0 goto _<n>\neq v0, 0\nb _<n>\n";
 }
 
 static char *jump_if_negative()
 {
+  if(objectmode)
+    return "\000; if v0 < 0 goto _<n>\nlt v0, 0\nb *+6\njmp _<n>\n";
   return "\000; if v0 < 0 goto _<n>\nge v0, 0\nb _<n>\n";
 }
 
 static char *jump_if_negative_or_zero()
 {
+  if(objectmode)
+    return "\000; if v0 <= 0 goto _<n>\nclr v2\nge v2, v0\nb *+6\njmp _<n>\n";
   return "\000; if v0 <= 0 goto _<n>\nclr v2\nlt v2, v0\nb _<n>\n";
 }
 
 static char *jump_if_positive()
 {
+  if(objectmode)
+    return "\000; if v0 > 0 goto _<n>\nclr v2\nlt v2, v0\nb *+6\njmp _<n>\n";
   return "\000; if v0 > 0 goto _<n>\nclr v2\nge v2, v0\nb _<n>\n";
 }
 
 static char *jump_if_positive_or_zero()
 {
+  if(objectmode)
+    return "\000; if v0 >= 0 goto _<n>\nge v0, 0\nb *+6\njmp _<n>\n";
   return "\000; if v0 >= 0 goto _<n>\nlt v0, 0\nb _<n>\n";
 }
 
@@ -97,7 +109,8 @@ int setcodes_microcpu()
   code[WORD_]   = "\000dw ";
   code[WORDn]   = "\000dw <n>\n";
   code[WORDr0]  = "\000#dw 0\n#";
-  code[JMPm]    = "\000b _<n>\n";
+  if(objectmode) code[JMPm] = "\000jmp _<n>\n";
+  else           code[JMPm] = "\000b _<n>\n";
   code[LABm]    = "\000_<n>:\n";
   code[LE10f]   = jump_if_positive();
   code[LE12]    = "\000jsr __le\n";

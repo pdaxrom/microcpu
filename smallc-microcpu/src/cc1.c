@@ -9,6 +9,34 @@
 #include "cc.h"
 #include "host_compat.h"
 
+#ifndef CC1_MAIN
+#ifndef CC1_TYPES
+#ifndef CC1_DECL
+#ifndef CC1_PREPROC
+#ifndef CC1_FUNC
+#ifndef CC1_STMT
+#ifndef CC1_IO
+#define CC1_MAIN
+#define CC1_TYPES
+#define CC1_DECL
+#define CC1_PREPROC
+#define CC1_FUNC
+#define CC1_STMT
+#define CC1_IO
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+#endif
+
+#ifndef CC1_MAIN
+#include "cc1_globals.h"
+#endif
+
+#ifdef CC1_MAIN
+
 /*
 ** miscellaneous storage
 */
@@ -411,6 +439,10 @@ int dostatic() {
   return 1;
   }
 
+#endif
+
+#ifdef CC1_TYPES
+
 /*
 ** parse typedef declarations for simple scalar/pointer aliases
 */
@@ -751,6 +783,10 @@ int fieldsize(i) int i; {return field_size[i];}
 int fieldoff(i) int i; {return field_offset[i];}
 int structsize(i) int i; {return struct_size[i];}
 
+#endif
+
+#ifdef CC1_DECL
+
 /*
 ** declare a static variable
 */
@@ -900,6 +936,10 @@ int needsub()  {
   need("]");               /* force single dimension */
   return val;              /* and return size */
   }
+
+#endif
+
+#ifdef CC1_PREPROC
 
 /*
 ** open an include file
@@ -1119,6 +1159,10 @@ int addenum(sname, value) char *sname; int value; {
   addsym(sname, ENUMCONST, INT, 0, value, &glbptr, STATIC);
   return 1;
   }
+
+#endif
+
+#ifdef CC1_FUNC
 
 /*
 ** parse an optional argument type in an ANSI-style function header
@@ -1352,6 +1396,10 @@ int decl2(type, aid, id, sz, baseid) int type, aid, *id, *sz, baseid; {
     }
   return n;
   }
+
+#endif
+
+#ifdef CC1_STMT
 
 /******************** start 2nd level parsing *******************/
 
@@ -1656,6 +1704,10 @@ int doexpr(use) int use; {
   usexpr = YES;        /* return to normal value */
   }
 
+#endif
+
+#ifdef CC1_IO
+
 /******************** miscellaneous functions *******************/
 
 /*
@@ -1874,4 +1926,6 @@ int mustopen(fn, mode) char *fn, *mode; {
   lout(fn, stderr);
   abort(ERRCODE);
   }
+
+#endif
 

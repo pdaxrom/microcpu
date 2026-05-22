@@ -12,6 +12,8 @@ import sys
 
 
 ERROR_RE = re.compile(r"\*\*\*\* (.*)")
+ASM_DIAG_RE = re.compile(r"^(Line \d+: .+|Compilation failed: .+)$")
+LABEL_RE = re.compile(r"^([A-Za-z_.$][A-Za-z0-9_.$]*):")
 STATS_RE = re.compile(
     r"stats: globals=(\d+)/(\d+) locals=(\d+)/(\d+) "
     r"typedefs=(\d+)/(\d+) macros=(\d+)/(\d+) "
@@ -84,6 +86,89 @@ def parse_asm_symbols(path: pathlib.Path) -> tuple[list[str], list[str]]:
         elif parts[0] == "extern":
             externs.append(parts[1])
     return publics, externs
+
+
+def estimate_instruction_bytes(op: str) -> int:
+    if op == "set":
+        return 4
+    if op == "jmp":
+        return 4
+    if op == "jsr":
+        return 6
+    if op == "push" or op == "pop":
+        return 4
+    return 2
+
+
+def data_items(text: str) -> int:
+    text = text.split(";", 1)[0].strip()
+    if not text:
+        return 0
+    return len([part for part in text.split(",") if part.strip()])
+
+
+def parse_int(text: str) -> int:
+    try:
+        return int(text, 0)
+    except ValueError:
+        return 0
+
+
+def analyze_asm(path: pathlib.Path) -> dict[str, object]:
+    code_bytes = 0
+    data_bytes = 0
+    local_symbols: set[str] = set()
+    public_symbols: set[str] = set()
+    current = ""
+    symbol_bytes: dict[str, int] = {}
+    for line in read_source_lines(path):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";"):
+            continue
+        parts = stripped.split()
+        if len(parts) == 2 and parts[0] == "public":
+            public_symbols.add(parts[1])
+            continue
+        if parts[0] == "extern" or parts[0] == "include" or parts[0] == "align":
+            continue
+        match = LABEL_RE.match(stripped)
+        if match:
+            label = match.group(1)
+            if not re.fullmatch(r"_\d+", label):
+                current = label
+                symbol_bytes.setdefault(current, 0)
+                if label not in public_symbols:
+                    local_symbols.add(label)
+            continue
+        op = parts[0]
+        if op == "db":
+            data_bytes += data_items(stripped[2:])
+            continue
+        if op == "dw":
+            data_bytes += data_items(stripped[2:]) * 2
+            continue
+        if op == "ds":
+            data_bytes += parse_int(parts[1]) if len(parts) > 1 else 0
+            continue
+        size = estimate_instruction_bytes(op)
+        code_bytes += size
+        if current:
+            symbol_bytes[current] = symbol_bytes.get(current, 0) + size
+    largest = sorted(symbol_bytes.items(), key=lambda item: item[1], reverse=True)[:5]
+    return {
+        "code_bytes": code_bytes,
+        "data_bytes": data_bytes,
+        "local_symbols": len(local_symbols),
+        "largest_symbols": largest,
+    }
+
+
+def assembler_diagnostic(text: str) -> str:
+    entries: list[str] = []
+    for line in text.splitlines():
+        if ASM_DIAG_RE.match(line.strip()):
+            entries.append(line.strip())
+    return "; ".join(entries[-3:])
 
 
 def resolve_include(
@@ -338,10 +423,15 @@ def assemble_object(
     size = obj_path.stat().st_size if ok and obj_path.exists() else 0
     asm_lines = len(read_source_lines(asm_path))
     combined_log = text_or_empty(proc.stdout) + text_or_empty(proc.stderr)
+    diagnostic = assembler_diagnostic(combined_log)
     fail_reason = "object assembly failed"
     fail_root = "generated assembly is not object-assembler clean"
     fail_next = "inspect the object assembly log and emitted microasm"
-    if not ok and "Compilation failed: No error" in combined_log:
+    if not ok and "Related offset too long" in combined_log:
+        fail_reason = "object branch displacement exceeded range"
+        fail_root = "generated object code used a short relative branch for a distant label"
+        fail_next = "split the function or use an object-mode long branch sequence"
+    elif not ok and "Compilation failed: No error" in combined_log:
         fail_reason = "object assembly failed after a large asm output"
         fail_root = "object module is likely hitting the current 64K code-size limit"
         fail_next = "split the translation unit, improve code density, or extend the object format"
@@ -351,6 +441,7 @@ def assemble_object(
         "object_log": log_path,
         "object_size": size,
         "asm_lines": asm_lines,
+        "diagnostic": diagnostic,
         "fail_reason": fail_reason,
         "fail_root": fail_root,
         "fail_next": fail_next,
@@ -476,6 +567,7 @@ def compile_source(
                 }
 
     publics, externs = parse_asm_symbols(asm_path)
+    asm_analysis = analyze_asm(asm_path)
     return {
         "name": name,
         "source": source,
@@ -486,6 +578,7 @@ def compile_source(
         "object_result": object_result,
         "publics": publics,
         "externs": externs,
+        "asm_analysis": asm_analysis,
         "stats": stats,
         "includes": includes,
         "include_repeats": include_repeats,
@@ -495,6 +588,7 @@ def compile_source(
 
 def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: list[dict[str, object]]) -> None:
     with report_path.open("w") as report:
+        all_ok = all(bool(result["ok"]) for result in results)
         report.write("Self-host smoke report\n")
         report.write(f"Compiler: {args.compiler}\n")
         if args.include_dir:
@@ -507,7 +601,10 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
         report.write(f"Strict: {'yes' if args.strict else 'no'}\n")
         report.write("Conclusion:\n")
         report.write("  resolved: host-only prototype imports, strict duplicate prototype handling, 31-character identifiers, minimal void/static parsing, multiline function headers, pointer-depth declarators, typedef K&R argument declarations, ignored const qualifiers, sizeof(*p), simple casts, function-pointer calls, and larger literal storage\n")
-        report.write("  current blockers: see per-file root cause and next-step entries below\n")
+        if all_ok:
+            report.write("  current blockers: none for this compile/object smoke set\n")
+        else:
+            report.write("  current blockers: see per-file root cause and next-step entries below\n")
         report.write("\n")
         for result in results:
             name = result["name"]
@@ -524,6 +621,8 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
                     report.write(f"  object size: {object_result['object_size']} bytes\n")
                 elif object_result.get("asm_lines"):
                     report.write(f"  asm lines before object failure: {object_result['asm_lines']}\n")
+                if object_result.get("diagnostic"):
+                    report.write(f"  assembler diagnostic: {object_result['diagnostic']}\n")
             if not result["ok"]:
                 err = result["error"]
                 if isinstance(err, dict):
@@ -546,6 +645,21 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
                     "literals={literals_used}/{literals_capacity} "
                     "includes={includes_used}\n".format(**stats)
                 )
+                report.write(
+                    "  literal pool: {literals_used}/{literals_capacity} bytes\n".format(**stats)
+                )
+            analysis = result.get("asm_analysis")
+            if isinstance(analysis, dict):
+                report.write(
+                    f"  asm estimate: text={analysis['code_bytes']} bytes "
+                    f"data={analysis['data_bytes']} bytes "
+                    f"local/static labels={analysis['local_symbols']}\n"
+                )
+                largest = analysis.get("largest_symbols", [])
+                if largest:
+                    report.write("  largest emitted symbols by estimated text bytes:\n")
+                    for symbol, size in largest:
+                        report.write(f"    {symbol}: {size}\n")
             publics = result.get("publics", [])
             externs = result.get("externs", [])
             if publics:

@@ -92,6 +92,25 @@ assemble every successful translation unit to `.o`:
 make -C smallc-microcpu selfhost-smoke OBJECT_MODE=1
 ```
 
+In object mode, `cc1.c` is smoke-tested through split wrapper translation
+units (`cc1_main.c`, `cc1_types.c`, `cc1_decl.c`, `cc1_preproc.c`,
+`cc1_func.c`, `cc1_stmt.c`, and `cc1_io.c`).  The normal host build still uses
+the original `cc1.c` directly.  This keeps the original source recognizable
+while avoiding a single oversized object module.  Object-mode code generation
+uses long `jmp` macro branches for compiler-sized functions so branch
+displacements do not depend on short relative range.
+
+After object smoke succeeds, a report-only link experiment can be run:
+
+```sh
+make -C smallc-microcpu selfhost-link-smoke
+```
+
+This target links the selfhost objects with the current runtime objects and
+writes `build/selfhost-smoke/link-report.txt`.  It is not full self-hosting and
+does not run the compiler; the current expected blocker is final linked image
+size/runtime-hosting work.
+
 Known blockers and the self-hosting coding rules are tracked in
 `docs/SELFHOST.md`.
 
@@ -244,7 +263,7 @@ Intentionally unsupported at this stage:
 - macro stringification, token pasting, variadic macros, predefined macros,
   and full `#if` preprocessor expressions
 - hexadecimal `\xHH` string escapes
-- self-hosting
+- full self-hosted compiler linking/execution on the target
 - full libc beyond the current small runtime helpers
 
 Generated assembly includes:
