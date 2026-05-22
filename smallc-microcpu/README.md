@@ -76,6 +76,8 @@ The current backend is intentionally small and supports:
 - `break` and `continue`
 - `goto` and labels
 - `switch`, `case`, `default`, `break` from switch, and case fallthrough
+- simple `enum` constants with implicit and explicit integer values
+- simple `typedef` aliases for `int`, `char`, pointers, and named structs
 - direct function calls, nested calls, and calls using locals/globals
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
@@ -84,6 +86,10 @@ The current backend is intentionally small and supports:
 - scaled `int *` arithmetic and `p[i]` syntax
 - global and local `char` arrays
 - `char *` indexing and stores
+- named `struct` declarations with `int`, `char`, pointer fields, field access
+  with `.`, pointer field access with `->`, and `sizeof(struct Tag)`
+- global/local struct variables, arrays of structs, and pointer arithmetic over
+  struct element size
 - global scalar and array initializers
 - char arrays initialized from strings
 - zero-terminated string literals and escapes: `\n`, `\r`, `\t`, octal
@@ -99,8 +105,14 @@ Multiply, divide, modulo, comparisons, and variable shifts are emitted as calls
 to simple helpers in `runtime/lib16.asm`.  The target memory model is
 byte-addressed: `int` and pointers are 2 bytes, `char` is 1 byte, `int *`
 arithmetic advances by 2 bytes, and `char *` arithmetic advances by 1 byte.
+Struct fields are byte-addressed; `char` fields use 1 byte, `int` and pointer
+fields align to 2 bytes, and struct size is rounded to 2 bytes.  Arrays of
+structs use `sizeof(struct Tag)` as their element stride.
 Return values are compared as raw 16-bit `V0`; for example, `-5` is `65531`.
 Right shift is currently arithmetic.
+
+Current fixed compiler metadata limits are `MAXTYPEDEFS=40`, `MAXSTRUCTS=20`,
+and `MAXFIELDS=160`.
 
 The current Small-C frontend does not provide a real `void`/`void *` type, so
 memory helpers are declared in tests with temporary compatible prototypes such
@@ -115,7 +127,11 @@ a UART RX byte is available and returns it as an unsigned 8-bit value.
 
 Intentionally unsupported at this stage:
 
-- structs, unions, typedefs, enums
+- unions, bitfields, anonymous struct typedefs, nested anonymous structs, and
+  flexible arrays
+- struct assignment by value, passing structs by value, and functions returning
+  structs
+- struct initializers
 - `long`, `float`, and full libc
 - optimizer/register allocator
 - function pointers

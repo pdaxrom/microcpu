@@ -78,6 +78,27 @@ char
   msname[NAMESIZE],   /* macro symbol name */
   ssname[NAMESIZE];   /* static symbol name */
 
+char
+  typedef_name[MAXTYPEDEFS * NAMESIZE],
+  struct_name[MAXSTRUCTS * NAMESIZE],
+  field_name[MAXFIELDS * NAMESIZE];
+
+int
+  typedef_count,
+  typedef_type[MAXTYPEDEFS],
+  typedef_id[MAXTYPEDEFS],
+  typedef_size[MAXTYPEDEFS],
+  struct_count,
+  struct_size[MAXSTRUCTS],
+  struct_first[MAXSTRUCTS],
+  struct_fields[MAXSTRUCTS],
+  field_count,
+  field_parent[MAXFIELDS],
+  field_type[MAXFIELDS],
+  field_id[MAXFIELDS],
+  field_size[MAXFIELDS],
+  field_offset[MAXFIELDS];
+
 int op[16] = {   /* p-codes of signed binary operators */
   OR12,                        /* level5 */
   XOR12,                       /* level6 */
@@ -152,6 +173,9 @@ int parse() {
   while (eof == 0) {
     if     (typedfunc())         dofunction();
     else if(amatch("extern", 6)) dodeclare(EXTERNAL);
+    else if(doenum())            ;
+    else if(dostruct())          ;
+    else if(dotypedef())         ;
     else if(dodeclare(STATIC))   ;
     else if( match("#asm"))      doasm();
     else if( match("#include"))  doinclude();
@@ -171,18 +195,15 @@ int parse() {
 */
 int typedfunc() {
   char *save_lptr, *p;
-  int save_ch, save_nch;
+  int save_ch, save_nch, type, id, sz;
   save_lptr = lptr;
   save_ch = ch;
   save_nch = nch;
-  if(amatch("unsigned", 8)) {
-    if(amatch("char", 4) == 0) amatch("int", 3);
-    }
-  else if(amatch("int", 3) == 0
-       && amatch("char", 4) == 0
-       && match("void") == 0) {
+  if(match("void")) ;
+  else if(decltype(&type, &id, &sz) == 0) {
     return 0;
     }
+  while(match("*")) ;
   blanks();
   p = lptr;
   if(alpha(*p) == 0) {
@@ -225,27 +246,319 @@ int skipprotoargs() {
 ** test for global declarations
 */
 int dodeclare(class) int class; {
-  if     (amatch("char",     4))  declglb(UCHR, class);
-  else if(amatch("unsigned", 8)) {
-    if   (amatch("char",     4))  declglb(UCHR, class);
-    else {amatch("int",      3);  declglb(UINT, class);}
-    }
-  else if(amatch("int",      3)
-       || class == EXTERNAL)      declglb(INT,  class);
+  int type, id, sz;
+  if(decltype(&type, &id, &sz))   declglb2(type, class, id);
+  else if(class == EXTERNAL)      declglb(INT, class);
   else return 0;
   ns();
   return 1;
   }
 
 /*
+** parse typedef declarations for simple scalar/pointer aliases
+*/
+int dotypedef() {
+  int type, id, sz, baseid;
+  if(amatch("typedef", 7) == 0) return 0;
+  if(decltype(&type, &id, &sz) == 0) {
+    error("bad typedef type");
+    skip();
+    ns();
+    return 1;
+    }
+  baseid = id;
+  while(1) {
+    if(endst()) break;
+    decl2(type, ARRAY, &id, &sz, baseid);
+    if(id == ARRAY) error("typedef arrays unsupported");
+    else addtypedef(ssname, type, id, sz);
+    if(match(",") == 0) break;
+    }
+  ns();
+  return 1;
+  }
+
+int addtypedef(sname, type, id, size)
+  char *sname; int type, id, size; {
+  int i, k;
+  char *name;
+  if(findtypedef(sname) >= 0 || findglb(sname)) {
+    multidef(sname);
+    return 0;
+    }
+  if(typedef_count >= MAXTYPEDEFS) {
+    error("typedef table overflow");
+    return 0;
+    }
+  i = typedef_count++;
+  typedef_type[i] = type;
+  typedef_id[i] = id;
+  typedef_size[i] = size;
+  name = typedef_name + i * NAMESIZE;
+  k = 0;
+  while(k < NAMESIZE) name[k++] = 0;
+  k = 0;
+  while(sname[k] && k < NAMEMAX) {
+    name[k] = sname[k];
+    ++k;
+    }
+  return 1;
+  }
+
+int findtypedef(sname) char *sname; {
+  int i;
+  i = 0;
+  while(i < typedef_count) {
+    if(astreq(sname, typedef_name + i * NAMESIZE, NAMEMAX)) return i;
+    ++i;
+    }
+  return -1;
+  }
+
+int typedeftype(type, id, sz) int *type, *id, *sz; {
+  char *save_lptr;
+  int save_ch, save_nch, i;
+  char name[NAMESIZE];
+  save_lptr = lptr;
+  save_ch = ch;
+  save_nch = nch;
+  if(symname(name)) {
+    i = findtypedef(name);
+    if(i >= 0) {
+      *type = typedef_type[i];
+      *id = typedef_id[i];
+      *sz = typedef_size[i];
+      return 1;
+      }
+    }
+  lptr = save_lptr;
+  ch = save_ch;
+  nch = save_nch;
+  return 0;
+  }
+
+/*
+** parse a declaration base type.  id/sz describe the default declarator.
+*/
+int decltype(type, id, sz) int *type, *id, *sz; {
+  int i;
+  if(amatch("unsigned", 8)) {
+    if(amatch("char", 4)) {*type = UCHR; *id = VARIABLE; *sz = 1;}
+    else {amatch("int", 3); *type = UINT; *id = VARIABLE; *sz = BPW;}
+    return 1;
+    }
+  if(amatch("int", 3)) {
+    *type = INT;
+    *id = VARIABLE;
+    *sz = BPW;
+    return 1;
+    }
+  if(amatch("char", 4)) {
+    *type = UCHR;
+    *id = VARIABLE;
+    *sz = 1;
+    return 1;
+    }
+  if(amatch("enum", 4)) {
+    symname(ssname);
+    *type = INT;
+    *id = VARIABLE;
+    *sz = BPW;
+    return 1;
+    }
+  if(amatch("struct", 6)) {
+    if(symname(ssname) == 0) {
+      illname();
+      return 0;
+      }
+    i = findstruct(ssname);
+    if(i < 0) {
+      error("unknown struct");
+      i = addstruct(ssname);
+      }
+    *type = STRUCTBASE + i;
+    *id = VARIABLE;
+    *sz = struct_size[i];
+    return 1;
+    }
+  return typedeftype(type, id, sz);
+  }
+
+/*
+** parse a named struct declaration and compute field layout
+*/
+int dostruct() {
+  char *save_lptr;
+  int save_ch, save_nch, type, id, sz, off, sidx, fid, baseid;
+  save_lptr = lptr;
+  save_ch = ch;
+  save_nch = nch;
+  if(amatch("struct", 6) == 0) return 0;
+  if(symname(ssname) == 0) {
+    lptr = save_lptr;
+    ch = save_ch;
+    nch = save_nch;
+    return 0;
+    }
+  if(match("{") == 0) {
+    lptr = save_lptr;
+    ch = save_ch;
+    nch = save_nch;
+    return 0;
+    }
+  sidx = findstruct(ssname);
+  if(sidx < 0) sidx = addstruct(ssname);
+  struct_first[sidx] = field_count;
+  struct_fields[sidx] = 0;
+  off = 0;
+  while(match("}") == 0) {
+    if(decltype(&type, &id, &sz) == 0) {
+      error("bad struct field type");
+      skip();
+      ns();
+      continue;
+      }
+    baseid = id;
+    while(1) {
+      decl2(type, ARRAY, &id, &sz, baseid);
+      if(id == ARRAY) error("struct field arrays unsupported");
+      off = alignup(off, typealign(type, id));
+      fid = addfield(sidx, ssname, type, id, sz, off);
+      if(fid >= 0) {
+        off += sz;
+        struct_fields[sidx] += 1;
+        }
+      if(match(",") == 0) break;
+      }
+    ns();
+    }
+  struct_size[sidx] = alignup(off, 2);
+  ns();
+  return 1;
+  }
+
+int findstruct(sname) char *sname; {
+  int i;
+  i = 0;
+  while(i < struct_count) {
+    if(astreq(sname, struct_name + i * NAMESIZE, NAMEMAX)) return i;
+    ++i;
+    }
+  return -1;
+  }
+
+int addstruct(sname) char *sname; {
+  int i, k;
+  char *name;
+  if(struct_count >= MAXSTRUCTS) {
+    error("struct table overflow");
+    return 0;
+    }
+  i = struct_count++;
+  struct_size[i] = 0;
+  struct_first[i] = field_count;
+  struct_fields[i] = 0;
+  name = struct_name + i * NAMESIZE;
+  k = 0;
+  while(k < NAMESIZE) name[k++] = 0;
+  k = 0;
+  while(sname[k] && k < NAMEMAX) {
+    name[k] = sname[k];
+    ++k;
+    }
+  return i;
+  }
+
+int isstruct(type) int type; {
+  return (type >= STRUCTBASE && type < STRUCTBASE + MAXSTRUCTS);
+  }
+
+int structidx(type) int type; {
+  return type - STRUCTBASE;
+  }
+
+int typesize(type, id) int type, id; {
+  int i;
+  if(id == POINTER) return BPW;
+  if(isstruct(type)) {
+    i = structidx(type);
+    if(i >= 0 && i < struct_count) return struct_size[i];
+    }
+  return type >> 2;
+  }
+
+int typealign(type, id) int type, id; {
+  if(id == POINTER) return 2;
+  if(isstruct(type)) return 2;
+  if((type >> 2) >= BPW) return 2;
+  return 1;
+  }
+
+int alignup(value, align) int value, align; {
+  if(align <= 1) return value;
+  return (value + align - 1) & ~(align - 1);
+  }
+
+int addfield(parent, sname, type, id, size, offset)
+  int parent, type, id, size, offset; char *sname; {
+  int i, k;
+  char *name;
+  if(findfield(parent, sname) >= 0) {
+    multidef(sname);
+    return -1;
+    }
+  if(field_count >= MAXFIELDS) {
+    error("field table overflow");
+    return -1;
+    }
+  i = field_count++;
+  field_parent[i] = parent;
+  field_type[i] = type;
+  field_id[i] = id;
+  field_size[i] = size;
+  field_offset[i] = offset;
+  name = field_name + i * NAMESIZE;
+  k = 0;
+  while(k < NAMESIZE) name[k++] = 0;
+  k = 0;
+  while(sname[k] && k < NAMEMAX) {
+    name[k] = sname[k];
+    ++k;
+    }
+  return i;
+  }
+
+int findfield(parent, sname) int parent; char *sname; {
+  int i, end;
+  if(parent < 0 || parent >= struct_count) return -1;
+  i = struct_first[parent];
+  end = i + struct_fields[parent];
+  while(i < end) {
+    if(astreq(sname, field_name + i * NAMESIZE, NAMEMAX)) return i;
+    ++i;
+    }
+  return -1;
+  }
+
+int fieldtype(i) int i; {return field_type[i];}
+int fieldid(i) int i; {return field_id[i];}
+int fieldsize(i) int i; {return field_size[i];}
+int fieldoff(i) int i; {return field_offset[i];}
+int structsize(i) int i; {return struct_size[i];}
+
+/*
 ** declare a static variable
 */
 int declglb(type, class)  int type, class; {
+  declglb2(type, class, VARIABLE);
+  }
+
+int declglb2(type, class, baseid)  int type, class, baseid; {
   int id, dim;
   while(1) {
     if(endst()) return;  /* do line */
     if(match("*"))       {id = POINTER;  dim = 0;}
-    else                 {id = VARIABLE; dim = 1;}
+    else                 {id = baseid;   dim = 1;}
     if(symname(ssname) == 0) illname();
     if(findglb(ssname)) multidef(ssname);
     if(match("(")) {
@@ -256,15 +569,15 @@ int declglb(type, class)  int type, class; {
       id = ARRAY;
       dim = needsub();
       }
-    if     (class == EXTERNAL) external(ssname, type >> 2, id);
+    if     (class == EXTERNAL) external(ssname, typesize(type, id), id);
     else if(   id != FUNCTION) {
-      initials(type >> 2, id, dim);
+      initials(typesize(type, id), id, dim);
       if(id == ARRAY && dim == 0)
-        dim = litptr / (type >> 2);
+        dim = litptr / typesize(type, VARIABLE);
       }
-    if(id == POINTER) 
+    if(id == POINTER)
          addsym(ssname, id, type, BPW, 0, &glbptr, class);
-    else addsym(ssname, id, type, dim * (type >> 2), 0, &glbptr, class);
+    else addsym(ssname, id, type, dim * typesize(type, VARIABLE), 0, &glbptr, class);
     if(match(",") == 0) return;
     }
   }
@@ -387,9 +700,51 @@ int putmac(c)  char c; {
   }
 
 /*
+** parse a simple enum declaration and install constants as int symbols
+*/
+int doenum() {
+  int value;
+  int hasvalue;
+  if(amatch("enum", 4) == 0) return 0;
+  symname(ssname);                 /* optional tag, currently informational */
+  if(match("{")) {
+    value = 0;
+    while(match("}") == 0) {
+      if(symname(ssname) == 0) {
+        illname();
+        break;
+        }
+      hasvalue = value;
+      if(match("=")) constexpr(&hasvalue);
+      addenum(ssname, hasvalue);
+      value = hasvalue + 1;
+      if(match(",")) {
+        if(streq(lptr, "}")) continue;
+        }
+      else need("}");
+      }
+    }
+  ns();
+  return 1;
+  }
+
+/*
+** add an enum constant to the ordinary global identifier namespace
+*/
+int addenum(sname, value) char *sname; int value; {
+  if(findglb(sname)) {
+    multidef(sname);
+    return 0;
+    }
+  addsym(sname, ENUMCONST, INT, 0, value, &glbptr, STATIC);
+  return 1;
+  }
+
+/*
 ** parse an optional argument type in an ANSI-style function header
 */
 int argtype(type) int *type; {
+  int id, sz;
   if(amatch("unsigned", 8)) {
     if(amatch("char", 4)) *type = UCHR;
     else {amatch("int", 3); *type = UINT;}
@@ -403,6 +758,7 @@ int argtype(type) int *type; {
     *type = UCHR;
     return 1;
     }
+  if(typedeftype(type, &id, &sz)) return 1;
   return 0;
   }
 
@@ -539,11 +895,16 @@ int doargs(type) int type; {
 ** parse next local or argument declaration
 */
 int decl(type, aid, id, sz) int type, aid, *id, *sz; {
+  return decl2(type, aid, id, sz, VARIABLE);
+  }
+
+int decl2(type, aid, id, sz, baseid) int type, aid, *id, *sz, baseid; {
   int n, p;
   if(match("(")) p = 1;
   else           p = 0;
   if(match("*"))        {*id = POINTER;  *sz  = BPW;}
-  else                  {*id = VARIABLE; *sz  = type >> 2;}
+  else if(baseid == POINTER) {*id = POINTER;  *sz  = BPW;}
+  else                  {*id = VARIABLE; *sz  = typesize(type, VARIABLE);}
   if((n = symname(ssname)) == 0) illname();
   if(p && match(")")) ;
   if(match("(")) {
@@ -566,6 +927,7 @@ int decl(type, aid, id, sz) int type, aid, *id, *sz; {
 ** statement parser
 */
 int statement() {
+  int type, id, sz;
   if(ch == 0 && eof) return;
   else if(amatch("char",     4)) {declloc(UCHR);   ns();}
   else if(amatch("int",      3)) {declloc(INT);    ns();}
@@ -573,6 +935,7 @@ int statement() {
     if   (amatch("char",     4)) {declloc(UCHR);   ns();}
     else {amatch("int",      3);  declloc(UINT);   ns();}
     }
+  else if(decltype(&type, &id, &sz)) {declloc2(type, id); ns();}
   else {
     if(declared >= 0) {
       if(ncmp > 1) nogo = declared;   /* disable goto */
@@ -603,13 +966,17 @@ int statement() {
 ** declare local variables
 */
 int declloc(type)  int type;  {
+  declloc2(type, VARIABLE);
+  }
+
+int declloc2(type, baseid)  int type, baseid;  {
   int id, sz;
   if(swactive)     error("not allowed in switch");
   if(noloc)        error("not allowed with goto");
   if(declared < 0) error("must declare first in block");
   while(1) {
     if(endst()) return;
-    decl(type, ARRAY, &id, &sz);
+    decl2(type, ARRAY, &id, &sz, baseid);
     declared += sz;
     addsym(ssname, id, type,  sz, csp - declared, &locptr, AUTOMATIC);
     if(match(",") == 0) return;

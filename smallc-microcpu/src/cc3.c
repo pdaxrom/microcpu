@@ -237,13 +237,19 @@ int level13(is)  int is[];  {
     return 1;
     }
   else if(amatch("sizeof", 6)) {    /* sizeof() */
-    int sz, p;  char *ptr, sname[NAMESIZE];
+    int sz, p, i;  char *ptr, sname[NAMESIZE];
     if(match("(")) p = 1;
     else           p = 0;
     sz = 0;
     if     (amatch("unsigned", 8))  sz = BPW;
     if     (amatch("int",      3))  sz = BPW;
     else if(amatch("char",     4))  sz = 1;
+    else if(amatch("struct",   6)) {
+      if(symname(sname)) {
+        i = findstruct(sname);
+        if(i >= 0) sz = structsize(i);
+        }
+      }
     if(sz) {if(match("*"))          sz = BPW;}
     else if(symname(sname)
          && ((ptr = findloc(sname)) ||
@@ -263,7 +269,8 @@ int level13(is)  int is[];  {
       return 0;
       }
     ptr = is[ST];
-    is[TA] = ptr[TYPE];
+    if(ptr) is[TA] = ptr[TYPE];
+    else    is[TA] = is[TI];
     if(is[TI]) return 0;
     gen(POINT1m, ptr);
     is[TI] = ptr[TYPE];
@@ -292,12 +299,12 @@ int level13(is)  int is[];  {
   }
 
 int level14(is)  int *is; {
-  int k, const, val;
+  int k, const, val, elsz;
   char *ptr, *before, *start;
   k = primary(is);
   ptr = is[ST];
   blanks();
-  if(ch == '[' || ch == '(') {
+  if(ch == '[' || ch == '(' || ch == '.' || streq(lptr, "->")) {
     int is2[7];                     /* allocate only if needed */
     while(1) {
       if(match("[")) {              /* [subscript] */
@@ -316,14 +323,14 @@ int level14(is)  int *is; {
         if(is2[TC]) {
           clearstage(before, 0);
           if(is2[CV]) {             /* only add if non-zero */
-            if(ptr[TYPE] >> 2 == BPW)
-                 gen(GETw2n, is2[CV] << LBPW);
-            else gen(GETw2n, is2[CV]);
+            elsz = typesize(ptr[TYPE], VARIABLE);
+            gen(GETw2n, is2[CV] * elsz);
             gen(ADD12, 0);
             }
           }
         else {
-          if(ptr[TYPE] >> 2 == BPW) gen(DBL1, 0);
+          elsz = typesize(ptr[TYPE], VARIABLE);
+          scale1(elsz);
           gen(ADD12, 0);
           }
         is[TA] = 0;
@@ -339,6 +346,14 @@ int level14(is)  int *is; {
         else callfunc(ptr);
         k = is[ST] = is[TC] = is[CV] = 0;
         }
+      else if(match("->")) {
+        k = memberaccess(is, k, 1);
+        ptr = is[ST];
+        }
+      else if(match(".")) {
+        k = memberaccess(is, k, 0);
+        ptr = is[ST];
+        }
       else return k;
       }
     }
@@ -348,6 +363,47 @@ int level14(is)  int *is; {
     return 0;
     }
   return k;
+  }
+
+int memberaccess(is, k, arrow) int is[], k, arrow; {
+  int stype, sidx, fid, off;
+  char *ptr, fname[NAMESIZE];
+  ptr = is[ST];
+  stype = 0;
+  if(arrow) {
+    stype = is[TA];
+    if(k) fetch(is);
+    }
+  else {
+    if(is[TI]) stype = is[TI];
+    else if(ptr) stype = ptr[TYPE];
+    if(k && is[TI] == 0 && ptr) gen(POINT1m, ptr);
+    }
+  if(isstruct(stype) == 0) {
+    error("not a struct");
+    return 0;
+    }
+  if(symname(fname) == 0) {
+    illname();
+    return 0;
+    }
+  sidx = structidx(stype);
+  fid = findfield(sidx, fname);
+  if(fid < 0) {
+    error("unknown field");
+    return 0;
+    }
+  off = fieldoff(fid);
+  if(off) {
+    gen(GETw2n, off);
+    gen(ADD12, 0);
+    }
+  is[ST] = 0;
+  is[TI] = fieldtype(fid);
+  if(fieldid(fid) == POINTER) is[TA] = fieldtype(fid);
+  else                        is[TA] = 0;
+  is[TC] = is[CV] = is[SA] = 0;
+  return 1;
   }
 
 int primary(is)  int *is; {
@@ -379,6 +435,13 @@ int primary(is)  int *is; {
       return 1;
       }
     if(ptr = findglb(sname)) {      /* is global */
+      if(ptr[IDENT] == ENUMCONST) {
+        is[TC] = INT;
+        is[CV] = getint(ptr+OFFSET, 2);
+        gen(GETw1n, is[CV]);
+        is[ST] = 0;
+        return 0;
+        }
       is[ST] = ptr;
       if(ptr[IDENT] != FUNCTION) {
         if(ptr[IDENT] == ARRAY) {
@@ -440,11 +503,51 @@ int double(oper, is1, is2) int oper, is1[], is2[]; {
   return 1;
   }
 
+/*
+** byte scale for pointer/array arithmetic
+*/
+int scale(oper, is1, is2) int oper, is1[], is2[]; {
+  if((oper != ADD12 && oper != SUB12)
+  || is1[TA] == 0
+  || is2[TA]) return 1;
+  return typesize(is1[TA], VARIABLE);
+  }
+
+int scale1(factor) int factor; {
+  if(factor <= 1) return;
+  if(factor == 2) {
+    gen(DBL1, 0);
+    return;
+    }
+  if(factor == 4) {
+    gen(DBL1, 0);
+    gen(DBL1, 0);
+    return;
+    }
+  if(factor == 8) {
+    gen(DBL1, 0);
+    gen(DBL1, 0);
+    gen(DBL1, 0);
+    return;
+    }
+  gen(PUSH2, 0);
+  gen(GETw2n, factor);
+  gen(MUL12u, 0);
+  gen(POP2, 0);
+  }
+
+int scale2(factor) int factor; {
+  if(factor <= 1) return;
+  gen(SWAP12, 0);
+  scale1(factor);
+  gen(SWAP12, 0);
+  }
+
 int step(oper, is, oper2) int oper, is[], oper2; {
   fetch(is);
-  gen(oper, is[TA] ? (is[TA] >> 2) : 1);
+  gen(oper, is[TA] ? typesize(is[TA], VARIABLE) : 1);
   store(is);
-  if(oper2) gen(oper2, is[TA] ? (is[TA] >> 2) : 1);
+  if(oper2) gen(oper2, is[TA] ? typesize(is[TA], VARIABLE) : 1);
   }
 
 int store(is)  int is[]; {
@@ -469,7 +572,7 @@ int fetch(is) int is[]; {
   if(is[TI]) {                                   /* indirect */
     if(is[TI] >> 2 == BPW)     gen(GETw1p,  0);
     else {
-      if(ptr[TYPE] & UNSIGNED) gen(GETb1pu, 0);
+      if(is[TI] & UNSIGNED)    gen(GETb1pu, 0);
       else                     gen(GETb1p,  0);
       }
     } 
@@ -658,7 +761,7 @@ int down2(oper, oper2, level, is, is2)
   if(is[TC]) {                    /* consant op unknown */
     if(down1(level, is2)) fetch(is2);
     if(is[CV] == 0) is[SA] = snext;
-    gen(GETw2n, is[CV] << double(oper, is2, is));
+    gen(GETw2n, is[CV] * scale(oper, is2, is));
     }
   else {                          /* variable op unknown */
     gen(PUSH1, 0);                /* at start in the buffer */
@@ -668,17 +771,17 @@ int down2(oper, oper2, level, is, is2)
       csp += BPW;                 /* adjust stack and */
       clearstage(before, 0);      /* discard the PUSH */
       if(oper == ADD12) {         /* commutative */
-        gen(GETw2n, is2[CV] << double(oper, is, is2));
+        gen(GETw2n, is2[CV] * scale(oper, is, is2));
         }
       else {                      /* non-commutative */
         gen(MOVE21, 0);
-        gen(GETw1n, is2[CV] << double(oper, is, is2));
+        gen(GETw1n, is2[CV] * scale(oper, is, is2));
         }
       }
     else {                        /* variable op variable */
       gen(POP2, 0);
-      if(double(oper, is, is2)) gen(DBL1, 0);
-      if(double(oper, is2, is)) gen(DBL2, 0);
+      scale1(scale(oper, is, is2));
+      scale2(scale(oper, is2, is));
       }
     }
   if(oper) {
@@ -720,6 +823,7 @@ int nosign(is) int is[]; {
   char *ptr;
   if(is[TA]
   || is[TC] == UINT
+  || (is[TI] & UNSIGNED)
   || ((ptr = is[ST]) && (ptr[TYPE] & UNSIGNED))
     ) return 1;
   return 0;

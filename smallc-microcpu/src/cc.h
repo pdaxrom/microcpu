@@ -48,6 +48,7 @@
 #define ARRAY    2
 #define POINTER  3
 #define FUNCTION 4
+#define ENUMCONST 5
  
 /*
 ** values for "TYPE"
@@ -121,6 +122,18 @@
 #define MACNEND  (macn+MACNSIZE)
 #define MACQSIZE (MACNBR*7)
 #define MACMAX   (MACQSIZE-1)
+
+/*
+** typedef table
+*/
+#define MAXTYPEDEFS 40
+
+/*
+** struct metadata tables
+*/
+#define MAXSTRUCTS 20
+#define MAXFIELDS 160
+#define STRUCTBASE 64
  
 /*
 ** statement types

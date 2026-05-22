@@ -443,7 +443,8 @@ int gen(pcode, value) int pcode, value; {
     case MOD12u:
     case DIV12:
     case DIV12u: gen(SWAP12, 0); break;
-    case PUSH1:  csp -= BPW;     break;
+    case PUSH1:
+    case PUSH2:  csp -= BPW;     break;
     case POP2:   csp += BPW;     break;
     case ADDSP:
     case RETURN: newcsp = value; value -= csp; csp = newcsp;
@@ -617,7 +618,9 @@ int dumpzero(size, count) int size, count; {
   if(count > 0) {
     if(size == 1)
          gen(BYTEr0, count);
-    else gen(WORDr0, count);
+    else if(size == BPW)
+         gen(WORDr0, count);
+    else gen(BYTEr0, size * count);
     }
   }
 

@@ -19,9 +19,19 @@ exists now; future backend changes must update this file.
 - `int *` arithmetic is scaled by 2 bytes, so `p + 1` points to the next
   16-bit `int`.  `char *` arithmetic is scaled by 1 byte.
 - `int` arrays use 2 bytes per element.  `char` arrays use 1 byte per element.
+- `struct` fields are laid out in declaration order.  `char` fields have size
+  and alignment 1.  `int`, pointer, and struct fields align to 2 bytes.  The
+  final struct size is rounded up to 2 bytes.
+- Arrays of structs use `sizeof(struct Tag)` as the element stride.  Pointer
+  arithmetic on `struct Tag *` is scaled by that same size.
 - Return values are the raw 16-bit contents of `v0`.  Negative `int` results
   therefore appear as their unsigned two's-complement representation in tests;
   for example, `-5` is dumped and compared as `65531`.
+
+`enum` constants are compile-time `int` constants.  The enum type itself is
+currently treated as `int` when used as a declaration type.  `typedef` names
+are compile-time aliases for the recorded base type plus pointer/non-pointer
+declarator shape; they do not create distinct ABI types.
 
 ## Expression Results
 
@@ -124,6 +134,9 @@ Global scalar and array initializers are laid out in declaration order.
 `char s[] = "ABC";` emits four bytes: `65, 66, 67, 0`, and the recorded array
 size is 4 bytes.  String literals used in expressions are emitted in the
 function literal pool and are also zero-terminated.
+
+Default-initialized structs and arrays of structs reserve zeroed byte storage
+with `ds`.  Global struct initializers are not implemented yet.
 
 Supported string escapes are `\n`, `\r`, `\t`, `\b`, `\f`, octal escapes
 including `\0`, and escaped ordinary characters such as `\\` and `\"`.
