@@ -71,6 +71,7 @@
 #define STATIC    2
 #define EXTERNAL  3
 #define AUTOEXT   4
+#define PRIVATE   5
 
 /*
 ** segment types
@@ -101,7 +102,7 @@
 /*
 ** literal pool
 */
-#define LITABSZ 2000
+#define LITABSZ 8192
 #define LITMAX  (LITABSZ-1)
  
 /*
@@ -148,6 +149,7 @@
 #define MAXSTRUCTS 20
 #define MAXFIELDS 160
 #define STRUCTBASE 64
+#define PTRBASE 96
  
 /*
 ** statement types

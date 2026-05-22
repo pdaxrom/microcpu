@@ -13,13 +13,17 @@ exists now; future backend changes must update this file.
   list marker in declarations such as `f(void)`.
 - Plain `char`: unsigned 8-bit value.  Loads zero-extend to 16 bits.
 - Pointer: 16-bit byte address.
+- Pointer depth is represented by repeated 16-bit pointer objects.  For
+  example, `char **` is a pointer to a 16-bit cell that itself contains a byte
+  address.
 - `sizeof(int) == 2`, `sizeof(unsigned) == 2`, `sizeof(char) == 1`,
   `sizeof(pointer) == 2`.
 - `sizeof` on arrays returns the byte size of the whole array object.
 - The target memory is byte-addressed.  Word loads and stores use two
   little-endian bytes.  Byte loads and stores use `ldrl` and `strl`.
 - `int *` arithmetic is scaled by 2 bytes, so `p + 1` points to the next
-  16-bit `int`.  `char *` arithmetic is scaled by 1 byte.
+  16-bit `int`.  `char *` arithmetic is scaled by 1 byte.  Pointer-to-pointer
+  arithmetic is scaled by 2 bytes, the size of a pointer cell.
 - `int` arrays use 2 bytes per element.  `char` arrays use 1 byte per element.
 - `struct` fields are laid out in declaration order.  `char` fields have size
   and alignment 1.  `int`, pointer, and struct fields align to 2 bytes.  The
@@ -34,6 +38,10 @@ exists now; future backend changes must update this file.
 currently treated as `int` when used as a declaration type.  `typedef` names
 are compile-time aliases for the recorded base type plus pointer/non-pointer
 declarator shape; they do not create distinct ABI types.
+
+`const` is currently accepted as a source-compatibility qualifier and ignored
+for storage and code generation.  It does not imply read-only placement and is
+not enforced by assignment diagnostics yet.
 
 Identifiers are significant to 31 characters in the compiler symbol tables.
 
@@ -128,10 +136,13 @@ Small-C external names are emitted with a leading underscore.  For example,
 the C function `main` is emitted as `_main`, and a global variable `g` is
 emitted as `_g`.
 
-File-scope `static` variables and functions currently use the same generated
-label form as non-static symbols.  The current test model compiles one
-translation unit at a time, so `static` affects frontend parsing and duplicate
-declaration handling but not linker visibility yet.
+In object mode, non-static definitions emit microasm `public` entries and
+unresolved `extern` declarations are left for `microlink`.  File-scope
+`static` variables and functions are emitted as object-local labels and are not
+marked `public`.  If an externally visible assembler symbol would exceed the
+current object-file symbol-name limit, the backend emits a deterministic
+shortened form consisting of the leading underscore, a readable prefix, and a
+hash suffix.  Definitions and references use the same shortened name.
 
 Compiler-generated numeric labels use the form `_<number>`.  Literal/string
 data labels use the same numeric label space.  String literals are emitted as
@@ -209,6 +220,26 @@ spinning on the UART RX status bit until a byte is available, then returns that
 byte zero-extended in `v0`.  These helpers may clobber `v0`, `v1`, `v2`, and
 `v3`; they do not use `v4`.
 
+## Object And Linker Flow
+
+The direct test flow emits one self-contained assembly file.  Object mode emits
+only the compiled translation unit and expects the test runner or build system
+to assemble and link runtime objects.
+
+The current object test link order is:
+
+```text
+runtime/crt0_object.o
+program translation-unit objects
+runtime/runtime_object.o
+runtime/stack_object.o
+```
+
+`crt0_object.o` defines the startup code and calls `_main`.
+`runtime_object.o` exports arithmetic, comparison, switch, string/memory, and
+UART helper routines.  `stack_object.o` provides the test stack symbol
+`__sc_stktop`.
+
 ## Test Startup And Halt
 
 The generated test crt0 starts at load address 0:
@@ -226,3 +257,6 @@ test runner can execute the binary under `microemu --stop-on-self-branch` and
 compare the final dumped `v0`/`r3` value.  The compiler appends a 512-byte
 stack block after the generated program and initializes `sp` to
 `__smallc_stack_top`.
+
+In object-mode tests, the equivalent startup uses the shorter exported stack
+symbol `__sc_stktop` because the current object format limits symbol names.

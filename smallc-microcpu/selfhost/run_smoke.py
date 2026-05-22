@@ -302,6 +302,31 @@ def write_log(
                 log.write("\n")
 
 
+def assemble_object(
+    assembler: pathlib.Path,
+    asm_path: pathlib.Path,
+    obj_path: pathlib.Path,
+    log_path: pathlib.Path,
+) -> dict[str, object]:
+    argv = [str(assembler), "-object", str(asm_path), str(obj_path)]
+    proc = subprocess.run(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    write_log(log_path, argv, proc)
+    ok = proc.returncode == 0
+    size = obj_path.stat().st_size if ok and obj_path.exists() else 0
+    return {
+        "ok": ok,
+        "object": obj_path,
+        "object_log": log_path,
+        "object_size": size,
+    }
+
+
 def text_or_empty(value: str | bytes | None) -> str:
     if value is None:
         return ""
@@ -312,16 +337,20 @@ def text_or_empty(value: str | bytes | None) -> str:
 
 def compile_source(
     compiler: pathlib.Path,
+    assembler: pathlib.Path | None,
     include_dirs: list[pathlib.Path],
     defines: list[str],
     timeout_seconds: int,
     build_dir: pathlib.Path,
     source: pathlib.Path,
+    object_mode: bool,
 ) -> dict[str, object]:
     name = source.stem
     asm_path = build_dir / f"{name}.asm"
     log_path = build_dir / f"{name}.log"
     argv = [str(compiler)]
+    if object_mode:
+        argv.append("--object")
     for define in defines:
         argv.extend(["-D", define])
     for include_dir in include_dirs:
@@ -374,6 +403,42 @@ def compile_source(
             "next": "inspect compiler log for the first unsupported source construct",
         }
 
+    object_result = None
+    if object_mode and ok:
+        if assembler is None:
+            object_result = {
+                "ok": False,
+                "object": build_dir / f"{name}.o",
+                "object_log": build_dir / f"{name}.obj.log",
+                "object_size": 0,
+            }
+            ok = False
+            err = {
+                "reason": "--object-mode requires --assembler",
+                "text": "",
+                "line": None,
+                "token": None,
+                "root_cause": "selfhost smoke configuration",
+                "next": "pass --assembler PATH when OBJECT_MODE=1",
+            }
+        else:
+            object_result = assemble_object(
+                assembler,
+                asm_path,
+                build_dir / f"{name}.o",
+                build_dir / f"{name}.obj.log",
+            )
+            if not object_result["ok"]:
+                ok = False
+                err = {
+                    "reason": "object assembly failed",
+                    "text": "",
+                    "line": None,
+                    "token": None,
+                    "root_cause": "generated assembly is not object-assembler clean",
+                    "next": "inspect the object assembly log and emitted microasm",
+                }
+
     return {
         "name": name,
         "source": source,
@@ -381,6 +446,7 @@ def compile_source(
         "log": log_path,
         "ok": ok,
         "error": err,
+        "object_result": object_result,
         "stats": stats,
         "includes": includes,
         "include_repeats": include_repeats,
@@ -396,9 +462,12 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
             report.write("Include dirs: " + ", ".join(str(path) for path in args.include_dir) + "\n")
         if args.define:
             report.write("Defines: " + ", ".join(args.define) + "\n")
+        report.write(f"Object mode: {'yes' if args.object_mode else 'no'}\n")
+        if args.object_mode and args.assembler:
+            report.write(f"Assembler: {args.assembler}\n")
         report.write(f"Strict: {'yes' if args.strict else 'no'}\n")
         report.write("Conclusion:\n")
-        report.write("  resolved: host-only prototype imports, strict duplicate prototype handling, 8-character identifier collisions, minimal void/static parsing, multiline function headers\n")
+        report.write("  resolved: host-only prototype imports, strict duplicate prototype handling, 31-character identifiers, minimal void/static parsing, multiline function headers, pointer-depth declarators, typedef K&R argument declarations, ignored const qualifiers, and larger literal storage\n")
         report.write("  current blockers: see per-file root cause and next-step entries below\n")
         report.write("\n")
         for result in results:
@@ -408,6 +477,12 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
             report.write(f"  source: {result['source']}\n")
             report.write(f"  asm: {result['asm']}\n")
             report.write(f"  log: {result['log']}\n")
+            object_result = result.get("object_result")
+            if isinstance(object_result, dict):
+                report.write(f"  object: {object_result['object']}\n")
+                report.write(f"  object log: {object_result['object_log']}\n")
+                if object_result.get("ok"):
+                    report.write(f"  object size: {object_result['object_size']} bytes\n")
             if not result["ok"]:
                 err = result["error"]
                 if isinstance(err, dict):
@@ -451,9 +526,11 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", type=pathlib.Path, required=True)
+    parser.add_argument("--assembler", type=pathlib.Path)
     parser.add_argument("--build-dir", type=pathlib.Path, required=True)
     parser.add_argument("--define", action="append", default=[])
     parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
+    parser.add_argument("--object-mode", action="store_true")
     parser.add_argument("--timeout-seconds", default=10, type=int)
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("sources", nargs="+", type=pathlib.Path)
@@ -468,11 +545,13 @@ def main(argv: list[str]) -> int:
     for source in args.sources:
         result = compile_source(
             args.compiler,
+            args.assembler,
             args.include_dir,
             args.define,
             args.timeout_seconds,
             args.build_dir,
             source,
+            args.object_mode,
         )
         results.append(result)
         if result["ok"]:

@@ -48,6 +48,22 @@ Generated assembly, binaries, and logs are kept under
 `smallc-microcpu/build/tests/` after `make test` so the output can be inspected
 directly.
 
+The normal test flow still assembles each generated file straight to a binary.
+The optional object/linker flow uses the newer microasm object format and
+microlink:
+
+```sh
+make -C smallc-microcpu test-object
+make -C smallc-microcpu test OBJECT_MODE=1
+```
+
+Multi-file tests live under `tests-multi/` and always use the object/linker
+flow:
+
+```sh
+make -C smallc-microcpu test-multi
+```
+
 ## Self-hosting smoke checks
 
 The port is not self-hosting yet.  A non-default smoke target checks source
@@ -67,6 +83,13 @@ should fail the make target:
 
 ```sh
 make -C smallc-microcpu selfhost-smoke STRICT=1
+```
+
+The smoke target can also ask the compiler for object-ready assembly and then
+assemble every successful translation unit to `.o`:
+
+```sh
+make -C smallc-microcpu selfhost-smoke OBJECT_MODE=1
 ```
 
 Known blockers and the self-hosting coding rules are tracked in
@@ -113,6 +136,7 @@ The current backend is intentionally small and supports:
 
 - `int main()`
 - K&R-style and simple ANSI-style function argument declarations
+- typedef names in K&R-style function argument declarations
 - simple multiline ANSI-style function definitions
 - constants and local/global `int` variables
 - local/global unsigned plain `char`
@@ -139,8 +163,12 @@ The current backend is intentionally small and supports:
   multiline prototypes
 - `void` function return type, `void` parameter lists, and plain `return;`
 - file-scope `static` globals, `static` functions, and static prototypes
+- `extern` declarations for object/linker builds
+- ignored `const` qualifiers for compatibility declarations
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
+- pointer depth greater than one, including `char **`, `int **`, pointer arrays,
+  and pointer-to-pointer dereference/store
 - address of local variables
 - global and local `int` arrays and indexing
 - scaled `int *` arithmetic and `p[i]` syntax
@@ -160,6 +188,7 @@ The current backend is intentionally small and supports:
 - tiny UART stdio helpers through `runtime/uart.asm`: `putchar`, `puts`, and
   `getchar`
 - multiply, divide, and modulo through runtime helpers
+- optional object/linker test flow and small multi-file test programs
 
 Multiply, divide, modulo, comparisons, and variable shifts are emitted as calls
 to simple helpers in `runtime/lib16.asm`.  The target memory model is
@@ -172,10 +201,12 @@ Return values are compared as raw 16-bit `V0`; for example, `-5` is `65531`.
 Right shift is currently arithmetic.
 
 Current fixed compiler metadata limits are `NUMGLBS=200`, `NUMLOCS=25`,
-`MACNBR=300`, `MAXINCLUDE=8`, `MAXTYPEDEFS=40`, `MAXSTRUCTS=20`, and
-`MAXFIELDS=160`.  Symbol names are significant to 31 characters.  The limit is
-31, not 63, because the original variable-length local symbol table stores a
-binary name length that must stay below ASCII space.
+`LITABSZ=8192`, `MACNBR=300`, `MAXINCLUDE=8`, `MAXTYPEDEFS=40`,
+`MAXSTRUCTS=20`, and `MAXFIELDS=160`.  Symbol names are significant to 31
+characters.  The limit is 31, not 63, because the original variable-length
+local symbol table stores a binary name length that must stay below ASCII
+space.  In object mode, externally visible assembler names longer than the
+microasm object-file symbol limit are shortened with a deterministic hash.
 
 The current Small-C frontend supports `void` for function return types and
 `foo(void)` parameter lists.  It does not yet support full `void *` semantics,
@@ -189,6 +220,10 @@ The UART helpers use temporary Small-C-compatible prototypes:
 `puts` writes the string followed by `\n` and returns 0.  `getchar` spins until
 a UART RX byte is available and returns it as an unsigned 8-bit value.
 
+`const` is currently parsed as a compatibility qualifier only.  It does not
+place data in a read-only segment and assignments to `const` objects are not
+diagnosed yet.
+
 Intentionally unsupported at this stage:
 
 - unions, bitfields, anonymous struct typedefs, nested anonymous structs, and
@@ -198,7 +233,7 @@ Intentionally unsupported at this stage:
 - struct initializers
 - `long`, `float`, and full libc
 - optimizer/register allocator
-- function pointers and pointer-to-pointer declarators
+- function pointers
 - full `void *` type semantics
 - `memmove`, `printf`, `scanf`, UART line buffering, `malloc`, and `free`
 - macro stringification, token pasting, variadic macros, predefined macros,

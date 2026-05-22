@@ -1,0 +1,3 @@
+001_extern_function 219
+002_extern_global 220
+003_static_isolation 221

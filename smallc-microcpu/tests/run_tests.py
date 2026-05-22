@@ -186,8 +186,11 @@ def compile_test(
     source: pathlib.Path,
     asm_path: pathlib.Path,
     log_path: pathlib.Path,
+    object_mode: bool,
 ) -> bool:
     argv = [str(compiler)]
+    if object_mode:
+        argv.append("--object")
     for include_dir in include_dirs:
         argv.extend(["-I", str(include_dir)])
     argv.append(str(source))
@@ -197,11 +200,54 @@ def compile_test(
     return proc.returncode == 0
 
 
-def assemble_test(assembler: pathlib.Path, asm_path: pathlib.Path, bin_path: pathlib.Path, log_path: pathlib.Path) -> bool:
-    argv = [str(assembler), "-binary", str(asm_path), str(bin_path)]
+def assemble_test(
+    assembler: pathlib.Path,
+    asm_path: pathlib.Path,
+    out_path: pathlib.Path,
+    log_path: pathlib.Path,
+    object_mode: bool,
+) -> bool:
+    mode = "-object" if object_mode else "-binary"
+    argv = [str(assembler), mode, str(asm_path), str(out_path)]
     proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     append_log(log_path, "assemble", argv, proc)
     return proc.returncode == 0
+
+
+def link_test(
+    linker: pathlib.Path,
+    objects: list[pathlib.Path],
+    bin_path: pathlib.Path,
+    log_path: pathlib.Path,
+) -> bool:
+    argv = [str(linker), "-binary", "-o", str(bin_path)]
+    argv.extend(str(path) for path in objects)
+    proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    append_log(log_path, "link", argv, proc)
+    return proc.returncode == 0
+
+
+def build_runtime_objects(args: argparse.Namespace) -> tuple[bool, list[pathlib.Path]]:
+    runtime_build = args.build_dir / "__runtime"
+    runtime_build.mkdir(parents=True, exist_ok=True)
+    sources = [
+        args.runtime_dir / "crt0_object.asm",
+        args.runtime_dir / "runtime_object.asm",
+        args.runtime_dir / "stack_object.asm",
+    ]
+    objects: list[pathlib.Path] = []
+    ok = True
+    for source in sources:
+        obj_path = runtime_build / f"{source.stem}.o"
+        log_path = runtime_build / f"{source.stem}.log"
+        log_path.write_text("")
+        if assemble_test(args.assembler, source, obj_path, log_path, True):
+            objects.append(obj_path)
+        else:
+            print(f"FAIL: runtime object assembly failed: {source}", file=sys.stderr)
+            print(f"  log: {log_path}", file=sys.stderr)
+            ok = False
+    return ok, objects
 
 
 def run_test(
@@ -258,25 +304,37 @@ def run_one(
     uart_input: str | None,
 ) -> bool:
     asm_path = args.build_dir / f"{name}.asm"
+    obj_path = args.build_dir / f"{name}.o"
     bin_path = args.build_dir / f"{name}.bin"
     log_path = args.build_dir / f"{name}.log"
     args.build_dir.mkdir(parents=True, exist_ok=True)
     log_path.write_text("")
 
     print(f"{name}:")
-    if compile_test(args.compiler, args.include_dir, source, asm_path, log_path):
+    if compile_test(args.compiler, args.include_dir, source, asm_path, log_path, args.object_mode):
         print("  COMPILE PASS")
     else:
         print("  COMPILE FAIL")
         print(f"  log: {log_path}")
         return False
 
-    if assemble_test(args.assembler, asm_path, bin_path, log_path):
+    asm_out = obj_path if args.object_mode else bin_path
+    if assemble_test(args.assembler, asm_path, asm_out, log_path, args.object_mode):
         print("  ASSEMBLE PASS")
     else:
         print("  ASSEMBLE FAIL")
         print(f"  log: {log_path}")
         return False
+
+    if args.object_mode:
+        link_objects = [args.runtime_objects[0], obj_path]
+        link_objects.extend(args.runtime_objects[1:])
+        if link_test(args.linker, link_objects, bin_path, log_path):
+            print("  LINK PASS")
+        else:
+            print("  LINK FAIL")
+            print(f"  log: {log_path}")
+            return False
 
     run_ok, actual, reason, uart_output = run_test(
         args.emulator,
@@ -328,6 +386,9 @@ def main() -> int:
     parser.add_argument("--compiler", required=True, type=pathlib.Path)
     parser.add_argument("--assembler", required=True, type=pathlib.Path)
     parser.add_argument("--emulator", required=True, type=pathlib.Path)
+    parser.add_argument("--linker", type=pathlib.Path)
+    parser.add_argument("--runtime-dir", default=pathlib.Path("runtime"), type=pathlib.Path)
+    parser.add_argument("--object-mode", action="store_true")
     parser.add_argument("--board", default="hc1200-mcu")
     parser.add_argument("--max-steps", default=1_000_000, type=int)
     parser.add_argument("--build-dir", default=pathlib.Path("build/tests"), type=pathlib.Path)
@@ -356,6 +417,19 @@ def main() -> int:
     if not args.emulator.exists():
         print(f"FAIL: emulator not found: {args.emulator}", file=sys.stderr)
         return 1
+    if args.object_mode:
+        if args.linker is None:
+            print("FAIL: --object-mode requires --linker", file=sys.stderr)
+            return 1
+        if not args.linker.exists():
+            print(f"FAIL: linker not found: {args.linker}", file=sys.stderr)
+            return 1
+        runtime_ok, runtime_objects = build_runtime_objects(args)
+        if not runtime_ok:
+            return 1
+        args.runtime_objects = runtime_objects
+    else:
+        args.runtime_objects = []
 
     selected = list(expected.keys())
     if args.test:

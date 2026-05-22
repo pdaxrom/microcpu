@@ -52,6 +52,9 @@ int
   skip_count, /* number of argv indexes consumed by options */
   macro_param_count, /* next function-like macro parameter slot */
   include_open_count, /* number of include files opened */
+  objectmode, /* emit object-file compatible assembly */
+  pubclass, /* storage class of symbol currently being emitted */
+  decltype2, /* full type from the most recent declarator */
   functype,  /* return type of next function */
   curtype,   /* return type of current function */
   funcclass, /* storage class of next function */
@@ -115,6 +118,9 @@ char
   incpath[MAXINCPATHS * LINESIZE],
   incdir[(MAXINCLUDE + 1) * LINESIZE],
   macro_param_name[MAXMACPARAMS * MACNAMESIZE];
+
+int skipconst();
+int doargs2();
 
 int op[16] = {   /* p-codes of signed binary operators */
   OR12,                        /* level5 */
@@ -259,7 +265,7 @@ int typedfunc() {
     while(*p && *p <= ' ') ++p;
     if(depth == 0 && *p != ';') {
       functype = type;
-      funcclass = STATIC;
+      if(funcclass != PRIVATE) funcclass = STATIC;
       return 1;
       }
     }
@@ -308,14 +314,15 @@ int typedfunc() {
     line = pline;
     bump(0);
     functype = type;
-    funcclass = STATIC;
+    if(funcclass != PRIVATE) funcclass = STATIC;
     return 1;
     }
   if(*p == ';') {
     if(cptr = findglb(fname)) {
       if(cptr[IDENT] != FUNCTION) multidef(fname);
       }
-    else addsym(fname, FUNCTION, type, 0, 0, &glbptr, AUTOEXT);
+    else addsym(fname, FUNCTION, type, 0, 0, &glbptr,
+      funcclass == PRIVATE ? PRIVATE : AUTOEXT);
     kill();
     return 2;
     }
@@ -357,16 +364,23 @@ int dodeclare(class) int class; {
 int dostatic() {
   int k;
   if(amatch("static", 6) == 0) return 0;
-  funcclass = STATIC;
+  funcclass = PRIVATE;
   k = typedfunc();
   if(k == 1) {
     dofunction();
     return 1;
     }
-  if(k == 2) return 1;
-  if(dodeclare(STATIC)) return 1;
+  if(k == 2) {
+    funcclass = STATIC;
+    return 1;
+    }
+  if(dodeclare(PRIVATE)) {
+    funcclass = STATIC;
+    return 1;
+    }
   error("bad static declaration");
   kill();
+  funcclass = STATIC;
   return 1;
   }
 
@@ -387,7 +401,7 @@ int dotypedef() {
     if(endst()) break;
     decl2(type, ARRAY, &id, &sz, baseid);
     if(id == ARRAY) error("typedef arrays unsupported");
-    else addtypedef(ssname, type, id, sz);
+    else addtypedef(ssname, decltype2, id, sz);
     if(match(",") == 0) break;
     }
   ns();
@@ -444,6 +458,7 @@ int typedeftype(type, id, sz) int *type, *id, *sz; {
       *type = typedef_type[i];
       *id = typedef_id[i];
       *sz = typedef_size[i];
+      skipconst();
       return 1;
       }
     }
@@ -453,32 +468,48 @@ int typedeftype(type, id, sz) int *type, *id, *sz; {
   return 0;
   }
 
+int skipconst() {
+  int matched;
+  matched = 0;
+  while(amatch("const", 5)) {
+    matched = 1;
+    blanks();
+    }
+  return matched;
+  }
+
 /*
 ** parse a declaration base type.  id/sz describe the default declarator.
 */
 int decltype(type, id, sz) int *type, *id, *sz; {
   int i;
+  skipconst();
   if(amatch("unsigned", 8)) {
+    skipconst();
     if(amatch("char", 4)) {*type = UCHR; *id = VARIABLE; *sz = 1;}
     else {amatch("int", 3); *type = UINT; *id = VARIABLE; *sz = BPW;}
+    skipconst();
     return 1;
     }
   if(amatch("int", 3)) {
     *type = INT;
     *id = VARIABLE;
     *sz = BPW;
+    skipconst();
     return 1;
     }
   if(amatch("char", 4)) {
     *type = UCHR;
     *id = VARIABLE;
     *sz = 1;
+    skipconst();
     return 1;
     }
   if(amatch("void", 4)) {
     *type = VOID;
     *id = VARIABLE;
     *sz = 0;
+    skipconst();
     return 1;
     }
   if(amatch("enum", 4)) {
@@ -486,6 +517,7 @@ int decltype(type, id, sz) int *type, *id, *sz; {
     *type = INT;
     *id = VARIABLE;
     *sz = BPW;
+    skipconst();
     return 1;
     }
   if(amatch("struct", 6)) {
@@ -501,6 +533,7 @@ int decltype(type, id, sz) int *type, *id, *sz; {
     *type = STRUCTBASE + i;
     *id = VARIABLE;
     *sz = struct_size[i];
+    skipconst();
     return 1;
     }
   return typedeftype(type, id, sz);
@@ -543,6 +576,7 @@ int dostruct() {
     baseid = id;
     while(1) {
       decl2(type, ARRAY, &id, &sz, baseid);
+      type = decltype2;
       if(id == ARRAY) error("struct field arrays unsupported");
       off = alignup(off, typealign(type, id));
       fid = addfield(sidx, ssname, type, id, sz, off);
@@ -599,9 +633,28 @@ int structidx(type) int type; {
   return type - STRUCTBASE;
   }
 
+int isptrtype(type) int type; {
+  return type >= PTRBASE;
+  }
+
+int makeptrtype(type) int type; {
+  return PTRBASE + type;
+  }
+
+int ptrbasetype(type) int type; {
+  if(isptrtype(type)) return type - PTRBASE;
+  return 0;
+  }
+
+int ptrtype(type, levels) int type, levels; {
+  while(levels-- > 0) type = makeptrtype(type);
+  return type;
+  }
+
 int typesize(type, id) int type, id; {
   int i;
   if(id == POINTER) return BPW;
+  if(isptrtype(type)) return BPW;
   if(isstruct(type)) {
     i = structidx(type);
     if(i >= 0 && i < struct_count) return struct_size[i];
@@ -611,6 +664,7 @@ int typesize(type, id) int type, id; {
 
 int typealign(type, id) int type, id; {
   if(id == POINTER) return 2;
+  if(isptrtype(type)) return 2;
   if(isstruct(type)) return 2;
   if((type >> 2) >= BPW) return 2;
   return 1;
@@ -676,12 +730,28 @@ int declglb(type, class)  int type, class; {
   }
 
 int declglb2(type, class, baseid)  int type, class, baseid; {
-  int id, dim;
+  int id, dim, stars, levels, dtype, size;
   char *ptr;
   while(1) {
     if(endst()) return;  /* do line */
-    if(match("*"))       {id = POINTER;  dim = 0;}
-    else                 {id = baseid;   dim = 1;}
+    stars = 0;
+    skipconst();
+    while(match("*")) {
+      ++stars;
+      skipconst();
+      }
+    levels = stars;
+    if(baseid == POINTER) ++levels;
+    if(levels) {
+      id = POINTER;
+      dtype = ptrtype(type, levels - 1);
+      dim = 0;
+      }
+    else {
+      id = baseid;
+      dtype = type;
+      dim = 1;
+      }
     if(symname(ssname) == 0) illname();
     if(match("(")) {
       id = FUNCTION;
@@ -694,25 +764,42 @@ int declglb2(type, class, baseid)  int type, class, baseid; {
       if(match(",") == 0) return;
       continue;
       }
-    if(findglb(ssname)) multidef(ssname);
-    else if(id == VARIABLE && match("[")) {
+    ptr = findglb(ssname);
+    if(ptr) {
+      if(class == EXTERNAL && ptr[CLASS] == EXTERNAL) ;
+      else if(ptr[CLASS] == EXTERNAL && class != EXTERNAL) {
+        ptr[CLASS] = class;
+        ptr[TYPE] = dtype;
+        ptr[IDENT] = id;
+        }
+      else multidef(ssname);
+      }
+    if(match("[")) {
       id = ARRAY;
       dim = needsub();
+      if(levels) dtype = ptrtype(type, levels);
       }
     if(type == VOID && id != POINTER) {
       error("void object");
-      type = INT;
+      dtype = type = INT;
       dim = 1;
       }
-    if     (class == EXTERNAL) external(ssname, typesize(type, id), id);
-    else if(   id != FUNCTION) {
-      initials(typesize(type, id), id, dim);
-      if(id == ARRAY && dim == 0)
-        dim = litptr / typesize(type, VARIABLE);
+    size = typesize(dtype, id);
+    if(ptr && ptr[CLASS] == class) putint(id == POINTER ? BPW : dim * typesize(dtype, VARIABLE), ptr + SIZE, 2);
+    if     (class == EXTERNAL) {
+      if(objectmode == 0) external(ssname, size, id);
       }
-    if(id == POINTER)
-         addsym(ssname, id, type, BPW, 0, &glbptr, class);
-    else addsym(ssname, id, type, dim * typesize(type, VARIABLE), 0, &glbptr, class);
+    else if(   id != FUNCTION) {
+      pubclass = class;
+      initials(size, id, dim);
+      if(id == ARRAY && dim == 0)
+        dim = litptr / typesize(dtype, VARIABLE);
+      }
+    if(ptr == 0) {
+      if(id == POINTER)
+           addsym(ssname, id, dtype, BPW, 0, &glbptr, class);
+      else addsym(ssname, id, dtype, dim * typesize(dtype, VARIABLE), 0, &glbptr, class);
+      }
     if(match(",") == 0) return;
     }
   }
@@ -1051,12 +1138,15 @@ int dofunction()  {
     if(ptr[IDENT] != FUNCTION)
          multidef(ssname);
     else if(ptr[CLASS] == AUTOEXT) {
-         ptr[CLASS] = STATIC;
+         ptr[CLASS] = funcclass;
          ptr[TYPE] = rettype;
          }
+    else if(ptr[CLASS] == PRIVATE && funcclass == PRIVATE)
+         ptr[TYPE] = rettype;
     else multidef(ssname);
     }
   else addsym(ssname, FUNCTION, rettype, 0, 0, &glbptr, funcclass);
+  pubclass = funcclass;
   public(FUNCTION);
   argstk = 0;                  /* init arg count */
   argcount = typedargs = 0;
@@ -1079,12 +1169,12 @@ int dofunction()  {
       ch = save_ch;
       nch = save_nch;
       }
-    if(argtype(&type)) {
+    if(decltype(&type, &id, &sz)) {
       typedargs = YES;
-      if(match("*")) {id = POINTER;  sz = BPW;}
-      else           {id = VARIABLE; sz = type >> 2;}
+      decl2(type, POINTER, &id, &sz, id);
+      type = decltype2;
       if(type == VOID && id != POINTER) error("void argument");
-      if(symname(ssname)) {
+      if(ssname[0]) {
         if(findloc(ssname)) multidef(ssname);
         else if(argcount < NUMLOCS) {
           argptr[argcount++] =
@@ -1127,12 +1217,14 @@ int dofunction()  {
     argstk = 0;
     }
   while(argstk) {
+    type = id = sz = 0;
     if     (amatch("char",     4)) {doargs(UCHR); ns();}
     else if(amatch("int",      3)) {doargs(INT);  ns();}
     else if(amatch("unsigned", 8)) {
       if   (amatch("char", 4))     {doargs(UCHR); ns();}
       else {amatch("int", 3);       doargs(UINT); ns();}
       }
+    else if(decltype(&type, &id, &sz)) {doargs2(type, id); ns();}
     else {error("wrong number of arguments"); break;}
     }
   gen(ENTER, 0);
@@ -1153,14 +1245,18 @@ int dofunction()  {
 ** declare argument types
 */
 int doargs(type) int type; {
+  return doargs2(type, VARIABLE);
+  }
+
+int doargs2(type, baseid) int type, baseid; {
   int id, sz;
   char c, *ptr;
   while(1) {
     if(argstk == 0) return;           /* no arguments */
-    if(decl(type, POINTER, &id, &sz)) {
+    if(decl2(type, POINTER, &id, &sz, baseid)) {
       if(ptr = findloc(ssname)) {
         ptr[IDENT] = id;
-        ptr[TYPE]  = type;
+        ptr[TYPE]  = decltype2;
         putint(sz, ptr+SIZE, 2);
         putint(argtop-getint(ptr+OFFSET, 2), ptr+OFFSET, 2);
         }
@@ -1180,21 +1276,39 @@ int decl(type, aid, id, sz) int type, aid, *id, *sz; {
   }
 
 int decl2(type, aid, id, sz, baseid) int type, aid, *id, *sz, baseid; {
-  int n, p;
+  int n, p, stars, levels, dim;
   if(match("(")) p = 1;
   else           p = 0;
-  if(match("*"))        {*id = POINTER;  *sz  = BPW;}
-  else if(baseid == POINTER) {*id = POINTER;  *sz  = BPW;}
-  else                  {*id = VARIABLE; *sz  = typesize(type, VARIABLE);}
+  stars = 0;
+  skipconst();
+  while(match("*")) {
+    ++stars;
+    skipconst();
+    }
+  levels = stars;
+  if(baseid == POINTER) ++levels;
+  if(levels) {
+    *id = POINTER;
+    decltype2 = ptrtype(type, levels - 1);
+    *sz = BPW;
+    }
+  else {
+    *id = baseid;
+    decltype2 = type;
+    *sz = typesize(type, VARIABLE);
+    }
   if((n = symname(ssname)) == 0) illname();
   if(p && match(")")) ;
   if(match("(")) {
     if(!p || *id != POINTER) error("try (*...)()");
     need(")");
     }
-  else if(*id == VARIABLE && match("[")) {
+  else if(match("[")) {
+    dim = needsub();
+    if(levels) decltype2 = ptrtype(type, levels);
     *id = aid;
-    if((*sz *= needsub()) == 0) {
+    *sz = typesize(decltype2, VARIABLE);
+    if((*sz *= dim) == 0) {
       if(aid == ARRAY) error("need array size");
       *sz  = BPW;      /* size of pointer argument */
       }
@@ -1261,7 +1375,7 @@ int declloc2(type, baseid)  int type, baseid;  {
     if(type == VOID && id != POINTER) error("void object");
     else {
       declared += sz;
-      addsym(ssname, id, type,  sz, csp - declared, &locptr, AUTOMATIC);
+      addsym(ssname, id, decltype2,  sz, csp - declared, &locptr, AUTOMATIC);
       }
     if(match(",") == 0) return;
     }
@@ -1514,6 +1628,7 @@ int ask() {
   int i;
   i = listfp = nxtlab = 0;
   output = stdout;
+  objectmode = NO;
   optimize = YES;
 #ifdef TARGET_MICROCPU
   optimize = NO;
@@ -1558,12 +1673,23 @@ int ask() {
       optimize = NO;
       continue;
       }
+    if(line[1] == '-'
+    && line[2] == 'o'
+    && line[3] == 'b'
+    && line[4] == 'j'
+    && line[5] == 'e'
+    && line[6] == 'c'
+    && line[7] == 't'
+    && line[8] <= ' ') {
+      objectmode = YES;
+      continue;
+      }
     if(line[2] <= ' ') {
       if(toupper(line[1]) == 'A') {alarm   = YES; continue;}
       if(toupper(line[1]) == 'M') {monitor = YES; continue;}
       if(toupper(line[1]) == 'P') {pause   = YES; continue;}
       }
-    fputs("usage: cc [file]... [-Dname[=value]] [-Idir] [-m] [-a] [-p] [-l#] [-no]\n", stderr);
+    fputs("usage: cc [file]... [-Dname[=value]] [-Idir] [--object] [-m] [-a] [-p] [-l#] [-no]\n", stderr);
     abort(ERRCODE);
     }
   }

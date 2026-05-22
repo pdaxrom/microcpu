@@ -3,7 +3,7 @@
 This port is not self-hosting yet.  The current smoke check is deliberately
 narrow: it feeds selected compiler implementation source files to the current
 smallc-microcpu compiler and records whether readable microasm can be produced.
-It does not assemble, link, or run the compiler on microcpu.
+It does not link or run the compiler on microcpu.
 
 ## Running the smoke check
 
@@ -21,6 +21,8 @@ For each attempted source file the target writes:
 
 - `<name>.asm`: generated assembly, if any was emitted before the first
   blocker
+- `<name>.o` and `<name>.obj.log`: object output and assembler log when
+  `OBJECT_MODE=1` is used and the source compiles far enough
 - `<name>.log`: full compiler stdout/stderr
 - `report.txt`: PASS/FAIL summary with the first detected blocker and a
   suggested next feature.  The report also records symbol/macro/include usage,
@@ -41,6 +43,12 @@ instead of hanging the smoke target.  Override it with:
 make -C smallc-microcpu selfhost-smoke SELFHOST_TIMEOUT=10
 ```
 
+To also assemble successful smoke outputs to microasm object files:
+
+```sh
+make -C smallc-microcpu selfhost-smoke OBJECT_MODE=1
+```
+
 ## Current inputs
 
 The smoke check currently attempts the real compiler implementation files:
@@ -58,12 +66,11 @@ multi-file support needed for the compiler source itself.
 
 ## Current result snapshot
 
-No real compiler implementation file is expected to pass yet.  The original
-`#include <stdio.h>` open failure is addressed by controlled compatibility
-headers under `smallc-microcpu/include/`; the smoke target passes `-I include`
-and does not search host system include directories.  The smoke target also
-defines `SMALLC_SELFHOST` with `-D` so host-only prototype imports are hidden
-from the target-compatibility pass.
+The original `#include <stdio.h>` open failure is addressed by controlled
+compatibility headers under `smallc-microcpu/include/`; the smoke target passes
+`-I include` and does not search host system include directories.  The smoke
+target also defines `SMALLC_SELFHOST` with `-D` so host-only prototype imports
+are hidden from the target-compatibility pass.
 
 The previous function-like macro blocker, for example:
 
@@ -85,28 +92,34 @@ compiler now keeps 31 significant identifier characters, so names such as
 collide.  Minimal `void` functions, file-scope `static` functions/globals, and
 multiline ANSI function definitions are also accepted.
 
-The next blockers are more specific self-hosting issues:
+The newer blockers from the previous phase are also addressed:
 
-- `cc1.c` reaches `char **host_argv`, which needs pointer-to-pointer
-  declarator support.
-- `cc2.c`, `cc3.c`, and `cc4.c` reach K&R argument type declarations that use
-  the `intptr_t` typedef introduced by the host `int` remapping.
-- `host_compat.c` reaches `const char *src`, so either `const` must be parsed
-  as a qualifier or the self-host input must hide it.
-- `codegen_microcpu.c` now reaches a literal pool capacity limit from the large
-  backend string table.
+- pointer depth greater than one, including `char **`
+- typedef names in K&R-style argument declarations
+- ignored `const` qualifiers
+- the literal pool capacity needed by `codegen_microcpu.c`
+
+With `OBJECT_MODE=1`, `cc2.c` and `codegen_microcpu.c` currently compile to
+microasm and assemble to object files.  The other source files now fail later:
+
+- `cc1.c`: currently stops near a comma-separated K&R argument declaration
+  form (`nogo, ...`) that the smoke parser still does not understand.
+- `cc3.c`: stops at `sizeof(*is)`, which needs `sizeof` on dereferenced
+  pointer expressions.
+- `cc4.c`: stops near a comma-oriented declaration/initializer form in the
+  backend tables.
+- `host_compat.c`: stops at `size_t limit;`, so local declarations using
+  typedef names still need to be supported.
 
 ## Known blockers
 
 The most likely next blockers are:
 
 - full `#if` expressions and richer conditional preprocessing
-- pointer-to-pointer declarators such as `char **argv`
-- typedef names in K&R-style argument type declarations
-- `const` qualifiers in declarations
-- literal pool capacity for large generated string tables
-- `extern` declarations
-- multiple translation units and cross-unit symbol resolution
+- local declarations using typedef names
+- comma-separated K&R argument declarations
+- `sizeof` on dereferenced pointer expressions
+- full compiler linking and cross-unit runtime layout
 - link-time layout for larger compiler data
 - large switch tables
 - complex initializers and struct initializers
@@ -143,12 +156,10 @@ style so the code moves toward eventual self-hosting:
 
 The next self-hosting steps should be incremental:
 
-1. Add pointer-to-pointer declarators and typedef-name K&R argument
-   declarations.
-2. Decide whether to parse `const` as an ignored qualifier or hide it from
-   self-host inputs.
-3. Raise or restructure literal storage for large backend string tables.
-4. Compile individual translation units to assembly consistently.
-5. Add an assembler/linker flow for multiple generated units.
+1. Add local declarations using typedef names, including `size_t`.
+2. Add the remaining old-style declaration forms used by `cc1.c` and `cc4.c`.
+3. Extend `sizeof` handling for pointer dereference expressions.
+4. Compile individual translation units to objects consistently.
+5. Link multiple generated compiler units with runtime objects.
 6. Add enough target runtime for compiler input, output, diagnostics, and
    command-line handling.

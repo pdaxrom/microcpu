@@ -228,11 +228,13 @@ int level13(is)  int is[];  {
     }
   else if(match("*")) {             /* unary * */
     if(level13(is)) fetch(is);
-    if(ptr = is[ST]) is[TI] = ptr[TYPE];
+    if(is[TA])       is[TI] = is[TA];
+    else if(ptr = is[ST]) is[TI] = ptr[TYPE];
     else             is[TI] = INT;
     is[SA] =       /* no (op 0) stage address */
-    is[TA] =       /* not an address */
     is[TC] = 0;    /* not a constant */
+    if(isptrtype(is[TI])) is[TA] = ptrbasetype(is[TI]);
+    else                  is[TA] = 0;
     is[CV] = 1;    /* omit fetch() on func call */
     return 1;
     }
@@ -323,18 +325,19 @@ int level14(is)  int *is; {
         if(is2[TC]) {
           clearstage(before, 0);
           if(is2[CV]) {             /* only add if non-zero */
-            elsz = typesize(ptr[TYPE], VARIABLE);
+            elsz = typesize(is[TA], VARIABLE);
             gen(GETw2n, is2[CV] * elsz);
             gen(ADD12, 0);
             }
           }
         else {
-          elsz = typesize(ptr[TYPE], VARIABLE);
+          elsz = typesize(is[TA], VARIABLE);
           scale1(elsz);
           gen(ADD12, 0);
           }
-        is[TA] = 0;
-        is[TI] = ptr[TYPE];
+        is[TI] = is[TA];
+        if(isptrtype(is[TI])) is[TA] = ptrbasetype(is[TI]);
+        else                  is[TA] = 0;
         k = 1;
         }
       else if(match("(")) {         /* function(...) */
@@ -400,8 +403,9 @@ int memberaccess(is, k, arrow) int is[], k, arrow; {
     }
   is[ST] = 0;
   is[TI] = fieldtype(fid);
-  if(fieldid(fid) == POINTER) is[TA] = fieldtype(fid);
-  else                        is[TA] = 0;
+  if(fieldid(fid) == POINTER)      is[TA] = fieldtype(fid);
+  else if(isptrtype(fieldtype(fid))) is[TA] = ptrbasetype(fieldtype(fid));
+  else                             is[TA] = 0;
   is[TC] = is[CV] = is[SA] = 0;
   return 1;
   }
@@ -499,7 +503,7 @@ int callfunc(ptr)  char *ptr; {      /* symbol table entry or 0 */
 */
 int double(oper, is1, is2) int oper, is1[], is2[]; {
   if((oper != ADD12 && oper != SUB12)
-  || (is1[TA] >> 2 != BPW)
+  || (typesize(is1[TA], VARIABLE) != BPW)
   || (is2[TA])) return 0;
   return 1;
   }
@@ -554,14 +558,14 @@ int step(oper, is, oper2) int oper, is[], oper2; {
 int store(is)  int is[]; {
   char *ptr;
   if(is[TI]) {                    /* putstk */
-    if(is[TI] >> 2 == 1)
+    if(typesize(is[TI], VARIABLE) == 1)
          gen(PUTbp1, 0);
     else gen(PUTwp1, 0);
     }
   else {                          /* putmem */
     ptr = is[ST];
     if(ptr[IDENT] != POINTER
-    && ptr[TYPE] >> 2 == 1)
+    && typesize(ptr[TYPE], VARIABLE) == 1)
          gen(PUTbm1, ptr);
     else gen(PUTwm1, ptr);
     }
@@ -571,7 +575,7 @@ int fetch(is) int is[]; {
   char *ptr;
   ptr = is[ST];
   if(is[TI]) {                                   /* indirect */
-    if(is[TI] >> 2 == BPW)     gen(GETw1p,  0);
+    if(typesize(is[TI], VARIABLE) == BPW) gen(GETw1p,  0);
     else {
       if(is[TI] & UNSIGNED)    gen(GETb1pu, 0);
       else                     gen(GETb1p,  0);
@@ -579,7 +583,7 @@ int fetch(is) int is[]; {
     } 
   else {                                         /* direct */
     if(ptr[IDENT] == POINTER
-    || ptr[TYPE] >> 2 == BPW)  gen(GETw1m,  ptr); 
+    || typesize(ptr[TYPE], VARIABLE) == BPW)  gen(GETw1m,  ptr);
     else {
       if(ptr[TYPE] & UNSIGNED) gen(GETb1mu, ptr);
       else                     gen(GETb1m,  ptr);
@@ -795,8 +799,8 @@ int down2(oper, oper2, level, is, is2)
     else {                                        /* variable result */
       gen(oper, 0);
       if(oper == SUB12
-      && is [TA] >> 2 == BPW
-      && is2[TA] >> 2 == BPW) { /* difference of two word addresses */
+      && typesize(is[TA], VARIABLE) == BPW
+      && typesize(is2[TA], VARIABLE) == BPW) { /* difference of two word addresses */
         gen(SWAP12, 0);
         gen(GETw1n, 1);
         gen(ASR12, 0);          /* div by 2 */
@@ -825,7 +829,8 @@ int nosign(is) int is[]; {
   if(is[TA]
   || is[TC] == UINT
   || (is[TI] & UNSIGNED)
-  || ((ptr = is[ST]) && (ptr[TYPE] & UNSIGNED))
+  || isptrtype(is[TI])
+  || ((ptr = is[ST]) && ((ptr[TYPE] & UNSIGNED) || isptrtype(ptr[TYPE])))
     ) return 1;
   return 0;
   }

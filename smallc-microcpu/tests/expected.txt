@@ -202,3 +202,17 @@
 203_multiline_function_definition 203
 204_multiline_static_void_definition 204
 205_multiline_pointer_return_definition 205
+206_char_pointer_pointer_arg 66
+207_char_pointer_pointer_local 67
+208_int_pointer_pointer 208
+209_pointer_pointer_store 209
+210_typedef_kr_arg_int 210
+211_typedef_kr_arg_charptr 66
+212_typedef_kr_arg_structptr 212
+213_const_int_arg 213
+214_const_char_pointer_arg 66
+215_char_const_pointer_arg 67
+216_const_local 216
+217_many_string_literals 36
+218_string_literal_reuse 212
+219_extern_declaration_no_storage 219
