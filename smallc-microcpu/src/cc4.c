@@ -387,6 +387,7 @@ int trailer()  {
   char *cp;
 #ifdef TARGET_MICROCPU
   outline("");
+  outline("align 1");
   outline("include ../../runtime/lib16.asm");
   outline("include ../../runtime/string.asm");
   outline("align 1");

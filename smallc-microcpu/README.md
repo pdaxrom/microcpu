@@ -86,7 +86,8 @@ The current backend is intentionally small and supports:
 - zero-terminated string literals and escapes: `\n`, `\r`, `\t`, octal
   escapes including `\0`, `\\`, and `\"`
 - `sizeof` for `char`, `int`, pointers, and arrays
-- `strlen(char *)` through `runtime/string.asm`
+- tiny libc string/memory helpers through `runtime/string.asm`: `strlen`,
+  `memset`, `memcpy`, `memcmp`, `strcpy`, `strcmp`, and `strchr`
 - multiply, divide, and modulo through runtime helpers
 
 Multiply, divide, modulo, comparisons, and variable shifts are emitted as calls
@@ -96,12 +97,20 @@ arithmetic advances by 2 bytes, and `char *` arithmetic advances by 1 byte.
 Return values are compared as raw 16-bit `V0`; for example, `-5` is `65531`.
 Right shift is currently arithmetic.
 
+The current Small-C frontend does not provide a real `void`/`void *` type, so
+memory helpers are declared in tests with temporary compatible prototypes such
+as `char *memset(char *s, int c, int n);` and
+`char *memcpy(char *dst, char *src, int n);`.  `memcpy` does not support
+overlapping regions; add `memmove` separately when overlap is needed.
+
 Intentionally unsupported at this stage:
 
 - structs, unions, typedefs, enums
 - `long`, `float`, and full libc
 - optimizer/register allocator
 - function pointers
+- `void` and `void *` type semantics
+- `memmove`, `printf`, `putchar`, `puts`, UART libc tests, `malloc`, and `free`
 - hexadecimal `\xHH` string escapes
 - self-hosting
 - full libc beyond the current small runtime helpers

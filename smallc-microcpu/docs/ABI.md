@@ -57,6 +57,11 @@ Function arguments are pushed by the caller in source order, left to right, to
 match the original Small-C calling sequence.  The caller removes the arguments
 after the call.
 
+For leaf runtime functions that do not build a generated Small-C frame, the
+last argument is at `sp + 2`, the previous argument is at `sp + 4`, and so on.
+For example, `memset(s, c, n)` sees `n` at `sp + 2`, `c` at `sp + 4`, and `s`
+at `sp + 6`.
+
 ## Stack Frame
 
 Generated function prologue:
@@ -142,12 +147,27 @@ Runtime helpers follow the expression-register convention:
 - Result: `v0`.
 - Scratch: `v2`, `v3`.
 - Helpers that call other helpers save and restore `lr`.
+- Runtime helpers may clobber `v0`, `v1`, `v2`, and `v3`.  Helpers that use
+  `v4` save and restore it.
 
 Current helpers live in `runtime/lib16.asm`.
 
-String helpers live in `runtime/string.asm`.  `_strlen` is callable as the C
-function `int strlen(char *s);`; it reads its single stack argument according
-to the normal calling convention and returns the byte length in `v0`.
+String and memory helpers live in `runtime/string.asm` and use the same leading
+underscore as generated external C symbols:
+
+- `_strlen`: `int strlen(char *s);`
+- `_memset`: currently declared as `char *memset(char *s, int c, int n);`
+- `_memcpy`: currently declared as
+  `char *memcpy(char *dst, char *src, int n);`
+- `_memcmp`: `int memcmp(char *a, char *b, int n);`
+- `_strcpy`: `char *strcpy(char *dst, char *src);`
+- `_strcmp`: `int strcmp(char *a, char *b);`
+- `_strchr`: `char *strchr(char *s, int c);`
+
+Pointer-returning helpers return the pointer value in `v0`.  `memcmp` and
+`strcmp` compare bytes as unsigned 8-bit values; equality returns 0, and for
+non-equal inputs only the sign of the result is specified.  `memcpy` does not
+define overlapping-copy behavior.
 
 ## Test Startup And Halt
 

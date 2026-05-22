@@ -248,9 +248,13 @@ int declglb(type, class)  int type, class; {
     else                 {id = VARIABLE; dim = 1;}
     if(symname(ssname) == 0) illname();
     if(findglb(ssname)) multidef(ssname);
-    if(id == VARIABLE) {
-      if     (match("("))  {id = FUNCTION; skipprotoargs();}
-      else if(match("["))  {id = ARRAY; dim = needsub();}
+    if(match("(")) {
+      id = FUNCTION;
+      skipprotoargs();
+      }
+    else if(id == VARIABLE && match("[")) {
+      id = ARRAY;
+      dim = needsub();
       }
     if     (class == EXTERNAL) external(ssname, type >> 2, id);
     else if(   id != FUNCTION) {
