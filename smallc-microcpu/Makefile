@@ -56,6 +56,7 @@ test: $(CC_BIN)
 selfhost-smoke: $(CC_BIN)
 	$(PYTHON) selfhost/run_smoke.py --compiler $(CC_BIN) \
 		--build-dir $(SELFHOST_BUILD) --include-dir include \
+		--define SMALLC_SELFHOST \
 		--timeout-seconds $(SELFHOST_TIMEOUT) \
 		$(STRICT_ARG) $(SELFHOST_SRCS)
 

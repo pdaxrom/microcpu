@@ -5,10 +5,6 @@ int strlen();
 int strcmp();
 int strcpy();
 int strncpy();
-int strcat();
-int strchr();
-int memcpy();
 int memset();
-int memcmp();
 
 #endif

@@ -29,6 +29,17 @@ typedef intptr_t sc_word;
 #define NEWLINE LF
 #endif
 
+#ifdef SMALLC_SELFHOST
+int getarg();
+int iscons();
+int poll();
+int avail();
+sc_word sc_fopen();
+int sc_fclose();
+char *sc_fgets();
+int sc_fputs();
+int sc_fputc();
+#else
 int getarg(sc_word order, char *dst, sc_word dst_size, sc_word argc,
     sc_word *argv);
 int iscons(void *stream);
@@ -39,6 +50,7 @@ int sc_fclose(sc_word stream);
 char *sc_fgets(char *buf, sc_word size, sc_word stream);
 int sc_fputs(const char *text, sc_word stream);
 int sc_fputc(sc_word ch, sc_word stream);
+#endif
 
 #define abort(code) exit((int)(code))
 
@@ -52,7 +64,9 @@ int sc_fputc(sc_word ch, sc_word stream);
 #define fgets(buf, size, stream) sc_fgets((buf), (sc_word)(size), (sc_word)(stream))
 #define fputs(text, stream) sc_fputs((text), (sc_word)(stream))
 #define fputc(ch, stream) sc_fputc((sc_word)(ch), (sc_word)(stream))
+#ifndef SMALLC_SELFHOST
 #include "smallc_proto.h"
+#endif
 #endif
 
 #endif

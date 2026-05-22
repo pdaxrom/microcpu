@@ -23,7 +23,9 @@ For each attempted source file the target writes:
   blocker
 - `<name>.log`: full compiler stdout/stderr
 - `report.txt`: PASS/FAIL summary with the first detected blocker and a
-  suggested next feature
+  suggested next feature.  The report also records symbol/macro/include usage,
+  included compatibility headers, repeated include observations, and an
+  approximate declaration contributor list.
 
 The default target is report-only and exits successfully even when source files
 fail compatibility checks.  To make failures fail the make target:
@@ -59,7 +61,9 @@ multi-file support needed for the compiler source itself.
 No real compiler implementation file is expected to pass yet.  The original
 `#include <stdio.h>` open failure is addressed by controlled compatibility
 headers under `smallc-microcpu/include/`; the smoke target passes `-I include`
-and does not search host system include directories.
+and does not search host system include directories.  The smoke target also
+defines `SMALLC_SELFHOST` with `-D` so host-only prototype imports are hidden
+from the target-compatibility pass.
 
 The previous function-like macro blocker, for example:
 
@@ -67,27 +71,30 @@ The previous function-like macro blocker, for example:
 #define abort(code) exit((int)(code))
 ```
 
-is now handled by the simple macro expander.  The current report advances past
-that point.  For most compiler files the next blocker is global symbol table
-overflow while reading the expanded prototype list from `smallc_proto.h`, first
-reported around:
+is now handled by the simple macro expander.  The former global symbol table
+overflow around `intptr_t chrcon();` was not a real capacity limit; it came
+from importing the host-only `smallc_proto.h` declaration list into selfhost
+smoke inputs.  `SMALLC_SELFHOST` now suppresses that include.  Repeated
+compatible function prototypes are treated as declarations, multiline
+prototypes are skipped correctly, and a prototype followed by the actual
+function definition no longer reports `already defined`.
 
-```c
-intptr_t chrcon();
-```
-
-For `host_compat.c`, the first blocker is duplicate declaration handling around
-the multiline `getarg` prototype.  These are useful next signals: the
-preprocessor can now enter the compiler sources far enough to expose symbol
-table/prototype pressure instead of include or macro-definition failures.
+The current report advances to later blockers.  The most important one is the
+original 8-character Small-C symbol-name limit: long compiler implementation
+names such as `typedef_count`, `typedef_type`, `macro_argc`, and
+`macro_argfirst` collide after truncation.  Other files expose the next parser
+gaps, including `static` functions in `codegen_microcpu.c`, multiline ANSI
+function definitions in `host_compat.c`, and cases where the hosted source is
+made harder by macro-remapping `int` to `intptr_t`.
 
 ## Known blockers
 
 The most likely next blockers are:
 
 - full `#if` expressions and richer conditional preprocessing
-- larger global symbol capacity or more selective prototype handling
-- duplicate/multiline prototype handling in host compatibility sources
+- the 8-character symbol-name limit in real compiler sources
+- multiline ANSI function definitions, or converting those files to old-style
+  definitions for self-hosting
 - `static` declarations and static functions
 - `extern` declarations
 - multiple translation units and cross-unit symbol resolution

@@ -4,9 +4,6 @@
 #define NULL 0
 
 int calloc();
-int malloc();
-int free();
 int exit();
-int abort();
 
 #endif

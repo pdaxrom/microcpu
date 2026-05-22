@@ -58,8 +58,10 @@ make -C smallc-microcpu selfhost-smoke
 ```
 
 The target writes generated `.asm` files, full logs, and
-`build/selfhost-smoke/report.txt`.  It does not assemble, link, or run the
-compiler on microcpu.  By default this is report-only and exits 0 even when
+`build/selfhost-smoke/report.txt`.  The report includes the first blocker,
+symbol/macro/include usage, the include files seen by the smoke runner, and an
+approximate declaration-source breakdown.  It does not assemble, link, or run
+the compiler on microcpu.  By default this is report-only and exits 0 even when
 compiler source files hit unsupported syntax.  Use strict mode when a failure
 should fail the make target:
 
@@ -79,6 +81,7 @@ The compiler has a deliberately small preprocessing layer.  It supports:
 - `#include <file.h>` with search in `-I` paths, then the controlled
   compatibility headers
 - `-I DIR` and `-IDIR`
+- `-D NAME`, `-DNAME`, and `-DNAME=value` for simple object-like defines
 - nested includes up to `MAXINCLUDE`
 - object-like `#define NAME value` and `#define NAME`
 - simple function-like `#define NAME(a,b) replacement` macros
@@ -130,6 +133,8 @@ The current backend is intentionally small and supports:
 - minimal preprocessing: object-like and simple function-like `#define`,
   `#undef`, guarded includes, `#ifdef`/`#ifndef`, and `-I` include paths
 - direct function calls, nested calls, and calls using locals/globals
+- repeated compatible function prototypes, prototypes before definitions, and
+  multiline prototypes
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
 - address of local variables
@@ -162,8 +167,10 @@ structs use `sizeof(struct Tag)` as their element stride.
 Return values are compared as raw 16-bit `V0`; for example, `-5` is `65531`.
 Right shift is currently arithmetic.
 
-Current fixed compiler metadata limits are `MAXTYPEDEFS=40`, `MAXSTRUCTS=20`,
-and `MAXFIELDS=160`.
+Current fixed compiler metadata limits are `NUMGLBS=200`, `NUMLOCS=25`,
+`MACNBR=300`, `MAXINCLUDE=8`, `MAXTYPEDEFS=40`, `MAXSTRUCTS=20`, and
+`MAXFIELDS=160`.  Symbol names are significant to 8 characters, matching the
+old Small-C table format.
 
 The current Small-C frontend does not provide a real `void`/`void *` type, so
 memory helpers are declared in tests with temporary compatible prototypes such

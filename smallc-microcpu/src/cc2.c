@@ -18,7 +18,8 @@ extern int
   *wq,  ccode,  ch,  csp,  eof,  errflag,  iflevel,
   input,  input2,  inclevel,  incfile[MAXINCLUDE],  listfp,  macptr,  nch,
   nxtlab,  op[16],  opindex,  opsize,  output,  pptr,
-  skiplevel,  *wqptr,  macro_argc[MACNBR],  macro_argfirst[MACNBR];
+  skiplevel,  *wqptr,  macro_argc[MACNBR],  macro_argfirst[MACNBR],
+  typedef_count, include_open_count;
 
 /********************** input functions **********************/
 
@@ -724,6 +725,80 @@ int noiferr() {
   errflag = 0;
   }
 
+int glbused() {
+  int used;
+  char *ptr;
+  used = 0;
+  ptr = STARTGLB;
+  while(ptr < ENDGLB) {
+    if(*ptr) ++used;
+    ptr += SYMMAX;
+    }
+  return used;
+  }
+
+int locused() {
+  int used;
+  char *ptr;
+  used = 0;
+  ptr = STARTLOC;
+  while(ptr < locptr) {
+    ++used;
+    ptr = nextsym(ptr);
+    }
+  return used;
+  }
+
+int macused() {
+  int used, i;
+  char *ptr;
+  used = i = 0;
+  ptr = macn;
+  while(i < MACNBR) {
+    if(*ptr && *ptr != 1) ++used;
+    ptr += MACENTRY;
+    ++i;
+    }
+  return used;
+  }
+
+int errnum(n, fp) int n, fp; {
+  int i;
+  char buf[8];
+  if(n < 0) {
+    fputc('-', fp);
+    n = -n;
+    }
+  i = 0;
+  do {
+    buf[i++] = (n % 10) + '0';
+    n = n / 10;
+    } while(n && i < 8);
+  while(i) fputc(buf[--i], fp);
+  }
+
+int errstats(fp) int fp; {
+  fputs("stats: globals=", fp);
+  errnum(glbused(), fp);
+  fputc('/', fp);
+  errnum(NUMGLBS, fp);
+  fputs(" locals=", fp);
+  errnum(locused(), fp);
+  fputc('/', fp);
+  errnum(NUMLOCS, fp);
+  fputs(" typedefs=", fp);
+  errnum(typedef_count, fp);
+  fputc('/', fp);
+  errnum(MAXTYPEDEFS, fp);
+  fputs(" macros=", fp);
+  errnum(macused(), fp);
+  fputc('/', fp);
+  errnum(MACNBR, fp);
+  fputs(" includes=", fp);
+  errnum(include_open_count, fp);
+  fputc(NEWLINE, fp);
+  }
+
 int error(msg) char msg[]; {
   if(errflag) return;
   else errflag = 1;
@@ -740,5 +815,6 @@ int errout(msg, fp) char msg[]; int fp; {
   while(k++ <= lptr) fputc(' ', fp);
   lout("/\\", fp);
   fputs("**** ", fp); lout(msg, fp);
+  errstats(fp);
   }
 

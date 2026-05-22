@@ -51,6 +51,7 @@ int
   incpath_count, /* number of include search paths */
   skip_count, /* number of argv indexes consumed by options */
   macro_param_count, /* next function-like macro parameter slot */
+  include_open_count, /* number of include files opened */
   usexpr  = YES, /* true if value of expression is used */
   ccode   = YES, /* true while parsing C code */
  *snext,    /* next addr in stage */
@@ -217,9 +218,20 @@ int typedfunc() {
   else if(decltype(&type, &id, &sz) == 0) {
     return 0;
     }
-  while(match("*")) ;
-  blanks();
+  while(ch && ch <= ' ') gch();
+  if(ch == 0) {
+    lptr = save_lptr; ch = save_ch; nch = save_nch;
+    return 0;
+    }
+  while(match("*")) {
+    while(ch && ch <= ' ') gch();
+    if(ch == 0) {
+      lptr = save_lptr; ch = save_ch; nch = save_nch;
+      return 0;
+      }
+    }
   p = lptr;
+  while(*p && *p <= ' ') ++p;
   if(alpha(*p) == 0) {
     lptr = save_lptr; ch = save_ch; nch = save_nch;
     return 0;
@@ -235,6 +247,10 @@ int typedfunc() {
       else if(*p == ')') --depth;
       ++p;
       }
+    if(depth) {
+      lptr = save_lptr; ch = save_ch; nch = save_nch;
+      return 0;
+      }
     while(*p && *p <= ' ') ++p;
     if(*p != ';') return 1;
     }
@@ -248,7 +264,12 @@ int typedfunc() {
 int skipprotoargs() {
   int depth;
   depth = 1;
-  while(depth && ch) {
+  while(depth) {
+    if(ch == 0) {
+      if(eof) break;
+      preprocess();
+      continue;
+      }
     if(match("(")) ++depth;
     else if(match(")")) --depth;
     else gch();
@@ -569,16 +590,24 @@ int declglb(type, class)  int type, class; {
 
 int declglb2(type, class, baseid)  int type, class, baseid; {
   int id, dim;
+  char *ptr;
   while(1) {
     if(endst()) return;  /* do line */
     if(match("*"))       {id = POINTER;  dim = 0;}
     else                 {id = baseid;   dim = 1;}
     if(symname(ssname) == 0) illname();
-    if(findglb(ssname)) multidef(ssname);
     if(match("(")) {
       id = FUNCTION;
       skipprotoargs();
+      ptr = findglb(ssname);
+      if(ptr) {
+        if(ptr[IDENT] != FUNCTION) multidef(ssname);
+        }
+      else addsym(ssname, FUNCTION, type, 0, 0, &glbptr, AUTOEXT);
+      if(match(",") == 0) return;
+      continue;
       }
+    if(findglb(ssname)) multidef(ssname);
     else if(id == VARIABLE && match("[")) {
       id = ARRAY;
       dim = needsub();
@@ -742,6 +771,56 @@ int dodefine() {
     error("macro string queue full");
     abort(ERRCODE);
     }
+  }
+
+int defarg(text) char *text; {
+  int i, j;
+  char name[MACNAMESIZE], value[LINESIZE];
+  i = 0;
+  while(text[i] && text[i] != '=' && text[i] > ' ' && i < MACNAMEMAX) {
+    name[i] = text[i];
+    ++i;
+    }
+  name[i] = 0;
+  if(name[0] == 0) {
+    error("bad -D macro name");
+    return 0;
+    }
+  if(text[i] == '=') {
+    ++i;
+    j = 0;
+    while(text[i] && j < LINEMAX) value[j++] = text[i++];
+    value[j] = 0;
+    }
+  else {
+    value[0] = '1';
+    value[1] = 0;
+    }
+  return addobjectmacro(name, value);
+  }
+
+int addobjectmacro(sname, value) char *sname, *value; {
+  int k, idx;
+  k = 0;
+  if(macsearch(sname) == 0) {
+    if(cptr2 = cptr)
+      while(*cptr2++ = sname[k++]) ;
+    else {
+      error("macro name table full");
+      return 0;
+      }
+    }
+  idx = macindex(cptr);
+  macro_argc[idx] = -1;
+  macro_argfirst[idx] = 0;
+  putint(macptr, cptr+MACNAMESIZE, 2);
+  while(*value) putmac(*value++);
+  putmac(NULL);
+  if(macptr >= MACMAX) {
+    error("macro string queue full");
+    abort(ERRCODE);
+    }
+  return 1;
   }
 
 int doundef() {
@@ -1320,6 +1399,18 @@ int ask() {
   line = mline;
   while(getarg(++i, line, LINESIZE, argcs, argvs) != EOF) {
     if(line[0] != '-' && line[0] != '/') continue;
+    if(toupper(line[1]) == 'D') {
+      if(line[2] > ' ') defarg(line+2);
+      else {
+        if(getarg(++i, line, LINESIZE, argcs, argvs) == EOF) {
+          fputs("missing macro name after -D\n", stderr);
+          abort(ERRCODE);
+          }
+        defarg(line);
+        addskiparg(i);
+        }
+      continue;
+      }
     if(toupper(line[1]) == 'I') {
       if(line[2] > ' ') addincpath(line+2);
       else {
@@ -1349,7 +1440,7 @@ int ask() {
       if(toupper(line[1]) == 'M') {monitor = YES; continue;}
       if(toupper(line[1]) == 'P') {pause   = YES; continue;}
       }
-    fputs("usage: cc [file]... [-Idir] [-m] [-a] [-p] [-l#] [-no]\n", stderr);
+    fputs("usage: cc [file]... [-Dname[=value]] [-Idir] [-m] [-a] [-p] [-l#] [-no]\n", stderr);
     abort(ERRCODE);
     }
   }
@@ -1481,6 +1572,7 @@ int openinclude(name, quoted) char *name; int quoted; {
     return 0;
     }
   incfile[inclevel++] = fd;
+  ++include_open_count;
   setcurdir(path, incdir + inclevel * LINESIZE);
   input2 = fd;
   return 1;

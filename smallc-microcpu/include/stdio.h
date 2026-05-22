@@ -12,15 +12,11 @@ extern int stderr;
 
 int printf();
 int fprintf();
-int sprintf();
 int fopen();
 int fclose();
 int fgetc();
 int fgets();
 int fputc();
 int fputs();
-int fread();
-int fwrite();
-int fflush();
 
 #endif

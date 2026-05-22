@@ -181,3 +181,10 @@
 181_macro_func_comma_nested 181
 182_macro_func_char_arg 65
 183_macro_abort_style 183
+184_prototype_repeat 184
+185_prototype_before_function 185
+186_pointer_return_prototype_repeat 66
+187_typedef_return_prototype 187
+188_multiline_prototype 188
+189_prototype_then_oldstyle_definition 189
+190_repeated_multiline_prototype 190
