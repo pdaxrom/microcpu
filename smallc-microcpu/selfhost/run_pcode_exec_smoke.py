@@ -65,6 +65,10 @@ def link(args: argparse.Namespace, objects: list[pathlib.Path], out: pathlib.Pat
     return proc.returncode == 0
 
 
+def write_end_marker(path: pathlib.Path) -> None:
+    path.write_text("public __pcd_gend\n__pcd_gend:\n")
+
+
 def run_microemu(args: argparse.Namespace, bin_path: pathlib.Path, input_path: pathlib.Path, log: pathlib.Path) -> tuple[bool, int | None, str, str]:
     argv = [
         str(args.emulator),
@@ -118,9 +122,10 @@ def classify_run(ok: bool, actual: int | None, reason: str) -> str:
 def run_tool(
     args: argparse.Namespace,
     name: str,
-    pcode_obj: pathlib.Path,
+    pcode_objects: list[pathlib.Path],
     interp_obj: pathlib.Path,
     hosted_obj: pathlib.Path,
+    end_marker_obj: pathlib.Path,
     input_text: bytes,
     expected_substring: str,
 ) -> dict[str, object]:
@@ -145,11 +150,12 @@ def run_tool(
         "stdin_bytes": len(input_text) + 1,
         "log": log,
     }
-    if not pcode_obj.exists():
-        result["reason"] = f"missing p-code object: {pcode_obj}"
+    missing = [path for path in pcode_objects if not path.exists()]
+    if missing:
+        result["reason"] = "missing p-code object: " + ", ".join(str(path) for path in missing)
         return result
 
-    if not link(args, [interp_obj, hosted_obj, pcode_obj], bin_path, log):
+    if not link(args, [interp_obj, hosted_obj] + pcode_objects + [end_marker_obj], bin_path, log):
         result["reason"] = "link failed"
         return result
     result["link_ok"] = True
@@ -231,9 +237,18 @@ def main(argv: list[str]) -> int:
     hosted_log.write_text("")
     hosted_obj = args.build_dir / "hosted_io.o"
     interp_obj = args.link_build_dir / "pcode_interpreter.o"
+    end_marker_asm = args.build_dir / "pcode_end_marker.asm"
+    end_marker_obj = args.build_dir / "pcode_end_marker.o"
     if not assemble(args, args.runtime_dir / "hosted_io.asm", hosted_obj, hosted_log):
         report = args.build_dir / "report.txt"
         report.write_text(f"Self-host p-code execution smoke report\nStatus: FAIL\nhosted_io assembly failed: {hosted_log}\n")
+        print("selfhost-pcode-exec-smoke: FAIL")
+        print(f"report: {report}")
+        return 1 if args.strict else 0
+    write_end_marker(end_marker_asm)
+    if not assemble(args, end_marker_asm, end_marker_obj, hosted_log):
+        report = args.build_dir / "report.txt"
+        report.write_text(f"Self-host p-code execution smoke report\nStatus: FAIL\np-code end marker assembly failed: {hosted_log}\n")
         print("selfhost-pcode-exec-smoke: FAIL")
         print(f"report: {report}")
         return 1 if args.strict else 0
@@ -251,9 +266,10 @@ def main(argv: list[str]) -> int:
         results.append(run_tool(
             args,
             name,
-            args.link_build_dir / name / f"{name}.pcode.o",
+            sorted((args.link_build_dir / name).glob("*.pcode.o")),
             interp_obj,
             hosted_obj,
+            end_marker_obj,
             inputs[name],
             expected[name],
         ))

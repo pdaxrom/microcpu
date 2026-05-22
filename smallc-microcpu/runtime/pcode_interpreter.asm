@@ -6,8 +6,6 @@
 include ../../asm/include/pseudo.inc
 
 extern __pcode_entry
-extern __pcode_start
-extern __pcd_native
 
 PCODE_FRAME_SIZE	equ	64
 PCODE_CALL_DEPTH	equ	16
@@ -22,6 +20,7 @@ PCODE_STACK_BYTES	equ	512
 
 __pcode_startup:
 	set	sp, __pcode_native_stktop
+	sub	sp, sp, 2
 	set	v3, __pcode_stack
 	set	v4, __pcode_frame0
 	set	v1, __pcode_depth
@@ -29,8 +28,6 @@ __pcode_startup:
 	str	v0, v1, 0
 	set	v2, __pcode_entry
 	ldr	v2, v2, 0
-	set	v0, __pcode_start
-	add	v2, v2, v0
 	b	__pcode_loop
 
 __pcode_loop:
@@ -74,6 +71,7 @@ __pcode_loop:
 	pcode_dispatch	$50, __pcode_op_call_u16
 	pcode_dispatch	$51, __pcode_op_ret
 	pcode_dispatch	$54, __pcode_op_ncall_u8
+	pcode_dispatch	$55, __pcode_op_ncall_addr_u16
 	pcode_dispatch	$57, __pcode_op_icall_u8
 	pcode_dispatch	$58, __pcode_op_call0_u16
 	pcode_dispatch	$59, __pcode_op_call1_u16
@@ -370,8 +368,7 @@ __pcode_call_args_done:
 	str	v0, v1, 0
 	set	v1, __pcode_call_target
 	ldr	v0, v1, 0
-	set	v1, __pcode_start
-	add	v2, v1, v0
+	mov	v2, v0
 	b	__pcode_loop
 
 __pcode_op_ncall_u8:
@@ -381,6 +378,27 @@ __pcode_op_ncall_u8:
 	bsr	__pcode_fetch_u8
 	set	v1, __pcode_ncall_argc
 	str	v0, v1, 0
+	set	v1, __pcode_ncall_id
+	ldr	v0, v1, 0
+	shl	v0, v0, 1
+	set	v1, __pcd_native
+	add	v1, v1, v0
+	ldr	v0, v1, 0
+	set	v1, __pcode_ncall_target
+	str	v0, v1, 0
+	b	__pcode_ncall_setup
+
+__pcode_op_ncall_addr_u16:
+	bsr	__pcode_fetch_u8
+	set	v1, __pcode_ncall_argc
+	str	v0, v1, 0
+	bsr	__pcode_fetch_u16
+	set	v1, __pcode_ncall_target
+	str	v0, v1, 0
+
+__pcode_ncall_setup:
+	set	v1, __pcode_ncall_argc
+	ldr	v0, v1, 0
 	shl	v0, v0, 1
 	set	v1, __pcode_ncall_arg_bytes
 	str	v0, v1, 0
@@ -422,11 +440,7 @@ __pcode_ncall_do_call:
 	str	v3, v1, 0
 	set	v1, __pcode_saved_frame
 	str	v4, v1, 0
-	set	v1, __pcode_ncall_id
-	ldr	v0, v1, 0
-	shl	v0, v0, 1
-	set	v1, __pcd_native
-	add	v1, v1, v0
+	set	v1, __pcode_ncall_target
 	ldr	v0, v1, 0
 	add	lr, pc, 3
 	mov	pc, v0
@@ -624,6 +638,8 @@ __pcode_ncall_off:
 	dw	0
 __pcode_ncall_retval:
 	dw	0
+__pcode_ncall_target:
+	dw	0
 __pcode_saved_ip:
 	dw	0
 __pcode_saved_stack:
@@ -632,6 +648,8 @@ __pcode_saved_frame:
 	dw	0
 __pcode_ncall_args:
 	ds	32
+__pcd_native:
+	dw	0
 
 	align	1
 __pcode_stack:

@@ -7,7 +7,6 @@ import argparse
 import pathlib
 import sys
 
-import pcode_merge
 import run_pcode_microemu as pcode
 
 
@@ -31,6 +30,33 @@ def compile_pcode_source(
     return ok, pca_path
 
 
+def compile_native_source(
+    test_name: str,
+    source: pathlib.Path,
+    args: argparse.Namespace,
+    log_path: pathlib.Path,
+) -> tuple[bool, pathlib.Path]:
+    stem = source.stem
+    name = f"{test_name}__{stem}"
+    i_path = args.build_dir / f"{name}.native.i"
+    asm_path = args.build_dir / f"{name}.native.asm"
+    obj_path = args.build_dir / f"{name}.native.o"
+    argv = [str(args.preprocessor), "-o", str(i_path)]
+    for include_dir in args.include_dir:
+        argv.extend(["-I", str(include_dir)])
+    argv.append(str(source))
+    proc = pcode.run_cmd(log_path, f"preprocess-native {source.name}", argv)
+    if proc.returncode != 0:
+        return False, obj_path
+    argv = [str(args.cc_only), "--backend", "microcpu", "--object", "-o", str(asm_path), str(i_path)]
+    proc = pcode.run_cmd(log_path, f"compile-native {source.name}", argv)
+    if proc.returncode != 0:
+        return False, obj_path
+    if not pcode.assemble(args, asm_path, obj_path, log_path):
+        return False, obj_path
+    return True, obj_path
+
+
 def run_one(
     name: str,
     test_path: pathlib.Path,
@@ -41,46 +67,68 @@ def run_one(
     rows: list[str],
 ) -> bool:
     log_path = args.build_dir / f"{name}.log"
-    merged_pca = args.build_dir / f"{name}.merged.pca"
-    pcode_asm = args.build_dir / f"{name}.pcode.asm"
-    pcode_obj = args.build_dir / f"{name}.pcode.o"
     bin_path = args.build_dir / f"{name}.bin"
     log_path.write_text("")
 
     print(f"{name}:")
     pca_paths: list[pathlib.Path] = []
+    native_objects: list[pathlib.Path] = []
     for source in sorted(test_path.glob("*.c")):
-        ok, pca_path = compile_pcode_source(name, source, args, log_path)
-        if ok:
-            print(f"  PCODE {source.name} PASS")
-            pca_paths.append(pca_path)
+        if source.name.startswith("native_"):
+            ok, obj_path = compile_native_source(name, source, args, log_path)
+            if ok:
+                print(f"  NATIVE {source.name} PASS")
+                native_objects.append(obj_path)
+            else:
+                print(f"  NATIVE {source.name} FAIL")
+                print(f"  log: {log_path}")
+                return False
         else:
-            print(f"  PCODE {source.name} FAIL")
-            print(f"  log: {log_path}")
-            return False
+            ok, pca_path = compile_pcode_source(name, source, args, log_path)
+            if ok:
+                print(f"  PCODE {source.name} PASS")
+                pca_paths.append(pca_path)
+            else:
+                print(f"  PCODE {source.name} FAIL")
+                print(f"  log: {log_path}")
+                return False
 
+    pcode_funcs, _pcode_data = pcode.collect_public_pcode_symbols(pca_paths)
+    symbol_map = pcode.ObjectSymbolMap()
+    pcode_objects: list[pathlib.Path] = []
+    total_bytecode = 0
+    total_data = 0
+    total_natives: set[str] = set()
     try:
-        pcode_merge.merge_pca_files(pca_paths, merged_pca)
-        entry, bytecode, data, data_labels, natives, externs = pcode.encode_pca(merged_pca)
-        pcode.write_pcode_object_asm(pcode_asm, entry, bytecode, data, data_labels, natives, externs)
+        for pca_path in pca_paths:
+            module = pca_path.stem
+            pcode_asm = args.build_dir / f"{module}.pcode.asm"
+            pcode_obj = args.build_dir / f"{module}.pcode.o"
+            encoded = pcode.encode_pca_object(pca_path, pcode_funcs)
+            pcode.write_encoded_pcode_object_asm(pcode_asm, encoded, module, symbol_map)
+            total_bytecode += pcode.bytecode_size(encoded.bytecode)
+            total_data += len(encoded.data)
+            total_natives.update(encoded.natives)
+            if pcode.assemble(args, pcode_asm, pcode_obj, log_path):
+                pcode_objects.append(pcode_obj)
+            else:
+                print(f"  PCODE ASSEMBLE {pca_path.name} FAIL")
+                print(f"  log: {log_path}")
+                return False
     except Exception as exc:
-        print(f"  PCODE MERGE FAIL {exc}")
+        print(f"  PCODE OBJECT FAIL {exc}")
         print(f"  log: {log_path}")
         with log_path.open("a") as log:
-            log.write(f"pcode merge error: {exc}\n")
+            log.write(f"pcode object error: {exc}\n")
         return False
 
-    if pcode.assemble(args, pcode_asm, pcode_obj, log_path):
-        print("  PCODE ASSEMBLE PASS")
-    else:
-        print("  PCODE ASSEMBLE FAIL")
-        print(f"  log: {log_path}")
-        return False
+    print("  PCODE ASSEMBLE PASS")
 
     link_objects = [interp_obj]
-    if natives:
+    if total_natives or native_objects:
         link_objects.append(runtime_obj)
-    link_objects.append(pcode_obj)
+    link_objects.extend(native_objects)
+    link_objects.extend(pcode_objects)
     if pcode.link(args, link_objects, bin_path, log_path):
         print("  LINK PASS")
     else:
@@ -101,10 +149,14 @@ def run_one(
 
     rows.append(f"{name}:")
     rows.append(f"  p-code modules: {len(pca_paths)}")
-    rows.append(f"  p-code bytecode bytes: {pcode.bytecode_size(bytecode)}")
-    rows.append(f"  p-code global data bytes: {len(data)}")
-    rows.append(f"  p-code native table bytes: {len(natives) * 2}")
-    rows.append(f"  pcode.o size: {pcode_obj.stat().st_size}")
+    rows.append(f"  p-code objects: {len(pcode_objects)}")
+    rows.append(f"  native objects: {len(native_objects)}")
+    rows.append(f"  merger used: no")
+    rows.append(f"  p-code bytecode bytes: {total_bytecode}")
+    rows.append(f"  p-code global data bytes: {total_data}")
+    rows.append("  p-code native table bytes: 0")
+    rows.append(f"  p-code native call symbols: {len(total_natives)}")
+    rows.append(f"  pcode.o size: {sum(obj.stat().st_size for obj in pcode_objects)}")
     rows.append(f"  linked binary bytes: {bin_path.stat().st_size}")
     return True
 

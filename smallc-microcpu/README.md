@@ -128,8 +128,9 @@ the result under `microemu`:
 make -C smallc-microcpu test-pcode-native
 ```
 
-P-code also has a multi-module test path that merges per-translation-unit
-`.pca` files into one p-code object, then runs it under `microemu`:
+P-code also has a multi-module test path that assembles each translation unit
+to its own p-code object, links those objects directly, then runs the image
+under `microemu`:
 
 ```sh
 make -C smallc-microcpu test-pcode-multi
@@ -142,14 +143,15 @@ direct C calls, arrays, basic pointers, string indexing, enum/typedef basics,
 simple struct access, static and void functions, pointer-to-pointer loads,
 casts, pre/post increment and decrement, p-code function-pointer indirect
 calls, native `strlen`/`strcpy`, and native `putchar` UART output.  The
-microcpu interpreter uses the same bytecode
-semantics as the host interpreter and currently supports `NCALL_U8` through a
-link-time native table, including optional user native objects.  Function
-pointers currently target p-code functions; native function pointers are still
+microcpu interpreter uses the same bytecode semantics as the host interpreter
+and currently supports direct relocatable native calls through
+`NCALL_ADDR_U16`, including optional user native objects.  Function pointers
+currently target p-code functions; native function pointers are still
 unsupported.  P-code is not used by the normal native test flow yet.
 `test-pcode-multi` additionally covers p-code-to-p-code cross-module calls,
 extern globals, static symbol isolation, and cross-module p-code function
-pointers.
+pointers.  Long p-code public symbols are shortened deterministically for the
+15-character object format limit.
 
 `build/pcode/size-report.txt` records raw bytecode bytes, global data bytes,
 native table bytes, total p-code object data size, and a comparison with the
@@ -174,13 +176,13 @@ To try linking separate p-code-hosted tool images without running them:
 make -C smallc-microcpu selfhost-pcode-link-smoke
 ```
 
-This writes `build/selfhost-pcode-link/report.txt`.  It merges each tool's
-p-code modules into a single p-code object and links it with the p-code
-interpreter plus generated link-only hosted stubs.  The stubs are placeholders
-for size/unresolved-symbol measurement, not real target file I/O.  With the
-current conservative compaction pass, this link smoke reports both `smallcpp`
-and `smallcc` below the 64K binary limit; `smallcc` is still a smoke image, not
-a runnable target-hosted compiler.
+This writes `build/selfhost-pcode-link/report.txt`.  It assembles each tool
+module as a separate p-code object and links those objects directly with the
+p-code interpreter plus generated link-only hosted stubs.  The stubs are
+placeholders for size/unresolved-symbol measurement, not real target file I/O.
+With the current conservative compaction pass, this link smoke reports both
+`smallcpp` and `smallcc` below the 64K binary limit; `smallcc` is still a smoke
+image, not a runnable target-hosted compiler.
 
 To run the split p-code images far enough to exercise hosted startup and
 UART-backed stdio:
@@ -190,9 +192,10 @@ make -C smallc-microcpu selfhost-pcode-exec-smoke
 ```
 
 This writes `build/selfhost-pcode-exec/report.txt` and remains report-only by
-default.  It links the p-code interpreter, `runtime/hosted_io.asm`, and each
-tool p-code object, then runs the images on the synthetic `hc1200-cpu` 64 KiB
-RAM board.  The hosted model is intentionally tiny: `stdin`, `stdout`, and
+default.  It links the p-code interpreter, `runtime/hosted_io.asm`, and the
+same direct p-code object set used by link smoke, then runs the images on the
+synthetic `hc1200-cpu` 64 KiB RAM board.  The hosted model is intentionally
+tiny: `stdin`, `stdout`, and
 `stderr` are UART-backed, UART RX byte `0x04` is EOF, `fopen` is still a
 nonfunctional smoke stub, and `calloc` is a bump allocator after the p-code
 payload.  The current execution smoke reaches the compiler banners and then

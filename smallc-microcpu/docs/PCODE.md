@@ -77,7 +77,7 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$52` | `ENTER_U8` | frame byte count |
 | `$53` | `ENTER_U16` | frame byte count |
 | `$54` | `NCALL_U8` | native id byte, argc byte |
-| `$55` | `NCALL_U16` | native id word, argc byte |
+| `$55` | `NCALL_ADDR_U16` | argc byte, 16-bit native address |
 | `$56` | `LEAVE` | none |
 | `$57` | `ICALL_U8` | argc byte |
 | `$58` | `CALL0_U16` | 16-bit p-code address |
@@ -129,7 +129,7 @@ Data uses `data_label`, `data8`, `data16`, and `zero`.  Labels use `label`.
 Direct calls use `call <function> <argc>`.  Native calls use
 `ncall <symbol> <argc>`.  Function-address constants use
 `addr_func <function>` and lower to `ICONST_U16` with the target function's
-bytecode offset.  Indirect p-code calls use `icall <argc>`.
+bytecode address in the object path.  Indirect p-code calls use `icall <argc>`.
 
 ## Compaction
 
@@ -161,10 +161,10 @@ counts, and optimizer byte savings.
 ## Indirect calls
 
 Function pointers to p-code functions are represented as 16-bit bytecode entry
-offsets.  The backend emits `addr_func` when a C function name is used as a
-value, and `CALL1` lowers to `icall`.
+addresses in the microcpu object path.  The backend emits `addr_func` when a C
+function name is used as a value, and `CALL1` lowers to `icall`.
 
-`ICALL_U8` expects the target function offset on top of the p-code stack, with
+`ICALL_U8` expects the target function address on top of the p-code stack, with
 arguments below it in the same source-order convention as direct calls:
 
 ```text
@@ -178,30 +178,43 @@ inside the bytecode image; the microcpu interpreter keeps the compact path and
 assumes compiler-generated p-code is well-formed.
 
 Native function pointers are not implemented yet.  External function
-declarations still call through `NCALL` and the native table.
+declarations still call through native `NCALL` opcodes.
 
 ## Multi-module p-code
 
-The current object format exposes one `__pcode_start`/`__pcd_global` pair per
-p-code object, so the multi-module path merges textual `.pca` modules into one
-p-code object for the program or tool being linked.  The merger:
+P-code modules can now be assembled and linked as separate object files.  The
+textual `.pca` merger remains available as a debug/compatibility tool, but it
+is no longer required by `test-pcode-multi`, `selfhost-pcode-link-smoke`, or
+`selfhost-pcode-exec-smoke`.
 
-- preserves public p-code function and data labels,
-- rewrites external `ncall` instructions to `call` when the target function is
-  defined by another p-code module in the same merged image,
-- resolves `extern` p-code globals against data labels from other modules,
-- rewrites internal compiler labels such as `L123`,
-- rewrites `static_func` and `static_data_label` definitions to per-module
-  private names so static symbols do not collide.
+Each p-code object emits unique local section labels such as
+`__pcd_<module>_code_start` and `__pcd_<module>_data_start`.  Public p-code
+functions and globals are emitted as ordinary object symbols.  Static p-code
+functions and data remain local to their object.  Only the object defining
+`main` exports `__pcode_entry`, which contains a word relocation to `_main`;
+other p-code objects do not define an entry symbol.
 
-`test-pcode-multi` covers p-code-to-p-code cross-module calls, extern globals,
-static isolation, and cross-module function pointers.  Cross-module native
-function pointers remain unsupported; native calls still use `NCALL`.
+Direct `call` operands and `addr_func` constants are relocatable `DW` operands
+to p-code function symbols, so calls and function pointers can cross p-code
+object boundaries.  `ADDR_GLOBAL_U16`, `LGLOBAL_U16`, and `SGLOBAL_U16` are
+also relocatable absolute target addresses, so extern globals can be defined in
+another p-code object or in a native object.
+
+The object format has a 15-character symbol-name limit.  P-code object assembly
+therefore uses the same deterministic hash-suffix shortening scheme as the
+native object backend for public and external symbols; full source names remain
+visible in `.pca` and reports.
+
+`test-pcode-multi` links multiple p-code objects directly and covers
+p-code-to-p-code cross-module calls, extern globals, static isolation,
+cross-module function pointers, long p-code symbol names, and a mixed
+p-code/native-object call.  Cross-module native function pointers remain
+unsupported.
 
 ## Native calls
 
-`NCALL` looks up a native-table entry.  The p-code stack holds arguments in
-source order before the call.  The interpreter pops the last argument first,
+`NCALL` calls a native helper.  The p-code stack holds arguments in source
+order before the call.  The interpreter pops the last argument first,
 reconstructs the ordinary argument order, calls the native helper, and pushes
 the 16-bit return value.
 
@@ -215,11 +228,11 @@ p-code tests:
 - `_strcmp`
 - `_strcpy`
 
-The target microcpu interpreter uses the same bytecode semantics.  The p-code
-object emits a native table with relocations to linked object symbols such as
-runtime libc helpers or optional user native objects.  The current microcpu
-interpreter implements `NCALL_U8`; `NCALL_U16` is reserved for a later larger
-native table.
+The host interpreter still uses `NCALL_U8` with an in-memory native table.  The
+microcpu object path uses `NCALL_ADDR_U16`, which stores the argument count
+plus a relocatable absolute native function address.  This avoids merging
+native tables across p-code objects and lets each module call runtime helpers
+or optional user native objects directly.
 
 Optional native objects are linked between the runtime and the p-code object:
 
@@ -227,15 +240,18 @@ Optional native objects are linked between the runtime and the p-code object:
 pcode_interpreter.o
 runtime_object.o
 optional_native_objects.o...
-pcode.o
+module1.pcode.o
+module2.pcode.o
+...
 ```
 
-Normal external C declarations in p-code are emitted as `NCALL` entries when
-the function body is not present in the p-code module.  `microlink` resolves
-those native table entries against runtime helpers or user-provided native
-objects.  Native functions use the ordinary microcpu Small-C ABI; their `v0`
-return value is pushed back onto the p-code stack.  The interpreter saves its
-IP, operand stack pointer, and frame pointer around each native call.
+Normal external C declarations in p-code are emitted as native calls only when
+the referenced function is not defined by any p-code object being linked.
+Otherwise, the object encoder rewrites that external-looking call into a
+relocatable p-code direct call.  Native functions use the ordinary microcpu
+Small-C ABI; their `v0` return value is pushed back onto the p-code stack.  The
+interpreter saves its IP, operand stack pointer, and frame pointer around each
+native call.
 
 ## Microcpu interpreter
 
@@ -245,25 +261,23 @@ microcpu target.  The simple p-code test link order is:
 ```text
 pcode_interpreter.o
 runtime_object.o        ; only when native calls are present
-pcode.o
+module1.pcode.o
+module2.pcode.o
+...
 ```
 
-The p-code object exports `__pcode_entry`, `__pcode_start`, and
-`__pcode_end`.  Because the current object format limits symbol names, the
-target data/native-table labels use short aliases:
-
-```text
-__pcd_native    native address table
-__pcd_ncount    native entry count
-__pcd_global    p-code global/string data
-__pcd_gend      end of p-code data
-```
+The p-code object that defines `main` exports `__pcode_entry`.  It is a word
+containing the linked address of `_main`; the interpreter loads that address at
+startup.  P-code objects no longer export duplicate `__pcode_start` or
+`__pcode_end` symbols.  For selfhost execution smoke, the runner appends a tiny
+end-marker object defining `__pcd_gend` so `hosted_io.o` can place its bump heap
+after the last p-code payload byte.
 
 `ADDR_GLOBAL_U16`, `LGLOBAL_U16`, and `SGLOBAL_U16` operands are linked
 absolute target addresses in the microcpu object path.  Internal p-code data
-labels and external native globals both use ordinary object relocations, so
-p-code can pass pointers to native code and can read native globals declared
-with `extern`.
+labels, cross-module p-code globals, and external native globals all use
+ordinary object relocations, so p-code can pass pointers to native code and can
+read globals declared with `extern`.
 
 Interpreter state:
 
@@ -281,9 +295,9 @@ The microcpu interpreter currently covers the opcodes emitted by
 `pcode-tests/001..044`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls including compact `CALL0/1/2_U16`, conditional
 branches, arithmetic/logical comparisons, byte/word memory operations,
-`DROP`/`DUP`/`SWAP`, `RET`, `NCALL_U8`, and `ICALL_U8`.  `switch` is lowered by
-the p-code backend into an explicit compare-and-branch chain, not a dedicated
-VM opcode.
+`DROP`/`DUP`/`SWAP`, `RET`, `NCALL_U8`, `NCALL_ADDR_U16`, and `ICALL_U8`.
+`switch` is lowered by the p-code backend into an explicit compare-and-branch
+chain, not a dedicated VM opcode.
 
 Opcodes defined in the bytecode table but not yet exercised by the target test
 suite remain implementation candidates for later coverage expansion.  The
@@ -340,22 +354,24 @@ make -C smallc-microcpu selfhost-pcode-link-smoke
 ```
 
 This target first refreshes `selfhost-pcode-smoke`, then attempts separate
-links for `smallcpp` and `smallcc`.  Each tool's `.pca` modules are merged into
-one p-code object and linked as:
+links for `smallcpp` and `smallcc`.  Each tool's `.pca` modules are assembled
+as separate p-code objects and linked directly:
 
 ```text
 pcode_interpreter.o
 generated hosted_stubs.o
-<tool>.pcode.o
+module1.pcode.o
+module2.pcode.o
+...
 ```
 
 The generated hosted stubs provide dummy functions and dummy `stdin`/`stdout`/
 `stderr` globals only to measure link size and unresolved symbols.  They are
 not real file I/O and the linked images are not expected to run as compilers
 yet.  The report is written to `build/selfhost-pcode-link/report.txt`; it
-includes detailed p-code size diagnostics and classifies failures as missing
-p-code modules, unresolved symbols, size overflow, symbol collision, relocation
-limitation, linker failure, or other.
+includes the per-module p-code object list, detailed p-code size diagnostics,
+and classifies failures as missing p-code modules, unresolved symbols, size
+overflow, symbol collision, relocation limitation, linker failure, or other.
 
 For execution smoke, use:
 
@@ -369,7 +385,9 @@ with `runtime/hosted_io.asm` instead of the generated link-only stubs:
 ```text
 pcode_interpreter.o
 hosted_io.o
-<tool>.pcode.o
+module1.pcode.o
+module2.pcode.o
+...
 ```
 
 `hosted_io.o` is a minimal native hosted-service layer, not a libc.  It maps

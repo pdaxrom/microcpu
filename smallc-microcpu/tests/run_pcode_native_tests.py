@@ -86,8 +86,10 @@ def run_one(
         return False
 
     try:
-        entry, bytecode, data, data_labels, natives, externs = pcode.encode_pca(pca_path)
-        pcode.write_pcode_object_asm(pcode_asm, entry, bytecode, data, data_labels, natives, externs)
+        encoded = pcode.encode_pca_object(pca_path)
+        if not encoded.entry_defined:
+            raise ValueError(f"entry function not found: {encoded.entry}")
+        pcode.write_encoded_pcode_object_asm(pcode_asm, encoded, name)
     except Exception as exc:
         print(f"  PCODE OBJECT FAIL {exc}")
         print(f"  log: {log_path}")
@@ -140,9 +142,10 @@ def run_one(
 
     rows.append(f"{name}:")
     rows.append(f"  link order: {' '.join(obj.name for obj in link_objects)}")
-    rows.append(f"  p-code bytecode bytes: {pcode.bytecode_size(bytecode)}")
-    rows.append(f"  p-code global data bytes: {len(data)}")
-    rows.append(f"  p-code native table bytes: {len(natives) * 2}")
+    rows.append(f"  p-code bytecode bytes: {pcode.bytecode_size(encoded.bytecode)}")
+    rows.append(f"  p-code global data bytes: {len(encoded.data)}")
+    rows.append("  p-code native table bytes: 0")
+    rows.append(f"  p-code native call symbols: {len(encoded.natives)}")
     rows.append(f"  pcode.o size: {pcode_obj.stat().st_size}")
     rows.append(f"  pcode_interpreter.o size: {interp_obj.stat().st_size}")
     rows.append(f"  runtime_object.o size: {runtime_obj.stat().st_size}")

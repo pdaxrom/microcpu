@@ -2,3 +2,5 @@
 002_pcode_extern_global 143
 003_pcode_static_isolation 144
 004_pcode_funcptr_cross_module 145
+005_pcode_to_native_and_pcode 42
+006_long_pcode_symbols 146

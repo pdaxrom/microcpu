@@ -14,6 +14,7 @@ from collections import OrderedDict
 
 REG_RE = re.compile(r"\b(?:v0|r3)=([0-9a-fA-F]{4})\b")
 WordOperand = tuple[str, str]
+LOCAL_LABEL_RE = re.compile(r"^L[0-9]+$")
 
 OP_ICONST_M1 = 0x02
 OP_ICONST_0 = 0x03
@@ -55,6 +56,7 @@ OP_CALL_U16 = 0x50
 OP_RET = 0x51
 OP_NCALL_U8 = 0x54
 OP_NCALL_U16 = 0x55
+OP_NCALL_ADDR_U16 = 0x55
 OP_LEAVE = 0x56
 OP_ICALL_U8 = 0x57
 OP_CALL0_U16 = 0x58
@@ -96,6 +98,60 @@ class Insn:
         self.args = args
         self.addr = 0
         self.size = 1
+
+
+class EncodedPca:
+    def __init__(
+        self,
+        entry: str,
+        entry_defined: bool,
+        bytecode: list[int | WordOperand],
+        data: list[int],
+        data_labels: dict[str, int],
+        natives: list[str],
+        externs: list[str],
+        code_labels: dict[str, int],
+        public_funcs: set[str],
+        public_data: set[str],
+    ) -> None:
+        self.entry = entry
+        self.entry_defined = entry_defined
+        self.bytecode = bytecode
+        self.data = data
+        self.data_labels = data_labels
+        self.natives = natives
+        self.externs = externs
+        self.code_labels = code_labels
+        self.public_funcs = public_funcs
+        self.public_data = public_data
+
+
+class ObjectSymbolMap:
+    def __init__(self) -> None:
+        self.full_to_short: dict[str, str] = {}
+        self.short_to_full: dict[str, str] = {}
+
+    def map(self, symbol: str) -> str:
+        if len(symbol) <= 15:
+            return symbol
+        if symbol in self.full_to_short:
+            return self.full_to_short[symbol]
+
+        raw = symbol[1:] if symbol.startswith("_") else symbol
+        hval = 5381
+        for ch in raw:
+            hval = (((hval << 5) + hval) ^ ord(ch)) & 0xFFFF
+
+        stem = raw[:8].ljust(8, "_")
+        for seq in range(16):
+            suffix = chr(ord("0") + seq) if seq < 10 else chr(ord("a") + seq - 10)
+            short = f"_{stem}_{hval:04x}{suffix}"
+            owner = self.short_to_full.get(short)
+            if owner is None or owner == symbol:
+                self.full_to_short[symbol] = short
+                self.short_to_full[short] = symbol
+                return short
+        raise ValueError(f"object symbol short-name collision: {symbol}")
 
 
 def shell_join(argv: list[str]) -> str:
@@ -236,7 +292,7 @@ def clean_line(line: str) -> str:
     return line.split(";", 1)[0].strip()
 
 
-def insn_size(insn: Insn, labels: dict[str, int]) -> int:
+def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None = None) -> int:
     op = insn.op
     if op == "iconst":
         value = parse_int(insn.args[0])
@@ -267,13 +323,20 @@ def insn_size(insn: Insn, labels: dict[str, int]) -> int:
     if op == "icall":
         return 2
     if op == "ncall":
-        return 3
+        argc = parse_int(insn.args[1])
+        pcode_targets = pcode_symbols if pcode_symbols is not None else set(labels.keys())
+        if insn.args[0] in pcode_targets:
+            return 3 if 0 <= argc <= 2 else 4
+        return 4
     if op in ("ret", "drop", "dup", "swap", "leave") or op in SIMPLE_OPS:
         return 1
     raise ValueError(f"unsupported p-code op for microemu: {op}")
 
 
-def parse_pca(path: pathlib.Path) -> tuple[str, list[Insn], dict[str, int], dict[str, int], list[int]]:
+def parse_pca(
+    path: pathlib.Path,
+    pcode_symbols: set[str] | None = None,
+) -> tuple[str, list[Insn], dict[str, int], dict[str, int], list[int]]:
     entry = "_main"
     insns: list[Insn] = []
     labels: dict[str, int] = {}
@@ -308,7 +371,7 @@ def parse_pca(path: pathlib.Path) -> tuple[str, list[Insn], dict[str, int], dict
             insns.append(Insn(op, args))
 
     for insn in insns:
-        insn.size = 2 if insn.op in ("jmp", "jz", "jnz") else insn_size(insn, labels)
+        insn.size = 2 if insn.op in ("jmp", "jz", "jnz") else insn_size(insn, labels, pcode_symbols)
     for _ in range(8):
         pc = 0
         for insn in insns:
@@ -350,13 +413,47 @@ def bytecode_size(bytecode: list[int | WordOperand]) -> int:
     return size
 
 
-def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[int], dict[str, int], list[str], list[str]]:
-    entry, insns, labels, data_labels, data = parse_pca(path)
+def scan_pca_symbols(path: pathlib.Path) -> tuple[str, set[str], set[str]]:
+    entry = "_main"
+    public_funcs: set[str] = set()
+    public_data: set[str] = set()
+    for raw in path.read_text().splitlines():
+        line = clean_line(raw)
+        if not line:
+            continue
+        parts = line.split()
+        op = parts[0]
+        args = parts[1:]
+        if op == "entry" and args:
+            entry = args[0]
+        elif op == "func" and args:
+            public_funcs.add(args[0])
+        elif op == "data_label" and args and not LOCAL_LABEL_RE.match(args[0]):
+            public_data.add(args[0])
+    return entry, public_funcs, public_data
+
+
+def collect_public_pcode_symbols(paths: list[pathlib.Path]) -> tuple[set[str], set[str]]:
+    funcs: set[str] = set()
+    data: set[str] = set()
+    for path in paths:
+        _entry, module_funcs, module_data = scan_pca_symbols(path)
+        funcs.update(module_funcs)
+        data.update(module_data)
+    return funcs, data
+
+
+def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None) -> EncodedPca:
+    entry, insns, labels, data_labels, data = parse_pca(path, pcode_symbols)
     if entry not in labels:
-        raise ValueError(f"entry function not found: {entry}")
+        entry_defined = False
+    else:
+        entry_defined = True
+    _entry_name, public_funcs, public_data = scan_pca_symbols(path)
     out: list[int | WordOperand] = []
     native_ids: "OrderedDict[str, int]" = OrderedDict()
     externs: "OrderedDict[str, int]" = OrderedDict()
+    pcode_targets = pcode_symbols if pcode_symbols is not None else set(labels.keys())
     for insn in insns:
         op = insn.op
         args = insn.args
@@ -404,7 +501,12 @@ def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[i
             emit_word_symbol(out, args[0])
         elif op == "addr_func":
             out.append(OP_ICONST_U16)
-            emit_u16(out, labels[args[0]])
+            target = args[0]
+            if target not in labels and target not in pcode_targets:
+                raise ValueError(f"unsupported native function pointer in p-code object: {target}")
+            if target not in labels:
+                externs[target] = 1
+            emit_word_symbol(out, target)
         elif op in ("jmp", "jz", "jnz"):
             target = labels[args[0]]
             if insn.size == 2:
@@ -417,25 +519,40 @@ def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[i
                 out.append(opcode)
                 emit_u16(out, rel)
         elif op == "call":
+            target = args[0]
             argc = parse_int(args[1])
             if 0 <= argc <= 2:
                 out.append(OP_CALL0_U16 + argc)
-                emit_u16(out, labels[args[0]])
+                if target not in labels:
+                    externs[target] = 1
+                emit_word_symbol(out, target)
             else:
                 out.append(OP_CALL_U16)
-                emit_u16(out, labels[args[0]])
+                if target not in labels:
+                    externs[target] = 1
+                emit_word_symbol(out, target)
                 out.append(argc & 0xFF)
         elif op == "icall":
             out.extend([OP_ICALL_U8, parse_int(args[0]) & 0xFF])
         elif op == "ncall":
             native = args[0]
-            if native not in native_ids:
-                native_ids[native] = len(native_ids)
-                externs[native] = 1
-            native_id = native_ids[native]
-            if native_id > 255:
-                raise ValueError("NCALL_U16 is not supported by the microcpu p-code interpreter yet")
-            out.extend([OP_NCALL_U8, native_id, parse_int(args[1]) & 0xFF])
+            argc = parse_int(args[1])
+            if native in pcode_targets:
+                if 0 <= argc <= 2:
+                    out.append(OP_CALL0_U16 + argc)
+                else:
+                    out.append(OP_CALL_U16)
+                if native not in labels:
+                    externs[native] = 1
+                emit_word_symbol(out, native)
+                if argc > 2:
+                    out.append(argc & 0xFF)
+            else:
+                if native not in native_ids:
+                    native_ids[native] = len(native_ids)
+                    externs[native] = 1
+                out.extend([OP_NCALL_ADDR_U16, argc & 0xFF])
+                emit_word_symbol(out, native)
         elif op == "ret":
             out.append(OP_RET)
         elif op == "drop":
@@ -450,89 +567,146 @@ def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[i
             out.append(SIMPLE_OPS[op])
         else:
             raise ValueError(f"unsupported p-code op for microemu: {op}")
-    return labels[entry], out, data, data_labels, list(native_ids.keys()), list(externs.keys())
+    return EncodedPca(
+        entry,
+        entry_defined,
+        out,
+        data,
+        data_labels,
+        list(native_ids.keys()),
+        list(externs.keys()),
+        labels,
+        public_funcs,
+        public_data,
+    )
+
+
+def encode_pca(path: pathlib.Path) -> tuple[str, list[int | WordOperand], list[int], dict[str, int], list[str], list[str]]:
+    encoded = encode_pca_object(path)
+    if not encoded.entry_defined:
+        raise ValueError(f"entry function not found: {encoded.entry}")
+    return encoded.entry, encoded.bytecode, encoded.data, encoded.data_labels, encoded.natives, encoded.externs
 
 
 def write_pcode_object_asm(
     path: pathlib.Path,
-    entry: int,
+    entry: str,
     bytecode: list[int | WordOperand],
     data: list[int],
     data_labels: dict[str, int],
     natives: list[str],
     externs: list[str],
 ) -> None:
-    lines = [
-        "; generated p-code object data",
-    ]
-    for symbol in externs:
-        if symbol not in data_labels:
-            lines.append(f"extern {symbol}")
-    lines.extend([
-        "public __pcode_entry",
-        "public __pcode_start",
-        "public __pcode_end",
-        "public __pcd_global",
-        "public __pcd_gend",
-        "public __pcd_ncount",
-        "public __pcd_native",
-        "",
-        "__pcode_entry:",
-        f"\tdw\t${entry:04x}",
-        "__pcd_ncount:",
-        f"\tdw\t${len(natives):04x}",
-        "__pcd_native:",
-    ])
-    for native in natives:
-        lines.append(f"\tdw\t{native}")
-    lines.extend([
-        "__pcode_start:",
-    ])
-    chunk: list[int] = []
-    for item in bytecode:
-        if isinstance(item, tuple):
-            if chunk:
-                values = ", ".join(f"${value:02x}" for value in chunk)
-                lines.append(f"\tdb\t{values}")
-                chunk = []
-            lines.append(f"\tdw\t{item[1]}")
-            continue
-        chunk.append(item)
-        if len(chunk) == 16:
-            values = ", ".join(f"${value:02x}" for value in chunk)
-            lines.append(f"\tdb\t{values}")
-            chunk = []
+    encoded = EncodedPca(
+        entry,
+        True,
+        bytecode,
+        data,
+        data_labels,
+        natives,
+        externs,
+        {entry: 0},
+        {entry},
+        {label for label in data_labels if not LOCAL_LABEL_RE.match(label)},
+    )
+    write_encoded_pcode_object_asm(path, encoded, path.stem)
+
+
+def safe_module_name(value: str) -> str:
+    out: list[str] = []
+    for ch in value:
+        if ch.isalnum() or ch == "_":
+            out.append(ch)
+        else:
+            out.append("_")
+    text = "".join(out).strip("_")
+    return text if text else "module"
+
+
+def flush_db_chunk(lines: list[str], chunk: list[int]) -> None:
     if chunk:
         values = ", ".join(f"${value:02x}" for value in chunk)
         lines.append(f"\tdb\t{values}")
-    lines.extend([
-        "__pcode_end:",
-        "__pcd_global:",
-    ])
+        chunk.clear()
+
+
+def write_encoded_pcode_object_asm(
+    path: pathlib.Path,
+    encoded: EncodedPca,
+    module_name: str,
+    symbol_map: ObjectSymbolMap | None = None,
+) -> None:
+    prefix = "__pcd_" + safe_module_name(module_name)
+    symbols = symbol_map if symbol_map is not None else ObjectSymbolMap()
+    defined_symbols = set(encoded.code_labels.keys()) | set(encoded.data_labels.keys())
+    object_symbols: dict[str, str] = {}
+    for symbol in set(encoded.externs) | encoded.public_funcs | encoded.public_data:
+        object_symbols[symbol] = symbols.map(symbol)
+
+    def objname(symbol: str) -> str:
+        return object_symbols.get(symbol, symbol)
+
+    lines = [
+        "; generated p-code object data",
+    ]
+    for symbol in encoded.externs:
+        if symbol not in defined_symbols:
+            lines.append(f"extern {objname(symbol)}")
+    if encoded.entry_defined:
+        lines.append("public __pcode_entry")
+    for symbol in sorted(encoded.public_funcs):
+        lines.append(f"public {objname(symbol)}")
+    for symbol in sorted(encoded.public_data):
+        lines.append(f"public {objname(symbol)}")
+    lines.append("")
+    if encoded.entry_defined:
+        lines.extend([
+            "__pcode_entry:",
+            f"\tdw\t{encoded.entry}",
+        ])
+    lines.append(f"{prefix}_code_start:")
     labels_by_offset: dict[int, list[str]] = {}
-    for label, offset in data_labels.items():
+    for label, offset in encoded.code_labels.items():
+        labels_by_offset.setdefault(offset, []).append(label)
+    chunk: list[int] = []
+    offset = 0
+    for item in encoded.bytecode:
+        if offset in labels_by_offset:
+            flush_db_chunk(lines, chunk)
+            for label in labels_by_offset[offset]:
+                lines.append(f"{objname(label)}:")
+        if isinstance(item, tuple):
+            flush_db_chunk(lines, chunk)
+            lines.append(f"\tdw\t{objname(item[1])}")
+            offset += 2
+            continue
+        chunk.append(item)
+        offset += 1
+        if len(chunk) == 16:
+            flush_db_chunk(lines, chunk)
+    flush_db_chunk(lines, chunk)
+    if offset in labels_by_offset:
+        for label in labels_by_offset[offset]:
+            lines.append(f"{objname(label)}:")
+    lines.append(f"{prefix}_code_end:")
+    lines.append(f"{prefix}_data_start:")
+    labels_by_offset: dict[int, list[str]] = {}
+    for label, offset in encoded.data_labels.items():
         labels_by_offset.setdefault(offset, []).append(label)
     chunk = []
-    for offset, value in enumerate(data):
+    for offset, value in enumerate(encoded.data):
         if offset in labels_by_offset:
-            if chunk:
-                values = ", ".join(f"${byte:02x}" for byte in chunk)
-                lines.append(f"\tdb\t{values}")
-                chunk = []
+            flush_db_chunk(lines, chunk)
             for label in labels_by_offset[offset]:
-                lines.append(f"{label}:")
+                lines.append(f"{objname(label)}:")
         chunk.append(value)
         if len(chunk) == 16:
-            values = ", ".join(f"${byte:02x}" for byte in chunk)
-            lines.append(f"\tdb\t{values}")
-            chunk = []
-    if chunk:
-        values = ", ".join(f"${byte:02x}" for byte in chunk)
-        lines.append(f"\tdb\t{values}")
-    if len(data) in labels_by_offset:
-        for label in labels_by_offset[len(data)]:
-            lines.append(f"{label}:")
-    lines.extend(["__pcd_gend:", ""])
+            flush_db_chunk(lines, chunk)
+    flush_db_chunk(lines, chunk)
+    if len(encoded.data) in labels_by_offset:
+        for label in labels_by_offset[len(encoded.data)]:
+            lines.append(f"{objname(label)}:")
+    lines.extend([f"{prefix}_data_end:", ""])
     path.write_text("\n".join(lines))
 
 
@@ -644,8 +818,10 @@ def run_one(
         return False
     native_asm_bytes, native_asm_lines, native_bin_bytes = compile_native_size(name, i_path, args, log_path)
     try:
-        entry, bytecode, data, data_labels, natives, externs = encode_pca(pca_path)
-        write_pcode_object_asm(pcode_asm, entry, bytecode, data, data_labels, natives, externs)
+        encoded = encode_pca_object(pca_path)
+        if not encoded.entry_defined:
+            raise ValueError(f"entry function not found: {encoded.entry}")
+        write_encoded_pcode_object_asm(pcode_asm, encoded, name)
     except Exception as exc:
         print(f"  PCODE OBJECT FAIL {exc}")
         print(f"  log: {log_path}")
@@ -659,7 +835,7 @@ def run_one(
         print(f"  log: {log_path}")
         return False
     objects = [interp_obj]
-    if natives:
+    if encoded.natives:
         objects.append(runtime_obj)
     objects.append(pcode_obj)
     if link(args, objects, bin_path, log_path):
@@ -691,14 +867,15 @@ def run_one(
             "  UART PASS "
             f"expected={escape_display(expected_uart)} "
             f"actual={escape_display(actual_uart)}"
-        )
+            )
     rows.append(f"{name}:")
-    rows.append(f"  p-code bytecode bytes: {bytecode_size(bytecode)}")
-    rows.append(f"  p-code global data bytes: {len(data)}")
-    rows.append(f"  p-code native table bytes: {len(natives) * 2}")
+    rows.append(f"  p-code bytecode bytes: {bytecode_size(encoded.bytecode)}")
+    rows.append(f"  p-code global data bytes: {len(encoded.data)}")
+    rows.append("  p-code native table bytes: 0")
+    rows.append(f"  p-code native call symbols: {len(encoded.natives)}")
     rows.append(f"  pcode.o size: {pcode_obj.stat().st_size}")
     rows.append(f"  pcode_interpreter.o size: {interp_obj.stat().st_size}")
-    if natives:
+    if encoded.natives:
         rows.append(f"  runtime_object.o size: {runtime_obj.stat().st_size}")
     rows.append(f"  linked p-code binary bytes: {bin_path.stat().st_size}")
     if native_asm_bytes is not None:

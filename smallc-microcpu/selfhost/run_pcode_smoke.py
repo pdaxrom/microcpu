@@ -53,11 +53,12 @@ from run_pcode_microemu import (  # noqa: E402
     SIMPLE_OPS,
     WordOperand,
     bytecode_size,
+    encode_pca_object,
     emit_u16,
     emit_word_symbol,
     parse_int,
     parse_pca,
-    write_pcode_object_asm,
+    write_encoded_pcode_object_asm,
 )
 import pcode_opt  # noqa: E402
 
@@ -407,27 +408,27 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
                     log.write(f"bytecode_after={opt_stats['bytecode_after']}\n")
                     log.write(f"bytecode_saved={opt_stats['bytecode_saved']}\n\n")
-            entry, bytecode, data, data_labels, natives, externs = encode_pca_module(pca_path)
-            write_pcode_object_asm(pcode_asm, entry, bytecode, data, data_labels, natives, externs)
+            encoded = encode_pca_object(pca_path)
+            write_encoded_pcode_object_asm(pcode_asm, encoded, name)
             pcode_obj_ok, pcode_obj_size = assemble_object(args.assembler, pcode_asm, pcode_obj, log_path)
             counts = pca_counts(pca_path)
-            bytecode_bytes = bytecode_size(bytecode)
-            native_table_bytes = len(natives) * 2
+            bytecode_bytes = bytecode_size(encoded.bytecode)
+            native_table_bytes = 0
             result.update({
                 "pcode_ok": True,
                 "pcode_obj_ok": pcode_obj_ok,
                 "bytecode_bytes": bytecode_bytes,
-                "global_data_bytes": len(data),
-                "literal_bytes": literal_bytes(data, data_labels),
+                "global_data_bytes": len(encoded.data),
+                "literal_bytes": literal_bytes(encoded.data, encoded.data_labels),
                 "native_table_bytes": native_table_bytes,
                 "functions": counts["functions"],
                 "native_calls": counts["native_calls"],
                 "indirect_calls": counts["indirect_calls"],
-                "native_entries": len(natives),
-                "globals": global_count(data_labels),
+                "native_entries": len(encoded.natives),
+                "globals": global_count(encoded.data_labels),
                 "pcode_obj_size": pcode_obj_size,
-                "payload_bytes": bytecode_bytes + len(data) + native_table_bytes,
-                "natives": natives,
+                "payload_bytes": bytecode_bytes + len(encoded.data) + native_table_bytes,
+                "natives": encoded.natives,
             })
             if not pcode_obj_ok:
                 result["reason"] = "p-code object assembly failed"

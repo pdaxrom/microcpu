@@ -280,32 +280,33 @@ the last argument to frame offset 4, the previous argument to offset 6, and so
 on, matching the native generated frame layout.  `RET` leaves the function
 result as a 16-bit VM cell.
 
-P-code function pointers to p-code functions are 16-bit bytecode entry offsets.
-`ICALL_U8` expects the target offset on top of the p-code stack with arguments
-below it in the same order used by direct calls.  The interpreter pops the
-target, builds a normal p-code frame, transfers the arguments, and pushes the
-return value after `RET`.  Function pointers to native `NCALL` entries are not
-part of the current ABI.
+P-code function pointers to p-code functions are 16-bit linked bytecode entry
+addresses in the microcpu object path.  `ICALL_U8` expects the target address
+on top of the p-code stack with arguments below it in the same order used by
+direct calls.  The interpreter pops the target, builds a normal p-code frame,
+transfers the arguments, and pushes the return value after `RET`.  Function
+pointers to native `NCALL` entries are not part of the current ABI.
 
-Native p-code calls use `NCALL` with a compact native-table id and argument
-count.  Host p-code tests provide native implementations for `_strlen`,
-`_putchar`, `_puts`, `_getchar`, and `_strcmp`.  The microcpu interpreter
-resolves the native table to linked object symbols from either runtime helpers
-or user-provided native object files.  For each `NCALL_U8`, it pops p-code
-arguments, rebuilds the ordinary native source-order argument stack, calls the
-native symbol, restores interpreter state, and pushes the 16-bit `v0` return
-value onto the p-code stack.  Native callees may use normal global data and may
-return pointers to native or p-code data; p-code global-address operands in the
-microcpu object path are linked absolute target addresses.
+Native p-code calls use `NCALL` with the normal p-code argument convention.
+Host p-code tests still use compact native-table ids.  The microcpu object path
+uses `NCALL_ADDR_U16`, which stores an argument count byte followed by a
+relocatable 16-bit native function address.  For each native call, the
+interpreter pops p-code arguments, rebuilds the ordinary native source-order
+argument stack, calls the native symbol, restores interpreter state, and pushes
+the 16-bit `v0` return value onto the p-code stack.  Native callees may use
+normal global data and may return pointers to native or p-code data; p-code
+global-address operands in the microcpu object path are linked absolute target
+addresses.
 
 For p-code selfhost execution smoke, `runtime/hosted_io.asm` provides a tiny
-native hosted-service ABI through ordinary `NCALL` entries.  It is linked
-before the p-code object and uses the same native source-order argument stack:
-for an N-argument native call, argument 1 is deepest on the stack and argument N
-is at `SP+2`.  The service maps `_stdin`, `_stdout`, and `_stderr` to small
-integer handles, implements UART-backed `_fgetc`, `_fgets`, `_fputc`, and
-`_fputs`, treats UART RX byte `0x04` as EOF, and provides a bump `_calloc` that
-starts after `__pcd_gend`.  `_calloc` halts in a self-branch with
+native hosted-service ABI through ordinary `NCALL_ADDR_U16` entries.  It is
+linked before the p-code objects and uses the same native source-order argument
+stack: for an N-argument native call, argument 1 is deepest on the stack and
+argument N is at `SP+2`.  The service maps `_stdin`, `_stdout`, and `_stderr`
+to small integer handles, implements UART-backed `_fgetc`, `_fgets`, `_fputc`,
+and `_fputs`, treats UART RX byte `0x04` as EOF, and provides a bump `_calloc`
+that starts after the generated `__pcd_gend` end-marker symbol.  `_calloc`
+halts in a self-branch with
 `V0=0xca10` if the allocation would pass the hosted heap guard or wrap the
 16-bit address space.  `_fopen` is currently a smoke stub that returns 0; no
 filesystem ABI is defined yet.
@@ -315,9 +316,12 @@ For microcpu p-code tests the linked image starts in
 places the final 16-bit result in native `v0` and branches to the usual
 `__test_halt` self-branch.  The current interpreter uses fixed internal areas:
 512 bytes for the p-code operand stack, 16 call frames, and 64 bytes per
-p-code frame.  The object-format-visible p-code symbols are `__pcode_entry`,
-`__pcode_start`, `__pcode_end`, plus short object-safe aliases
-`__pcd_native` and `__pcd_global` for the native table and data area.
+p-code frame.  The object-format-visible entry symbol is `__pcode_entry`,
+defined only by the p-code object that contains `main`; it contains a word
+relocation to the linked p-code `_main` address.  P-code objects do not define
+duplicate `__pcode_start`/`__pcode_end` symbols.  Public and external p-code
+object symbols are shortened deterministically when needed to satisfy the
+15-character microasm object format limit.
 
 ## Test Startup And Halt
 

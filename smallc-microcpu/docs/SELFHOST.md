@@ -172,7 +172,8 @@ operators, bitwise/shift operations, local/global arrays, basic pointers,
 string indexing, enum/typedef basics, simple struct access, `switch`, static
 and void functions, pointer-to-pointer loads, casts, pre/post increment and
 decrement, p-code function-pointer indirect calls, and native calls to
-`_strlen`, `_strcpy`, and `_putchar` through the target native table.
+`_strlen`, `_strcpy`, and `_putchar` through relocatable target native-call
+operands.
 `test-pcode-native` also passes and validates calls from p-code into
 separately compiled native object files, including native globals, native
 pointer returns, and p-code string pointers passed to native code.  This does
@@ -199,8 +200,8 @@ p-code-hosted compiler.  Current report-only measurements show:
 - `smallcc`: all modules now generate p-code.  Estimated p-code image is about
   65.1 KB versus 187.3 KB summed native object size, roughly 122.2 KB smaller.
   The p-code optimizer removes about 6.1K temp store/load roundtrips from
-  `smallcc` and saves about 12.4 KB of bytecode before link-time native table
-  deduplication.
+  `smallcc` and saves about 12.4 KB of bytecode before link-time object
+  layout.
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
@@ -211,15 +212,17 @@ make -C smallc-microcpu selfhost-pcode-link-smoke
 ```
 
 It writes `build/selfhost-pcode-link/report.txt` and remains report-only unless
-`STRICT=1` is set.  It merges modules per tool and links with the p-code
-interpreter plus generated link-only hosted stubs.  Current status:
+`STRICT=1` is set.  It now assembles each `.pca` module to a separate
+relocatable p-code object and links those objects directly with the p-code
+interpreter plus generated link-only hosted stubs.  The `.pca` merger remains
+only as a debug/compatibility tool.  Current status:
 
-- `smallcpp`: link smoke passes.  The linked image is about 50.1 KB and below
-  64K before compaction and about 45.7 KB with `PCODE_OPT=1`, using dummy
-  hosted stubs for file I/O and standard streams.
-- `smallcc`: link smoke now passes with `PCODE_OPT=1`.  The merged p-code
-  payload is about 58.3 KB and the linked smoke image is about 62.5 KB, below
-  the 64K binary limit.
+- `smallcpp`: direct p-code object link smoke passes.  The linked image is
+  about 45.8 KB with `PCODE_OPT=1`, using dummy hosted stubs for file I/O and
+  standard streams.
+- `smallcc`: direct p-code object link smoke passes with `PCODE_OPT=1`.  The
+  p-code payload is linked as multiple p-code objects; the final smoke image is
+  about 62.6 KB, below the 64K binary limit.
 
 This suggests p-code is a promising size path, but the remaining work is not
 just bytecode density.  The next blockers are native function-pointer
@@ -234,17 +237,19 @@ make -C smallc-microcpu selfhost-pcode-exec-smoke
 ```
 
 It writes `build/selfhost-pcode-exec/report.txt` and remains report-only unless
-`STRICT=1` is set.  The target relinks each split p-code image with
-`runtime/hosted_io.asm`, a tiny native hosted layer that maps standard streams
-to UART and treats UART RX byte `0x04` as EOF.  It does not provide a real
-filesystem; `fopen` still returns 0.
+`STRICT=1` is set.  The target relinks each split image from the same direct
+p-code object set used by link smoke, but with `runtime/hosted_io.asm`, a tiny
+native hosted layer that maps standard streams to UART and treats UART RX byte
+`0x04` as EOF.  It does not provide a real filesystem; `fopen` still returns 0.
 
 Current execution status:
 
 - `smallcpp`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is about
+  46.4 KB.
 - `smallcc`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is about
+  63.2 KB.
 
 `V0=0xca10` is the hosted runtime's explicit heap-exhaustion marker.  The
 minimal bump allocator starts after `__pcd_gend` and refuses allocations that
