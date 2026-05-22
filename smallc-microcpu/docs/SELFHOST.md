@@ -201,9 +201,25 @@ p-code-hosted compiler.  Current report-only measurements show:
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
+The p-code link smoke is:
+
+```sh
+make -C smallc-microcpu selfhost-pcode-link-smoke
+```
+
+It writes `build/selfhost-pcode-link/report.txt` and remains report-only unless
+`STRICT=1` is set.  It merges modules per tool and links with the p-code
+interpreter plus generated link-only hosted stubs.  Current status:
+
+- `smallcpp`: link smoke passes.  The linked image is about 50.1 KB and below
+  64K, using dummy hosted stubs for file I/O and standard streams.
+- `smallcc`: p-code generation succeeds for all modules, but the merged p-code
+  payload is about 71.9 KB before interpreter/stubs, so the p-code object path
+  is classified as a code/data size overflow.
+
 This suggests p-code is a promising size path, but the remaining work is not
-just bytecode density.  The next blockers are indirect p-code calls/function
-pointers to native functions, cross-module p-code linking semantics,
+just bytecode density.  The next blockers are native function-pointer
+semantics if needed, reducing/splitting the `smallcc` p-code image,
 target-hosted file I/O/argv support, and final image layout.
 
 The global symbol table was raised from 200 to 300 entries only after the
@@ -215,7 +231,7 @@ working, zero repeated includes, and the controlled headers already minimized.
 The most likely next blockers are:
 
 - target-hosted file I/O, diagnostics, and command-line runtime support
-- final linked `smallcpp` and `smallcc` image sizes and linker output layout
+- reducing or further splitting the p-code `smallcc` image
 - link-time layout for larger compiler data
 - full `#if` expressions and richer conditional preprocessing
 - large switch tables

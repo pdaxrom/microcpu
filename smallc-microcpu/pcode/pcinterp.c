@@ -683,7 +683,7 @@ static int parse_file(path) char *path; {
       if(!next_token(&p, entry_name)) return fail("entry without name");
       continue;
     }
-    if(str_eq(op, "func")) {
+    if(str_eq(op, "func") || str_eq(op, "static_func")) {
       if(!next_token(&p, tok)) return fail("func without name");
       add_symbol(tok, SYM_CODE, insn_count, 0);
       continue;
@@ -693,7 +693,7 @@ static int parse_file(path) char *path; {
       add_symbol(tok, SYM_CODE, insn_count, 0);
       continue;
     }
-    if(str_eq(op, "data_label")) {
+    if(str_eq(op, "data_label") || str_eq(op, "static_data_label")) {
       if(!next_token(&p, tok)) return fail("data_label without name");
       add_symbol(tok, SYM_DATA, 0, memory_size);
       continue;

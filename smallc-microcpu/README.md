@@ -120,6 +120,13 @@ the result under `microemu`:
 make -C smallc-microcpu test-pcode-native
 ```
 
+P-code also has a multi-module test path that merges per-translation-unit
+`.pca` files into one p-code object, then runs it under `microemu`:
+
+```sh
+make -C smallc-microcpu test-pcode-multi
+```
+
 The p-code test suite lives under `pcode-tests/` and currently covers return
 constants, local/global variables, arithmetic, comparisons, short-circuit
 logical operators, bitwise and shift operators, `if`/`else`, `while`, `switch`,
@@ -132,6 +139,9 @@ semantics as the host interpreter and currently supports `NCALL_U8` through a
 link-time native table, including optional user native objects.  Function
 pointers currently target p-code functions; native function pointers are still
 unsupported.  P-code is not used by the normal native test flow yet.
+`test-pcode-multi` additionally covers p-code-to-p-code cross-module calls,
+extern globals, static symbol isolation, and cross-module p-code function
+pointers.
 
 `build/pcode/size-report.txt` records raw bytecode bytes, global data bytes,
 native table bytes, total p-code object data size, and a comparison with the
@@ -149,6 +159,17 @@ make -C smallc-microcpu selfhost-pcode-smoke
 
 This writes `build/selfhost-pcode/size-report.txt`.  The default mode is
 report-only; `STRICT=1` makes unsupported p-code lowering fail the target.
+
+To try linking separate p-code-hosted tool images without running them:
+
+```sh
+make -C smallc-microcpu selfhost-pcode-link-smoke
+```
+
+This writes `build/selfhost-pcode-link/report.txt`.  It merges each tool's
+p-code modules into a single p-code object and links it with the p-code
+interpreter plus generated link-only hosted stubs.  The stubs are placeholders
+for size/unresolved-symbol measurement, not real target file I/O.
 
 ## Self-hosting smoke checks
 

@@ -150,6 +150,24 @@ assumes compiler-generated p-code is well-formed.
 Native function pointers are not implemented yet.  External function
 declarations still call through `NCALL` and the native table.
 
+## Multi-module p-code
+
+The current object format exposes one `__pcode_start`/`__pcd_global` pair per
+p-code object, so the multi-module path merges textual `.pca` modules into one
+p-code object for the program or tool being linked.  The merger:
+
+- preserves public p-code function and data labels,
+- rewrites external `ncall` instructions to `call` when the target function is
+  defined by another p-code module in the same merged image,
+- resolves `extern` p-code globals against data labels from other modules,
+- rewrites internal compiler labels such as `L123`,
+- rewrites `static_func` and `static_data_label` definitions to per-module
+  private names so static symbols do not collide.
+
+`test-pcode-multi` covers p-code-to-p-code cross-module calls, extern globals,
+static isolation, and cross-module function pointers.  Cross-module native
+function pointers remain unsupported; native calls still use `NCALL`.
+
 ## Native calls
 
 `NCALL` looks up a native-table entry.  The p-code stack holds arguments in
@@ -282,3 +300,26 @@ The report is written to `build/selfhost-pcode/size-report.txt` and includes:
 
 This target is a measurement smoke only.  It does not link or run a
 p-code-hosted compiler image.
+
+For link/size smoke, use:
+
+```sh
+make -C smallc-microcpu selfhost-pcode-link-smoke
+```
+
+This target first refreshes `selfhost-pcode-smoke`, then attempts separate
+links for `smallcpp` and `smallcc`.  Each tool's `.pca` modules are merged into
+one p-code object and linked as:
+
+```text
+pcode_interpreter.o
+generated hosted_stubs.o
+<tool>.pcode.o
+```
+
+The generated hosted stubs provide dummy functions and dummy `stdin`/`stdout`/
+`stderr` globals only to measure link size and unresolved symbols.  They are
+not real file I/O and the linked images are not expected to run as compilers
+yet.  The report is written to `build/selfhost-pcode-link/report.txt` and
+classifies failures as missing p-code modules, unresolved symbols, size
+overflow, symbol collision, relocation limitation, linker failure, or other.

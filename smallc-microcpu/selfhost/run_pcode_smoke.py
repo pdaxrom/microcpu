@@ -276,7 +276,7 @@ def pca_counts(path: pathlib.Path) -> dict[str, int]:
     indirect_calls = 0
     for line in read_lines(path):
         stripped = line.strip()
-        if stripped.startswith("func "):
+        if stripped.startswith("func ") or stripped.startswith("static_func "):
             functions += 1
         elif stripped.startswith("ncall "):
             native_calls += 1

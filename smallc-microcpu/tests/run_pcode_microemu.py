@@ -284,9 +284,9 @@ def parse_pca(path: pathlib.Path) -> tuple[str, list[Insn], dict[str, int], dict
         args = parts[1:]
         if op == "entry":
             entry = args[0]
-        elif op == "func" or op == "label":
+        elif op in ("func", "static_func", "label"):
             labels[args[0]] = len(insns)
-        elif op == "data_label":
+        elif op in ("data_label", "static_data_label"):
             data_labels[args[0]] = len(data)
         elif op == "data8":
             for value in args:

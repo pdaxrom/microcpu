@@ -8,6 +8,7 @@
 #include "host_compat.h"
 
 extern int output, pcode_argc, litptr, litlab;
+extern int pubclass;
 extern char *symtab, *cptr, *litq, ssname[NAMESIZE];
 
 #define PCTMP0 0
@@ -108,12 +109,14 @@ int pcode_trailer() {
 
 int pcode_public(ident) int ident; {
   if(ident == FUNCTION) {
-    outstr("func ");
+    if(pubclass == PRIVATE) outstr("static_func ");
+    else                    outstr("func ");
     pcode_name(ssname);
     newline();
     return 0;
     }
-  outstr("data_label ");
+  if(pubclass == PRIVATE) outstr("static_data_label ");
+  else                    outstr("data_label ");
   pcode_name(ssname);
   newline();
   return 0;
