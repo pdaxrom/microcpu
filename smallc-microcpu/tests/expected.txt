@@ -171,3 +171,13 @@
 171_ifdef_basic 171
 172_include_angle 172
 173_undef_basic 173
+174_macro_func_one_arg 123
+175_macro_func_two_args 30
+176_macro_func_expr_arg 22
+177_macro_func_nested_arg 30
+178_macro_func_nested_expand 14
+179_macro_func_assignment 55
+180_macro_func_undef 180
+181_macro_func_comma_nested 181
+182_macro_func_char_arg 65
+183_macro_abort_style 183

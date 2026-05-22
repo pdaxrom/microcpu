@@ -50,6 +50,7 @@ int
   inclevel, /* active include nesting depth */
   incpath_count, /* number of include search paths */
   skip_count, /* number of argv indexes consumed by options */
+  macro_param_count, /* next function-like macro parameter slot */
   usexpr  = YES, /* true if value of expression is used */
   ccode   = YES, /* true while parsing C code */
  *snext,    /* next addr in stage */
@@ -102,11 +103,14 @@ int
   field_size[MAXFIELDS],
   field_offset[MAXFIELDS],
   incfile[MAXINCLUDE],
-  skip_arg[MAXSKIPARGS];
+  skip_arg[MAXSKIPARGS],
+  macro_argc[MACNBR],
+  macro_argfirst[MACNBR];
 
 char
   incpath[MAXINCPATHS * LINESIZE],
-  incdir[(MAXINCLUDE + 1) * LINESIZE];
+  incdir[(MAXINCLUDE + 1) * LINESIZE],
+  macro_param_name[MAXMACPARAMS * MACNAMESIZE];
 
 int op[16] = {   /* p-codes of signed binary operators */
   OR12,                        /* level5 */
@@ -678,14 +682,9 @@ int doinclude() {
 ** define a macro symbol
 */
 int dodefine() {
-  int k;
+  int k, idx, argc, first;
   if(macsymname(msname) == 0) {
     illname();
-    kill();
-    return;
-    }
-  if(ch == '(') {
-    error("unsupported function-like macro");
     kill();
     return;
     }
@@ -698,6 +697,31 @@ int dodefine() {
       return;
       }
     }
+  idx = macindex(cptr);
+  macro_argc[idx] = -1;
+  macro_argfirst[idx] = 0;
+  if(ch == '(') {
+    first = macro_param_count;
+    argc = 0;
+    bump(1);
+    blanks();
+    if(match(")") == 0) {
+      while(1) {
+        if(macsymname(msname) == 0) {
+          illname();
+          break;
+          }
+        if(argc >= MAXMACARGS) error("too many macro parameters");
+        else addmacparam(msname);
+        ++argc;
+        blanks();
+        if(match(")")) break;
+        need(",");
+        }
+      }
+    macro_argc[idx] = argc;
+    macro_argfirst[idx] = first;
+    }
   putint(macptr, cptr+MACNAMESIZE, 2);
   while(white()) gch();
   while(ch) {
@@ -705,6 +729,11 @@ int dodefine() {
       bump(2);
       while(ch && (ch == '*' && nch == '/') == 0) gch();
       if(ch) bump(2);
+      }
+    else if(macro_argc[idx] >= 0 && ch == '#') {
+      if(nch == '#') error("unsupported macro token paste");
+      else           error("unsupported macro stringification");
+      gch();
       }
     else putmac(gch());
     }
@@ -730,6 +759,29 @@ int putmac(c)  char c; {
   macq[macptr] = c;
   if(macptr < MACMAX) ++macptr;
   return c;
+  }
+
+int macindex(ptr) char *ptr; {
+  return (ptr - macn) / MACENTRY;
+  }
+
+int addmacparam(sname) char *sname; {
+  int i;
+  char *dst;
+  if(macro_param_count >= MAXMACPARAMS) {
+    error("macro parameter table full");
+    return 0;
+    }
+  dst = macro_param_name + macro_param_count * MACNAMESIZE;
+  i = 0;
+  while(i < MACNAMESIZE) dst[i++] = 0;
+  i = 0;
+  while(sname[i] && i < MACNAMEMAX) {
+    dst[i] = sname[i];
+    ++i;
+    }
+  ++macro_param_count;
+  return 1;
   }
 
 /*

@@ -127,10 +127,14 @@
 #define MACNBR   300
 #define MACNAMESIZE 33
 #define MACNAMEMAX  32
-#define MACNSIZE (MACNBR*(MACNAMESIZE+2))
+#define MACENTRY (MACNAMESIZE+2)
+#define MACNSIZE (MACNBR*MACENTRY)
 #define MACNEND  (macn+MACNSIZE)
 #define MACQSIZE (MACNBR*24)
 #define MACMAX   (MACQSIZE-1)
+#define MAXMACARGS 8
+#define MAXMACPARAMS 512
+#define MAXMACEXPAND 16
 
 /*
 ** typedef table

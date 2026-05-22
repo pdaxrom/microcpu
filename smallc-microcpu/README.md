@@ -81,15 +81,21 @@ The compiler has a deliberately small preprocessing layer.  It supports:
 - `-I DIR` and `-IDIR`
 - nested includes up to `MAXINCLUDE`
 - object-like `#define NAME value` and `#define NAME`
+- simple function-like `#define NAME(a,b) replacement` macros
 - `#undef NAME`
 - header-guard style `#ifdef`, `#ifndef`, `#else`, and `#endif`
 - block comments with `/* ... */`
 
-This is not a full ANSI C preprocessor.  Function-like macros are rejected with
-a clear diagnostic, full `#if` expressions are unsupported, and system include
-directories are not searched by default.  The controlled headers under
-`smallc-microcpu/include/` are small compatibility shims for smoke checks, not
-a hosted libc.
+Function-like macro definitions must use the old C form with no whitespace
+between the macro name and `(`.  Invocations may have whitespace before `(`.
+Arguments support nested parentheses, string literals, and character literals.
+
+This is not a full ANSI C preprocessor.  Macro stringification (`#`), token
+pasting (`##`), variadic macros, predefined macros such as `__FILE__`, and full
+`#if` expressions are unsupported.  Recursive expansion is capped by
+`MAXMACEXPAND`, and system include directories are not searched by default.
+The controlled headers under `smallc-microcpu/include/` are small compatibility
+shims for smoke checks, not a hosted libc.
 
 ## ABI
 
@@ -121,8 +127,8 @@ The current backend is intentionally small and supports:
 - `switch`, `case`, `default`, `break` from switch, and case fallthrough
 - simple `enum` constants with implicit and explicit integer values
 - simple `typedef` aliases for `int`, `char`, pointers, and named structs
-- minimal preprocessing: object-like `#define`, `#undef`, guarded includes,
-  `#ifdef`/`#ifndef`, and `-I` include paths
+- minimal preprocessing: object-like and simple function-like `#define`,
+  `#undef`, guarded includes, `#ifdef`/`#ifndef`, and `-I` include paths
 - direct function calls, nested calls, and calls using locals/globals
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
@@ -182,7 +188,8 @@ Intentionally unsupported at this stage:
 - function pointers
 - `void` and `void *` type semantics
 - `memmove`, `printf`, `scanf`, UART line buffering, `malloc`, and `free`
-- function-like macros and full `#if` preprocessor expressions
+- macro stringification, token pasting, variadic macros, predefined macros,
+  and full `#if` preprocessor expressions
 - hexadecimal `\xHH` string escapes
 - self-hosting
 - full libc beyond the current small runtime helpers

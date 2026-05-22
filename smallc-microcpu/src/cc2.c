@@ -11,13 +11,14 @@
 extern char
  *symtab, *macn, *macq, *pline, *mline,  optimize,
   alarm, *glbptr, *line, *lptr, *cptr, *cptr2,  *cptr3,
- *locptr, msname[MACNAMESIZE],  pause,  quote[2];
+ *locptr, msname[MACNAMESIZE],  pause,  quote[2],
+  macro_param_name[MAXMACPARAMS * MACNAMESIZE];
 
 extern int
   *wq,  ccode,  ch,  csp,  eof,  errflag,  iflevel,
   input,  input2,  inclevel,  incfile[MAXINCLUDE],  listfp,  macptr,  nch,
   nxtlab,  op[16],  opindex,  opsize,  output,  pptr,
-  skiplevel,  *wqptr;
+  skiplevel,  *wqptr,  macro_argc[MACNBR],  macro_argfirst[MACNBR];
 
 /********************** input functions **********************/
 
@@ -93,9 +94,8 @@ int preprocess() {
         }
       msname[k] = NULL;
       if(macsearch(msname)) {
-        k = getint(cptr+MACNAMESIZE, 2);
-        while(c = macq[k++]) keepch(c);
-        while(an(ch)) gch();
+        cptr2 = expandfound(cptr, lptr, 0);
+        if(cptr2 != lptr) bump(cptr2 - lptr);
         }
       else {
         k = 0;
@@ -215,13 +215,198 @@ int macsymname(sname) char *sname; {
 */
 int macsearch(sname) char *sname; {
   cptr  =
-  cptr2 = macn+((hash(sname)%(MACNBR-1))*(MACNAMESIZE+2));
+  cptr2 = macn+((hash(sname)%(MACNBR-1))*MACENTRY);
   while(*cptr != NULL) {
     if(astreq(sname, cptr, MACNAMEMAX)) return 1;
-    if((cptr = cptr+MACNAMESIZE+2) >= MACNEND) cptr = macn;
+    if((cptr = cptr+MACENTRY) >= MACNEND) cptr = macn;
     if(cptr == cptr2) return (cptr = 0);
     }
   return 0;
+  }
+
+int expandfound(ptr, src, depth) char *ptr, *src; int depth; {
+  int idx, off, argc;
+  char args[MAXMACARGS * LINESIZE], subst[LINESIZE];
+  char *p, *q;
+  if(depth >= MAXMACEXPAND) {
+    error("macro expansion depth exceeded");
+    return src;
+    }
+  idx = macindex(ptr);
+  argc = macro_argc[idx];
+  off = getint(ptr+MACNAMESIZE, 2);
+  if(argc < 0) {
+    expandtext(macq + off, depth + 1);
+    return src;
+    }
+  p = src;
+  while(*p && *p <= ' ') ++p;
+  if(*p != '(') {
+    expandname(ptr);
+    return src;
+    }
+  q = readmacroargs(p + 1, argc, args);
+  if(q == 0) {
+    expandname(ptr);
+    return src;
+    }
+  substmacro(idx, args, subst);
+  expandtext(subst, depth + 1);
+  return q;
+  }
+
+int expandtext(text, depth) char *text; int depth; {
+  int k;
+  char c, name[MACNAMESIZE], *p;
+  p = text;
+  while(c = *p) {
+    if(c == '"') {
+      keepch(*p++);
+      while(*p && (*p != '"' || (*(p-1) == 92 && *(p-2) != 92)))
+        keepch(*p++);
+      if(*p) keepch(*p++);
+      }
+    else if(c == 39) {
+      keepch(*p++);
+      while(*p && (*p != 39 || (*(p-1) == 92 && *(p-2) != 92)))
+        keepch(*p++);
+      if(*p) keepch(*p++);
+      }
+    else if(alpha(c)) {
+      k = 0;
+      while(an(*p)) {
+        c = *p++;
+        if(k < MACNAMEMAX) name[k++] = c;
+        }
+      name[k] = 0;
+      if(macsearch(name))
+        p = expandfound(cptr, p, depth);
+      else {
+        k = 0;
+        while(c = name[k++]) keepch(c);
+        }
+      }
+    else keepch(*p++);
+    }
+  }
+
+int expandname(ptr) char *ptr; {
+  int k;
+  k = 0;
+  while(ptr[k]) keepch(ptr[k++]);
+  }
+
+int readmacroargs(src, argc, args) char *src, *args; int argc; {
+  int arg, depth, len, c;
+  char *p, *dst;
+  p = src;
+  arg = depth = len = 0;
+  dst = args;
+  if(argc == 0) {
+    while(*p && *p <= ' ') ++p;
+    if(*p == ')') return p + 1;
+    error("wrong macro argument count");
+    return 0;
+    }
+  while(*p) {
+    c = *p++;
+    if(c == '"' || c == 39) {
+      if(len < LINEMAX) {dst[len++] = c;}
+      while(*p && (*p != c || (*(p-1) == 92 && *(p-2) != 92))) {
+        if(len < LINEMAX) dst[len++] = *p;
+        ++p;
+        }
+      if(*p && len < LINEMAX) dst[len++] = *p++;
+      }
+    else if(c == '(') {
+      ++depth;
+      if(len < LINEMAX) dst[len++] = c;
+      }
+    else if(c == ')' && depth) {
+      --depth;
+      if(len < LINEMAX) dst[len++] = c;
+      }
+    else if((c == ',' || c == ')') && depth == 0) {
+      dst[len] = 0;
+      ++arg;
+      if(c == ')') {
+        if(arg != argc) error("wrong macro argument count");
+        return p;
+        }
+      if(arg >= argc || arg >= MAXMACARGS) {
+        error("wrong macro argument count");
+        return 0;
+        }
+      dst = args + arg * LINESIZE;
+      len = 0;
+      }
+    else {
+      if(len < LINEMAX) dst[len++] = c;
+      }
+    }
+  error("missing macro close paren");
+  return 0;
+  }
+
+int substmacro(idx, args, out) int idx; char *args, *out; {
+  int k, pi;
+  char c, name[MACNAMESIZE], *p;
+  p = macq + getint(macn + idx * MACENTRY + MACNAMESIZE, 2);
+  *out = 0;
+  while(c = *p) {
+    if(c == '"' || c == 39) {
+      appendchar(out, c);
+      ++p;
+      while(*p && (*p != c || (*(p-1) == 92 && *(p-2) != 92))) {
+        appendchar(out, *p);
+        ++p;
+        }
+      if(*p) appendchar(out, *p++);
+      }
+    else if(alpha(c)) {
+      k = 0;
+      while(an(*p)) {
+        c = *p++;
+        if(k < MACNAMEMAX) name[k++] = c;
+        }
+      name[k] = 0;
+      pi = findmacroparam(idx, name);
+      if(pi >= 0) appendtext(out, args + pi * LINESIZE);
+      else        appendtext(out, name);
+      }
+    else {
+      appendchar(out, *p);
+      ++p;
+      }
+    }
+  }
+
+int appendtext(out, text) char *out, *text; {
+  while(*text) appendchar(out, *text++);
+  }
+
+int appendchar(out, c) char *out; int c; {
+  int i;
+  i = 0;
+  while(out[i]) ++i;
+  if(i < LINEMAX) {
+    out[i++] = c;
+    out[i] = 0;
+    }
+  }
+
+int findmacroparam(idx, name) int idx; char *name; {
+  int i, count, first;
+  char *p;
+  count = macro_argc[idx];
+  first = macro_argfirst[idx];
+  i = 0;
+  while(i < count) {
+    p = macro_param_name + (first + i) * MACNAMESIZE;
+    if(astreq(name, p, MACNAMEMAX)) return i;
+    ++i;
+    }
+  return -1;
   }
 
 /*

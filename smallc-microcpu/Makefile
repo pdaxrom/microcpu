@@ -5,6 +5,7 @@ EMU ?= ../microemu/microemu
 EMU_BOARD ?= hc1200-mcu
 MAX_STEPS ?= 1000000
 TRACE ?= 0
+SELFHOST_TIMEOUT ?= 3
 
 BUILD := build
 TEST_BUILD := $(BUILD)/tests
@@ -55,6 +56,7 @@ test: $(CC_BIN)
 selfhost-smoke: $(CC_BIN)
 	$(PYTHON) selfhost/run_smoke.py --compiler $(CC_BIN) \
 		--build-dir $(SELFHOST_BUILD) --include-dir include \
+		--timeout-seconds $(SELFHOST_TIMEOUT) \
 		$(STRICT_ARG) $(SELFHOST_SRCS)
 
 assemble: test

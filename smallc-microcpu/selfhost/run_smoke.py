@@ -49,6 +49,8 @@ def classify_next_step(reason: str, text: str) -> str:
         return "add #undef support or hide host-only remapping from self-host inputs"
     if stripped.startswith("static "):
         return "add static declaration/function parsing"
+    if "global symbol table overflow" in reason:
+        return "increase symbol capacity or avoid importing the full prototype list during smoke"
     if "already defined" in reason:
         return "improve symbol/prototype handling after preprocessing/include blockers"
     if "illegal function or declaration" in reason:
@@ -102,9 +104,18 @@ def write_log(
                 log.write("\n")
 
 
+def text_or_empty(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("latin-1", errors="replace")
+    return value
+
+
 def compile_source(
     compiler: pathlib.Path,
     include_dirs: list[pathlib.Path],
+    timeout_seconds: int,
     build_dir: pathlib.Path,
     source: pathlib.Path,
 ) -> dict[str, object]:
@@ -115,19 +126,38 @@ def compile_source(
     for include_dir in include_dirs:
         argv.extend(["-I", str(include_dir)])
     argv.append(str(source))
-    proc = subprocess.run(
-        argv,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
+    timed_out = False
+    try:
+        proc = subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        timed_out = True
+        proc = subprocess.CompletedProcess(
+            argv,
+            124,
+            stdout=text_or_empty(exc.stdout),
+            stderr=text_or_empty(exc.stderr),
+        )
     asm_path.write_text(proc.stdout)
     write_log(log_path, argv, proc)
 
     source_lines = read_source_lines(source)
     err = first_error(proc.stderr, source_lines)
     ok = proc.returncode == 0 and err is None
+    if timed_out:
+        err = {
+            "reason": f"compiler timed out after {timeout_seconds}s",
+            "text": "",
+            "line": None,
+            "next": "inspect the partial log for the next parser/preprocessor non-progress case",
+        }
+        ok = False
     if proc.returncode != 0 and err is None:
         err = {
             "reason": f"compiler exited with status {proc.returncode}",
@@ -178,6 +208,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--compiler", type=pathlib.Path, required=True)
     parser.add_argument("--build-dir", type=pathlib.Path, required=True)
     parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
+    parser.add_argument("--timeout-seconds", default=10, type=int)
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("sources", nargs="+", type=pathlib.Path)
     return parser.parse_args(argv)
@@ -189,7 +220,13 @@ def main(argv: list[str]) -> int:
 
     results = []
     for source in args.sources:
-        result = compile_source(args.compiler, args.include_dir, args.build_dir, source)
+        result = compile_source(
+            args.compiler,
+            args.include_dir,
+            args.timeout_seconds,
+            args.build_dir,
+            source,
+        )
         results.append(result)
         if result["ok"]:
             print(f"{result['name']}: PASS")

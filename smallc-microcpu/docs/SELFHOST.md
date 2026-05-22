@@ -32,6 +32,13 @@ fail compatibility checks.  To make failures fail the make target:
 make -C smallc-microcpu selfhost-smoke STRICT=1
 ```
 
+Each attempted compiler source has a timeout so parser non-progress is reported
+instead of hanging the smoke target.  Override it with:
+
+```sh
+make -C smallc-microcpu selfhost-smoke SELFHOST_TIMEOUT=10
+```
+
 ## Current inputs
 
 The smoke check currently attempts the real compiler implementation files:
@@ -54,24 +61,33 @@ No real compiler implementation file is expected to pass yet.  The original
 headers under `smallc-microcpu/include/`; the smoke target passes `-I include`
 and does not search host system include directories.
 
-The current first blocker for all attempted real compiler files is now the
-function-like macro in `src/host_compat.h`:
+The previous function-like macro blocker, for example:
 
 ```c
 #define abort(code) exit((int)(code))
 ```
 
-The smoke report records that as `unsupported function-like macro`.  This is
-useful signal: include path handling is no longer the first blocker; the next
-self-hosting work is either avoiding host-only function-like macros in target
-headers or adding a very small function-like macro subset.
+is now handled by the simple macro expander.  The current report advances past
+that point.  For most compiler files the next blocker is global symbol table
+overflow while reading the expanded prototype list from `smallc_proto.h`, first
+reported around:
+
+```c
+intptr_t chrcon();
+```
+
+For `host_compat.c`, the first blocker is duplicate declaration handling around
+the multiline `getarg` prototype.  These are useful next signals: the
+preprocessor can now enter the compiler sources far enough to expose symbol
+table/prototype pressure instead of include or macro-definition failures.
 
 ## Known blockers
 
 The most likely next blockers are:
 
-- function-like macros in host compatibility headers
 - full `#if` expressions and richer conditional preprocessing
+- larger global symbol capacity or more selective prototype handling
+- duplicate/multiline prototype handling in host compatibility sources
 - `static` declarations and static functions
 - `extern` declarations
 - multiple translation units and cross-unit symbol resolution
