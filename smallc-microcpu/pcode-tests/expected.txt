@@ -39,3 +39,6 @@
 039_funcptr_two_args 39
 040_funcptr_assign_switch 40
 041_funcptr_global 41
+042_opt_store_load 42
+043_opt_branch_next 43
+044_opt_loop 44

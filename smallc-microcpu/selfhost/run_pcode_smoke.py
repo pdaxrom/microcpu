@@ -20,6 +20,9 @@ from run_pcode_microemu import (  # noqa: E402
     OP_ADDR_LOCAL_S8,
     OP_ADDR_LOCAL_U16,
     OP_CALL_U16,
+    OP_CALL0_U16,
+    OP_CALL1_U16,
+    OP_CALL2_U16,
     OP_DROP,
     OP_DUP,
     OP_ICONST_0,
@@ -56,6 +59,7 @@ from run_pcode_microemu import (  # noqa: E402
     parse_pca,
     write_pcode_object_asm,
 )
+import pcode_opt  # noqa: E402
 
 
 ERROR_RE = re.compile(r"\*\*\*\* (.*)")
@@ -232,16 +236,21 @@ def encode_pca_module(
                 out.append(opcode)
                 emit_u16(out, rel)
         elif op == "call":
+            argc = parse_int(args[1])
             if args[0] not in labels:
                 native = args[0]
                 if native not in native_ids:
                     native_ids[native] = len(native_ids)
                     externs[native] = 1
-                out.extend([OP_NCALL_U8, native_ids[native], parse_int(args[1]) & 0xFF])
+                out.extend([OP_NCALL_U8, native_ids[native], argc & 0xFF])
             else:
-                out.append(OP_CALL_U16)
-                emit_u16(out, labels[args[0]])
-                out.append(parse_int(args[1]) & 0xFF)
+                if 0 <= argc <= 2:
+                    out.append([OP_CALL0_U16, OP_CALL1_U16, OP_CALL2_U16][argc])
+                    emit_u16(out, labels[args[0]])
+                else:
+                    out.append(OP_CALL_U16)
+                    emit_u16(out, labels[args[0]])
+                    out.append(argc & 0xFF)
         elif op == "icall":
             out.extend([OP_ICALL_U8, parse_int(args[0]) & 0xFF])
         elif op == "ncall":
@@ -354,6 +363,11 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "pcode_obj_size": 0,
         "payload_bytes": 0,
         "natives": [],
+        "pcode_opt": False,
+        "pcode_opt_removed": 0,
+        "pcode_opt_saved": 0,
+        "pcode_opt_before": 0,
+        "pcode_opt_after": 0,
     }
 
     argv = [str(args.preprocessor), "-o", str(i_path)]
@@ -376,6 +390,23 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         result["near"] = near
     else:
         try:
+            if args.pcode_opt:
+                raw_pca_path = args.build_dir / f"{name}.raw.pca"
+                pca_path.replace(raw_pca_path)
+                opt_stats = pcode_opt.optimize_pca_file(raw_pca_path, pca_path)
+                result.update({
+                    "pcode_opt": True,
+                    "pcode_opt_removed": opt_stats["removed_temp_roundtrips"],
+                    "pcode_opt_saved": opt_stats["bytecode_saved"],
+                    "pcode_opt_before": opt_stats["bytecode_before"],
+                    "pcode_opt_after": opt_stats["bytecode_after"],
+                })
+                with log_path.open("a") as log:
+                    log.write("== pcode-opt ==\n")
+                    log.write(f"removed_temp_roundtrips={opt_stats['removed_temp_roundtrips']}\n")
+                    log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
+                    log.write(f"bytecode_after={opt_stats['bytecode_after']}\n")
+                    log.write(f"bytecode_saved={opt_stats['bytecode_saved']}\n\n")
             entry, bytecode, data, data_labels, natives, externs = encode_pca_module(pca_path)
             write_pcode_object_asm(pcode_asm, entry, bytecode, data, data_labels, natives, externs)
             pcode_obj_ok, pcode_obj_size = assemble_object(args.assembler, pcode_asm, pcode_obj, log_path)
@@ -454,6 +485,8 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "native_entries": 0,
         "globals": 0,
         "failed": 0,
+        "opt_removed": 0,
+        "opt_saved": 0,
     }
     for source in sources:
         item = results[source.stem]
@@ -471,6 +504,8 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["indirect_calls"] += int(item["indirect_calls"])
         total["native_entries"] += int(item["native_entries"])
         total["globals"] += int(item["globals"])
+        total["opt_removed"] += int(item["pcode_opt_removed"])
+        total["opt_saved"] += int(item["pcode_opt_saved"])
     return total
 
 
@@ -486,6 +521,14 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
             fp.write(f"  near: {result['near']}\n")
         fp.write("  suggested next lowering support: inspect the unsupported pseudo-code and add the smallest stack-VM translation\n")
     fp.write(f"  p-code bytecode bytes: {result['bytecode_bytes']}\n")
+    if result["pcode_opt"]:
+        fp.write("  p-code optimizer: enabled\n")
+        fp.write(f"  optimizer removed temp store/load pairs: {result['pcode_opt_removed']}\n")
+        fp.write(f"  optimizer bytecode before: {result['pcode_opt_before']}\n")
+        fp.write(f"  optimizer bytecode after: {result['pcode_opt_after']}\n")
+        fp.write(f"  optimizer bytecode saved: {result['pcode_opt_saved']}\n")
+    else:
+        fp.write("  p-code optimizer: disabled\n")
     fp.write(f"  p-code global data bytes: {result['global_data_bytes']}\n")
     fp.write(f"  string/literal bytes: {result['literal_bytes']}\n")
     fp.write(f"  native call table bytes: {result['native_table_bytes']}\n")
@@ -525,6 +568,8 @@ def write_group_report(
     fp.write(f"  pcode_interpreter.o size: {interp_size}\n")
     fp.write(f"  runtime/libc object estimate: {runtime_size if needs_runtime else 0}\n")
     fp.write(f"  p-code bytecode bytes: {total['bytecode']}\n")
+    fp.write(f"  optimizer removed temp store/load pairs: {total['opt_removed']}\n")
+    fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")
     fp.write(f"  p-code global data bytes: {total['data']}\n")
     fp.write(f"  string/literal bytes: {total['literal']}\n")
     fp.write(f"  native call table bytes: {total['native_table']}\n")
@@ -609,6 +654,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--define", action="append", default=[])
     parser.add_argument("--timeout-seconds", default=3, type=int)
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--pcode-opt", action="store_true")
     parser.add_argument("--smallcpp-srcs", nargs="+", required=True, type=pathlib.Path)
     parser.add_argument("--smallcc-srcs", nargs="+", required=True, type=pathlib.Path)
     return parser.parse_args(argv)

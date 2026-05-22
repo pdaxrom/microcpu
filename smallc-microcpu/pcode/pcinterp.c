@@ -120,6 +120,9 @@
 #define OP_NCALL_U16        0x55
 #define OP_LEAVE            0x56
 #define OP_ICALL_U8         0x57
+#define OP_CALL0_U16        0x58
+#define OP_CALL1_U16        0x59
+#define OP_CALL2_U16        0x5a
 #define OP_ADD              0x60
 #define OP_SUB              0x61
 #define OP_AND              0x62
@@ -373,6 +376,7 @@ static int insn_base_size(ip) struct Insn *ip; {
   case IK_JNZ:
     return ip->size == 3 ? 3 : 2;
   case IK_CALL:
+    if(v >= 0 && v <= 2) return 3;
     return 4;
   case IK_NCALL:
     if(native_id(ip->name) <= 255) return 3;
@@ -569,9 +573,14 @@ static void encode() {
       }
       break;
     case IK_CALL:
-      emit8(OP_CALL_U16);
-      emit16(symbol_addr(insn[i].name, SYM_CODE));
-      emit8(insn[i].a);
+      if(insn[i].a >= 0 && insn[i].a <= 2) {
+        emit8(OP_CALL0_U16 + insn[i].a);
+        emit16(symbol_addr(insn[i].name, SYM_CODE));
+      } else {
+        emit8(OP_CALL_U16);
+        emit16(symbol_addr(insn[i].name, SYM_CODE));
+        emit8(insn[i].a);
+      }
       break;
     case IK_NCALL:
       id = native_id(insn[i].name);
@@ -1084,6 +1093,18 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_CALL_U16:
       target = read16(&pc);
       argc = read8(&pc);
+      if(fp + 1 >= MAX_FRAMES) return fail("call stack overflow");
+      ++fp;
+      frames[fp].ret_pc = pc;
+      frames[fp].used = 0;
+      for(a = 0; a < argc; ++a) store_local(4 + a * 2, pop());
+      pc = target;
+      break;
+    case OP_CALL0_U16:
+    case OP_CALL1_U16:
+    case OP_CALL2_U16:
+      target = read16(&pc);
+      argc = op - OP_CALL0_U16;
       if(fp + 1 >= MAX_FRAMES) return fail("call stack overflow");
       ++fp;
       frames[fp].ret_pc = pc;

@@ -15,6 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
 import pcode_merge  # noqa: E402
+import pcode_opt  # noqa: E402
 import run_pcode_microemu as pcode  # noqa: E402
 
 
@@ -119,6 +120,7 @@ def link_tool(args: argparse.Namespace, name: str, pcas: list[pathlib.Path], int
     tool_dir.mkdir(parents=True, exist_ok=True)
     log = tool_dir / f"{name}.log"
     merged_pca = tool_dir / f"{name}.merged.pca"
+    opt_pca = tool_dir / f"{name}.merged.opt.pca"
     pcode_asm = tool_dir / f"{name}.pcode.asm"
     pcode_obj = tool_dir / f"{name}.pcode.o"
     stubs_asm = tool_dir / "hosted_stubs.asm"
@@ -149,6 +151,8 @@ def link_tool(args: argparse.Namespace, name: str, pcas: list[pathlib.Path], int
         "extern_data": [],
         "unresolved": [],
         "diagnostic": "",
+        "analysis": None,
+        "opt_stats": None,
     }
 
     if result["missing"]:
@@ -157,7 +161,12 @@ def link_tool(args: argparse.Namespace, name: str, pcas: list[pathlib.Path], int
 
     try:
         pcode_merge.merge_pca_files(pcas, merged_pca)
-        entry, bytecode, data, data_labels, natives, externs = pcode.encode_pca(merged_pca)
+        encode_path = merged_pca
+        if args.pcode_opt:
+            result["opt_stats"] = pcode_opt.optimize_pca_file(merged_pca, opt_pca)
+            encode_path = opt_pca
+        result["analysis"] = pcode_opt.analyze_pca(encode_path)
+        entry, bytecode, data, data_labels, natives, externs = pcode.encode_pca(encode_path)
         pcode.write_pcode_object_asm(pcode_asm, entry, bytecode, data, data_labels, natives, externs)
         extern_data = [symbol for symbol in externs if symbol not in natives]
         result.update({
@@ -217,6 +226,20 @@ def write_tool_report(fp, result: dict[str, object]) -> None:
     fp.write(f"  p-code global data bytes: {result['data']}\n")
     fp.write(f"  native table bytes: {result['native_table']}\n")
     fp.write(f"  p-code payload bytes: {result['payload']}\n")
+    opt_stats = result["opt_stats"]
+    if opt_stats:
+        fp.write("  optimizer: enabled\n")
+        fp.write(f"  optimizer removed temp store/load pairs: {opt_stats['removed_temp_roundtrips']}\n")
+        fp.write(f"  optimizer bytecode before: {opt_stats['bytecode_before']}\n")
+        fp.write(f"  optimizer bytecode after: {opt_stats['bytecode_after']}\n")
+        fp.write(f"  optimizer bytecode saved: {opt_stats['bytecode_saved']}\n")
+    else:
+        fp.write("  optimizer: disabled\n")
+    analysis = result["analysis"]
+    if analysis:
+        fp.write("  size diagnostics:\n")
+        for line in pcode_opt.format_analysis(analysis, "    "):
+            fp.write(f"{line}\n")
     fp.write(f"  interpreter object size: {result['interpreter_size']}\n")
     fp.write(f"  hosted stubs size: {result['stubs_size']}\n")
     fp.write("  libc/runtime size: 0\n")
@@ -266,6 +289,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--runtime-dir", required=True, type=pathlib.Path)
     parser.add_argument("--build-dir", required=True, type=pathlib.Path)
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--pcode-opt", action="store_true")
     parser.add_argument("--smallcpp-pcas", nargs="+", required=True, type=pathlib.Path)
     parser.add_argument("--smallcc-pcas", nargs="+", required=True, type=pathlib.Path)
     return parser.parse_args(argv)

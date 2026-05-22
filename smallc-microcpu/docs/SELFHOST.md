@@ -195,9 +195,12 @@ It writes `build/selfhost-pcode/size-report.txt` and does not link or run a
 p-code-hosted compiler.  Current report-only measurements show:
 
 - `smallcpp`: all modules generate p-code.  Estimated p-code image is about
-  52.1 KB versus 87.1 KB summed native object size, roughly 35.1 KB smaller.
+  48.0 KB versus 87.1 KB summed native object size, roughly 39.1 KB smaller.
 - `smallcc`: all modules now generate p-code.  Estimated p-code image is about
-  77.5 KB versus 187.0 KB summed native object size, roughly 109.6 KB smaller.
+  65.1 KB versus 187.3 KB summed native object size, roughly 122.2 KB smaller.
+  The p-code optimizer removes about 6.1K temp store/load roundtrips from
+  `smallcc` and saves about 12.4 KB of bytecode before link-time native table
+  deduplication.
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
@@ -212,15 +215,17 @@ It writes `build/selfhost-pcode-link/report.txt` and remains report-only unless
 interpreter plus generated link-only hosted stubs.  Current status:
 
 - `smallcpp`: link smoke passes.  The linked image is about 50.1 KB and below
-  64K, using dummy hosted stubs for file I/O and standard streams.
-- `smallcc`: p-code generation succeeds for all modules, but the merged p-code
-  payload is about 71.9 KB before interpreter/stubs, so the p-code object path
-  is classified as a code/data size overflow.
+  64K before compaction and about 45.7 KB with `PCODE_OPT=1`, using dummy
+  hosted stubs for file I/O and standard streams.
+- `smallcc`: link smoke now passes with `PCODE_OPT=1`.  The merged p-code
+  payload is about 58.3 KB and the linked smoke image is about 62.5 KB, below
+  the 64K binary limit.
 
 This suggests p-code is a promising size path, but the remaining work is not
 just bytecode density.  The next blockers are native function-pointer
-semantics if needed, reducing/splitting the `smallcc` p-code image,
-target-hosted file I/O/argv support, and final image layout.
+semantics if needed, target-hosted file I/O/argv support, and final image
+layout.  There is not much size margin left for real hosted I/O, so further
+splitting or data-layout work may still be needed.
 
 The global symbol table was raised from 200 to 300 entries only after the
 self-host report showed real compiler frontend pressure with include guards
@@ -231,7 +236,7 @@ working, zero repeated includes, and the controlled headers already minimized.
 The most likely next blockers are:
 
 - target-hosted file I/O, diagnostics, and command-line runtime support
-- reducing or further splitting the p-code `smallcc` image
+- preserving enough p-code `smallcc` size margin for real hosted I/O
 - link-time layout for larger compiler data
 - full `#if` expressions and richer conditional preprocessing
 - large switch tables

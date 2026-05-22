@@ -57,6 +57,9 @@ OP_NCALL_U8 = 0x54
 OP_NCALL_U16 = 0x55
 OP_LEAVE = 0x56
 OP_ICALL_U8 = 0x57
+OP_CALL0_U16 = 0x58
+OP_CALL1_U16 = 0x59
+OP_CALL2_U16 = 0x5A
 
 SIMPLE_OPS = {
     "lbyte": OP_LBYTE,
@@ -259,7 +262,8 @@ def insn_size(insn: Insn, labels: dict[str, int]) -> int:
     if op in ("jmp", "jz", "jnz"):
         return insn.size
     if op == "call":
-        return 4
+        argc = parse_int(insn.args[1])
+        return 3 if 0 <= argc <= 2 else 4
     if op == "icall":
         return 2
     if op == "ncall":
@@ -413,9 +417,14 @@ def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[i
                 out.append(opcode)
                 emit_u16(out, rel)
         elif op == "call":
-            out.append(OP_CALL_U16)
-            emit_u16(out, labels[args[0]])
-            out.append(parse_int(args[1]) & 0xFF)
+            argc = parse_int(args[1])
+            if 0 <= argc <= 2:
+                out.append(OP_CALL0_U16 + argc)
+                emit_u16(out, labels[args[0]])
+            else:
+                out.append(OP_CALL_U16)
+                emit_u16(out, labels[args[0]])
+                out.append(argc & 0xFF)
         elif op == "icall":
             out.extend([OP_ICALL_U8, parse_int(args[0]) & 0xFF])
         elif op == "ncall":
@@ -539,6 +548,18 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
         return False, i_path, pca_path
     argv = [str(args.cc_only), "--backend", "pcode", "-o", str(pca_path), str(i_path)]
     proc = run_cmd(log_path, "compile-pcode", argv)
+    if proc.returncode == 0 and getattr(args, "pcode_opt", False):
+        import pcode_opt
+
+        raw_path = args.build_dir / f"{name}.raw.pca"
+        pca_path.replace(raw_path)
+        stats = pcode_opt.optimize_pca_file(raw_path, pca_path)
+        with log_path.open("a") as log:
+            log.write("== pcode-opt ==\n")
+            log.write(f"removed_temp_roundtrips={stats['removed_temp_roundtrips']}\n")
+            log.write(f"bytecode_before={stats['bytecode_before']}\n")
+            log.write(f"bytecode_after={stats['bytecode_after']}\n")
+            log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")
     return proc.returncode == 0, i_path, pca_path
 
 
@@ -711,6 +732,7 @@ def main() -> int:
     parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--board", default="hc1200-mcu")
     parser.add_argument("--max-steps", default=1_000_000, type=int)
+    parser.add_argument("--pcode-opt", action="store_true")
     parser.add_argument("--test")
     args = parser.parse_args()
 

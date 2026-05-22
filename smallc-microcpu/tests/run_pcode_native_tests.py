@@ -170,6 +170,7 @@ def main() -> int:
     parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--board", default="hc1200-mcu")
     parser.add_argument("--max-steps", default=1_000_000, type=int)
+    parser.add_argument("--pcode-opt", action="store_true")
     parser.add_argument("--test")
     args = parser.parse_args()
 

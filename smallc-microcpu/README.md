@@ -104,6 +104,14 @@ it with 16-bit VM cells:
 make -C smallc-microcpu test-pcode-host
 ```
 
+P-code compaction is enabled for p-code test and self-host smoke targets by
+default.  Use `PCODE_OPT=0` to keep the raw lowering output for debugging:
+
+```sh
+make -C smallc-microcpu test-pcode-host PCODE_OPT=0
+make -C smallc-microcpu test-pcode-microemu PCODE_OPT=0
+```
+
 The microcpu-side interpreter links the bytecode object after the interpreter
 and optional runtime/native objects, then runs the result under `microemu`:
 
@@ -169,7 +177,10 @@ make -C smallc-microcpu selfhost-pcode-link-smoke
 This writes `build/selfhost-pcode-link/report.txt`.  It merges each tool's
 p-code modules into a single p-code object and links it with the p-code
 interpreter plus generated link-only hosted stubs.  The stubs are placeholders
-for size/unresolved-symbol measurement, not real target file I/O.
+for size/unresolved-symbol measurement, not real target file I/O.  With the
+current conservative compaction pass, this link smoke reports both `smallcpp`
+and `smallcc` below the 64K binary limit; `smallcc` is still a smoke image, not
+a runnable target-hosted compiler.
 
 ## Self-hosting smoke checks
 

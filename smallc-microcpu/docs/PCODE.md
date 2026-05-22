@@ -80,6 +80,9 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$55` | `NCALL_U16` | native id word, argc byte |
 | `$56` | `LEAVE` | none |
 | `$57` | `ICALL_U8` | argc byte |
+| `$58` | `CALL0_U16` | 16-bit p-code address |
+| `$59` | `CALL1_U16` | 16-bit p-code address |
+| `$5a` | `CALL2_U16` | 16-bit p-code address |
 | `$60` | `ADD` | none |
 | `$61` | `SUB` | none |
 | `$62` | `AND` | none |
@@ -127,6 +130,33 @@ Direct calls use `call <function> <argc>`.  Native calls use
 `ncall <symbol> <argc>`.  Function-address constants use
 `addr_func <function>` and lower to `ICONST_U16` with the target function's
 bytecode offset.  Indirect p-code calls use `icall <argc>`.
+
+## Compaction
+
+P-code tests and self-host p-code smoke enable conservative compaction by
+default.  Disable it with:
+
+```sh
+make -C smallc-microcpu test-pcode-microemu PCODE_OPT=0
+make -C smallc-microcpu selfhost-pcode-link-smoke PCODE_OPT=0
+```
+
+The current pass is deliberately local and safe:
+
+- removes dead `slocal 0`/`llocal 0` and `slocal 2`/`llocal 2` temp
+  roundtrips when a simple p-code liveness check proves the temp is not read
+  before being overwritten or returning;
+- keeps branch labels, function entries, and data labels as hard boundaries for
+  the rewrite;
+- keeps branch relaxation in the encoder, so removed instructions can make
+  more `JMP`/`JZ`/`JNZ` operations use the short S8 forms;
+- emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, and `CALL2_U16`
+  for the common 0, 1, and 2 argument cases.
+
+The pass does not do global value numbering, constant folding, dead-code
+elimination, inlining, or branch threading.  Reports include opcode
+histograms, common opcode pairs, largest p-code functions, short/long branch
+counts, and optimizer byte savings.
 
 ## Indirect calls
 
@@ -248,11 +278,12 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..041`: constants, local/global loads and stores, local/global
-addressing, p-code direct calls, conditional branches, arithmetic/logical
-comparisons, byte/word memory operations, `DROP`/`DUP`/`SWAP`, `RET`,
-`NCALL_U8`, and `ICALL_U8`.  `switch` is lowered by the p-code backend into an
-explicit compare-and-branch chain, not a dedicated VM opcode.
+`pcode-tests/001..044`: constants, local/global loads and stores, local/global
+addressing, p-code direct calls including compact `CALL0/1/2_U16`, conditional
+branches, arithmetic/logical comparisons, byte/word memory operations,
+`DROP`/`DUP`/`SWAP`, `RET`, `NCALL_U8`, and `ICALL_U8`.  `switch` is lowered by
+the p-code backend into an explicit compare-and-branch chain, not a dedicated
+VM opcode.
 
 Opcodes defined in the bytecode table but not yet exercised by the target test
 suite remain implementation candidates for later coverage expansion.  The
@@ -293,6 +324,7 @@ The report is written to `build/selfhost-pcode/size-report.txt` and includes:
 - unsupported internal pseudo-code opcode, if any
 - bytecode, global data, string/literal, and native-table bytes
 - p-code function, native-call, indirect-call, native-table, and global counts
+- p-code optimizer removed roundtrips and byte savings
 - pcode.o size when the current p-code object path can assemble it
 - equivalent native object size
 - estimated `smallcpp` and `smallcc` p-code image sizes
@@ -320,6 +352,7 @@ generated hosted_stubs.o
 The generated hosted stubs provide dummy functions and dummy `stdin`/`stdout`/
 `stderr` globals only to measure link size and unresolved symbols.  They are
 not real file I/O and the linked images are not expected to run as compilers
-yet.  The report is written to `build/selfhost-pcode-link/report.txt` and
-classifies failures as missing p-code modules, unresolved symbols, size
-overflow, symbol collision, relocation limitation, linker failure, or other.
+yet.  The report is written to `build/selfhost-pcode-link/report.txt`; it
+includes detailed p-code size diagnostics and classifies failures as missing
+p-code modules, unresolved symbols, size overflow, symbol collision, relocation
+limitation, linker failure, or other.

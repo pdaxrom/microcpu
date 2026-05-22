@@ -9,6 +9,7 @@ TRACE ?= 0
 SELFHOST_TIMEOUT ?= 3
 OBJECT_MODE ?= 0
 PREPROCESS_MODE ?= 1
+PCODE_OPT ?= 1
 
 BUILD := build
 TEST_BUILD := $(BUILD)/tests
@@ -111,6 +112,7 @@ STRICT_ARG := $(if $(filter 1,$(STRICT)),--strict,)
 TEST_ARG := $(if $(TEST),--test $(TEST),)
 OBJECT_ARG := $(if $(filter 1,$(OBJECT_MODE)),--object-mode,)
 PREPROCESS_ARG := $(if $(filter 1,$(PREPROCESS_MODE)),--preprocess-mode,)
+PCODE_OPT_ARG := $(if $(filter 1,$(PCODE_OPT)),--pcode-opt,)
 TEST_RUNNER_ARGS := --expected tests/expected.txt \
 	--expected-uart tests/expected_uart.txt \
 	--input-uart tests/input_uart.txt --compiler $(CC_ONLY_BIN) \
@@ -123,7 +125,7 @@ PCODE_TEST_RUNNER_ARGS := --expected pcode-tests/expected.txt \
 	--expected-uart pcode-tests/expected_uart.txt \
 	--preprocessor $(CPP_BIN) --cc-only $(CC_ONLY_BIN) \
 	--pcinterp $(PCINTERP_BIN) --assembler $(ASM) \
-	--build-dir $(PCODE_BUILD) --include-dir include
+	--build-dir $(PCODE_BUILD) --include-dir include $(PCODE_OPT_ARG)
 
 PCODE_MICROEMU_RUNNER_ARGS := --expected pcode-tests/expected.txt \
 	--expected-uart pcode-tests/expected_uart.txt \
@@ -131,21 +133,21 @@ PCODE_MICROEMU_RUNNER_ARGS := --expected pcode-tests/expected.txt \
 	--assembler $(ASM) --linker $(LD) --emulator $(EMU) \
 	--board $(EMU_BOARD) --max-steps $(MAX_STEPS) \
 	--build-dir $(BUILD)/pcode-microemu --include-dir include \
-	--runtime-dir runtime
+	--runtime-dir runtime $(PCODE_OPT_ARG)
 
 PCODE_NATIVE_RUNNER_ARGS := --expected pcode-tests-native/expected.txt \
 	--preprocessor $(CPP_BIN) --cc-only $(CC_ONLY_BIN) \
 	--assembler $(ASM) --linker $(LD) --emulator $(EMU) \
 	--board $(EMU_BOARD) --max-steps $(MAX_STEPS) \
 	--build-dir $(BUILD)/pcode-native --include-dir include \
-	--runtime-dir runtime
+	--runtime-dir runtime $(PCODE_OPT_ARG)
 
 PCODE_MULTI_RUNNER_ARGS := --expected pcode-tests-multi/expected.txt \
 	--preprocessor $(CPP_BIN) --cc-only $(CC_ONLY_BIN) \
 	--assembler $(ASM) --linker $(LD) --emulator $(EMU) \
 	--board $(EMU_BOARD) --max-steps $(MAX_STEPS) \
 	--build-dir $(BUILD)/pcode-multi --include-dir include \
-	--runtime-dir runtime
+	--runtime-dir runtime $(PCODE_OPT_ARG)
 
 .PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu test-pcode-native test-pcode-multi selfhost-smoke selfhost-link-smoke selfhost-pcode-smoke selfhost-pcode-link-smoke assemble run clean
 
@@ -219,7 +221,7 @@ selfhost-pcode-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM)
 		--build-dir $(SELFHOST_PCODE_BUILD) \
 		--native-link-report $(SELFHOST_BUILD)/link-report.txt \
 		--include-dir include --define SMALLC_SELFHOST \
-		--timeout-seconds $(SELFHOST_TIMEOUT) $(STRICT_ARG) \
+		--timeout-seconds $(SELFHOST_TIMEOUT) $(STRICT_ARG) $(PCODE_OPT_ARG) \
 		--smallcpp-srcs $(CPP_SRCS) \
 		--smallcc-srcs $(CC_ONLY_SRCS)
 
@@ -227,7 +229,7 @@ selfhost-pcode-link-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD)
 	$(MAKE) selfhost-pcode-smoke STRICT=0
 	$(PYTHON) selfhost/pcode_link_smoke.py \
 		--assembler $(ASM) --linker $(LD) --runtime-dir runtime \
-		--build-dir $(SELFHOST_PCODE_LINK_BUILD) $(STRICT_ARG) \
+		--build-dir $(SELFHOST_PCODE_LINK_BUILD) $(STRICT_ARG) $(PCODE_OPT_ARG) \
 		--smallcpp-pcas $(SELFHOST_CPP_PCAS) \
 		--smallcc-pcas $(SELFHOST_CC_PCAS)
 

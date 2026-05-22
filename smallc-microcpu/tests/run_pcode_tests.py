@@ -11,6 +11,8 @@ import subprocess
 import sys
 from collections import OrderedDict
 
+import pcode_opt
+
 
 RET_RE = re.compile(r"^RET=([0-9]+)$", re.MULTILINE)
 METRIC_RE = re.compile(r"^([A-Z_]+)=([0-9]+)$", re.MULTILINE)
@@ -187,6 +189,16 @@ def compile_pcode(
         return False, i_path, pca_path
     argv = [str(args.cc_only), "--backend", "pcode", "-o", str(pca_path), str(i_path)]
     proc = run_cmd(log_path, "compile-pcode", argv)
+    if proc.returncode == 0 and args.pcode_opt:
+        raw_path = args.build_dir / f"{name}.raw.pca"
+        pca_path.replace(raw_path)
+        stats = pcode_opt.optimize_pca_file(raw_path, pca_path)
+        with log_path.open("a") as log:
+            log.write("== pcode-opt ==\n")
+            log.write(f"removed_temp_roundtrips={stats['removed_temp_roundtrips']}\n")
+            log.write(f"bytecode_before={stats['bytecode_before']}\n")
+            log.write(f"bytecode_after={stats['bytecode_after']}\n")
+            log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")
     return proc.returncode == 0, i_path, pca_path
 
 
@@ -305,6 +317,7 @@ def main() -> int:
     parser.add_argument("--build-dir", default=pathlib.Path("build/pcode"), type=pathlib.Path)
     parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--max-steps", default=1_000_000, type=int)
+    parser.add_argument("--pcode-opt", action="store_true")
     parser.add_argument("--test")
     args = parser.parse_args()
 
