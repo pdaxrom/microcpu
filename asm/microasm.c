@@ -31,6 +31,12 @@ enum {
     LABEL_ALREADY_DEFINED,
     MACRO_ALREADY_DEFINED,
     PROC_ALREADY_DEFINED,
+    NO_MEMORY_FOR_COND,
+    CONDITIONAL_NESTING_TOO_DEEP,
+    UNMATCHED_ELSE,
+    UNMATCHED_ENDIF,
+    DUPLICATE_ELSE,
+    UNTERMINATED_IF,
     EXTRA_SYMBOLS,
     SYNTAX_ERROR,
     CANNOT_OPEN_FILE,
@@ -56,6 +62,11 @@ enum {
     pseudo_org,
     pseudo_include,
     pseudo_chksum,
+    pseudo_if,
+    pseudo_ifdef,
+    pseudo_ifndef,
+    pseudo_else,
+    pseudo_endif,
 };
 
 typedef struct {
@@ -121,6 +132,11 @@ static OpCode opcode_table[] = {
     { "org", pseudo_org, 0x0, 0x0  },
     { "include", pseudo_include, 0x0, 0x0 },
     { "chksum", pseudo_chksum, 0x0, 0x0 },
+    { "if", pseudo_if, 0x0, 0x0 },
+    { "ifdef", pseudo_ifdef, 0x0, 0x0 },
+    { "ifndef", pseudo_ifndef, 0x0, 0x0 },
+    { "else", pseudo_else, 0x0, 0x0 },
+    { "endif", pseudo_endif, 0x0, 0x0 },
 };
 
 typedef struct Register {
@@ -159,8 +175,23 @@ typedef struct Label {
     char *name;
     unsigned int address;
     int line;
+    int resolved;
     struct Label *prev;
 } Label;
+
+typedef struct CondRecord {
+    int condition_true;
+    int line;
+    struct CondRecord *next;
+} CondRecord;
+
+typedef struct CondFrame {
+    int parent_active;
+    int condition_true;
+    int active;
+    int else_seen;
+    int line;
+} CondFrame;
 
 typedef struct Proc {
     char *name;
@@ -203,6 +234,14 @@ static int to_second_pass = 0;
 
 static int in_macro = 0;
 static Proc *in_proc = NULL;
+
+#define COND_NESTING_LIMIT 32
+
+static CondFrame cond_stack[COND_NESTING_LIMIT];
+static int cond_depth = 0;
+static CondRecord *cond_records = NULL;
+static CondRecord *cond_records_tail = NULL;
+static CondRecord *cond_replay = NULL;
 
 #define SKIP_BLANK(s) { \
     while (*(s) && isblank(*(s))) { \
@@ -274,8 +313,8 @@ static Label* find_label(Label **list, char *name)
     return NULL;
 }
 
-static Label* add_label(Label **list, char *name, unsigned int address,
-                        int line)
+static Label* add_label_ex(Label **list, char *name, unsigned int address,
+                           int line, int resolved)
 {
     if (find_label(list, name)) {
         error = LABEL_ALREADY_DEFINED;
@@ -295,11 +334,54 @@ static Label* add_label(Label **list, char *name, unsigned int address,
     }
     new->address = address;
     new->line = line;
+    new->resolved = resolved;
     new->prev = *list;
 
     *list = new;
 
     return new;
+}
+
+static Label* add_label(Label **list, char *name, unsigned int address,
+                        int line)
+{
+    return add_label_ex(list, name, address, line, 1);
+}
+
+static Label* set_label(Label **list, char *name, unsigned int address,
+                        int line, int resolved)
+{
+    Label *label = find_label(list, name);
+
+    if (label) {
+        label->address = address;
+        label->line = line;
+        label->resolved = resolved;
+        return label;
+    }
+
+    return add_label_ex(list, name, address, line, resolved);
+}
+
+static void delete_label(Label **list, char *name)
+{
+    Label *ptr = *list;
+    Label *prev = NULL;
+
+    while (ptr) {
+        if (!strcasecmp(ptr->name, name)) {
+            if (prev) {
+                prev->prev = ptr->prev;
+            } else {
+                *list = ptr->prev;
+            }
+            free(ptr->name);
+            free(ptr);
+            return;
+        }
+        prev = ptr;
+        ptr = ptr->prev;
+    }
 }
 
 static void dump_labels(Label *list)
@@ -362,7 +444,9 @@ static Register* find_register_in_string(char **str)
     SKIP_BLANK(ptr_str);
 
     while(*ptr_str && isalnum(*ptr_str)) {
-        if (ptr - tmp >= 255) break;
+        if (ptr - tmp >= 255) {
+            break;
+        }
         *ptr++ = *ptr_str++;
     }
 
@@ -659,6 +743,14 @@ static int operand(char **str)
 
     if (label) {
         *str = ptr;
+        if (!label->resolved) {
+            if (src_pass == 2) {
+                error = CANNOT_RESOLVE_REF;
+            } else {
+                to_second_pass = 1;
+            }
+            return 0;
+        }
         return label->address;
     } else if (match(str, '$')) {
         return hexnum(str);
@@ -672,15 +764,15 @@ static int operand(char **str)
         return output_addr;
     } else if (isdigit(*(*str))) {
         return decimal(str);
-     } else {
-         *str = ptr;
-         if (src_pass == 2) {
-             error = CANNOT_RESOLVE_REF;
-         } else {
-             to_second_pass = 1;
-         }
-         return 0;
-     }
+    } else {
+        *str = ptr;
+        if (src_pass == 2) {
+            error = CANNOT_RESOLVE_REF;
+        } else {
+            to_second_pass = 1;
+        }
+        return 0;
+    }
 }
 
 static int exp8(char **str)
@@ -840,7 +932,9 @@ static int get_bytes(char *str)
 
             if (to_second_pass && src_pass == 2) {
                 int len = str - tmp;
-                if (len > 255) len = 255;
+                if (len > 255) {
+                    len = 255;
+                }
                 char tmp1[256];
                 strncpy(tmp1, tmp, len);
                 tmp1[len] = 0;
@@ -986,6 +1080,260 @@ static char *get_file_path(char *name)
     return name;
 }
 
+static int is_conditional_opcode(OpCode *opcode)
+{
+    return opcode &&
+           (opcode->type == pseudo_if ||
+            opcode->type == pseudo_ifdef ||
+            opcode->type == pseudo_ifndef ||
+            opcode->type == pseudo_else ||
+            opcode->type == pseudo_endif);
+}
+
+static int cond_current_active(void)
+{
+    if (cond_depth == 0) {
+        return 1;
+    }
+    return cond_stack[cond_depth - 1].active;
+}
+
+static int add_cond_record(int condition_true)
+{
+    CondRecord *record = malloc(sizeof(CondRecord));
+    if (!record) {
+        error = NO_MEMORY_FOR_COND;
+        return 1;
+    }
+
+    record->condition_true = condition_true;
+    record->line = src_line;
+    record->next = NULL;
+
+    if (cond_records_tail) {
+        cond_records_tail->next = record;
+    } else {
+        cond_records = record;
+    }
+
+    cond_records_tail = record;
+    return 0;
+}
+
+static int parse_symbol_arg(char **str, char *name, size_t name_size)
+{
+    char *start;
+    size_t len;
+
+    SKIP_BLANK(*str);
+    start = *str;
+    SKIP_TOKEN(*str);
+    len = *str - start;
+
+    if (len == 0 || len >= name_size) {
+        error = SYNTAX_ERROR;
+        return 1;
+    }
+
+    memcpy(name, start, len);
+    name[len] = 0;
+
+    SKIP_BLANK(*str);
+    if (**str) {
+        error = EXTRA_SYMBOLS;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int symbol_defined(char *name)
+{
+    if (in_proc) {
+        if (find_label(&in_proc->labels, name) ||
+                find_label(&in_proc->equs, name)) {
+            return 1;
+        }
+    }
+
+    return find_label(&labels, name) ||
+           find_label(&equs, name) ||
+           find_proc(&procs, name) ||
+           find_macro(name);
+}
+
+static int eval_if_condition(char *str, int parent_active,
+                             int *condition_true)
+{
+    int val;
+
+    *condition_true = 0;
+    if (!parent_active) {
+        return 0;
+    }
+
+    SKIP_BLANK(str);
+    if (!*str) {
+        error = SYNTAX_ERROR;
+        return 1;
+    }
+
+    to_second_pass = 0;
+    val = exp_(&str);
+    if (error != NO_ERROR) {
+        to_second_pass = 0;
+        return 1;
+    }
+    if (to_second_pass) {
+        to_second_pass = 0;
+        error = CANNOT_RESOLVE_REF;
+        return 1;
+    }
+
+    SKIP_BLANK(str);
+    if (*str) {
+        error = EXTRA_SYMBOLS;
+        return 1;
+    }
+
+    *condition_true = val != 0;
+    return 0;
+}
+
+static int eval_ifdef_condition(char *str, int parent_active, int invert,
+                                int *condition_true)
+{
+    char name[256];
+
+    *condition_true = 0;
+    if (!parent_active) {
+        return 0;
+    }
+
+    if (parse_symbol_arg(&str, name, sizeof(name))) {
+        return 1;
+    }
+
+    *condition_true = symbol_defined(name);
+    if (invert) {
+        *condition_true = !*condition_true;
+    }
+
+    return 0;
+}
+
+static int push_condition(int parent_active, int condition_true)
+{
+    if (cond_depth >= COND_NESTING_LIMIT) {
+        error = CONDITIONAL_NESTING_TOO_DEEP;
+        return 1;
+    }
+
+    cond_stack[cond_depth].parent_active = parent_active;
+    cond_stack[cond_depth].condition_true = condition_true;
+    cond_stack[cond_depth].active = parent_active && condition_true;
+    cond_stack[cond_depth].else_seen = 0;
+    cond_stack[cond_depth].line = src_line;
+    cond_depth++;
+
+    return 0;
+}
+
+static void print_listing_line(char *line)
+{
+    if (src_pass == 2) {
+        fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+    }
+}
+
+static void finish_asm_line(void)
+{
+    if (src_pass == 1) {
+        fprintf(stderr, "Line: %d\r", src_line);
+    }
+
+    if (!in_macro) {
+        src_line++;
+    }
+}
+
+static int handle_conditional_directive(OpCode *opcode, char *str, char *line)
+{
+    int parent_active;
+    int condition_true = 0;
+
+    if (opcode->type == pseudo_if ||
+            opcode->type == pseudo_ifdef ||
+            opcode->type == pseudo_ifndef) {
+        parent_active = cond_current_active();
+
+        if (src_pass == 1) {
+            if (opcode->type == pseudo_if) {
+                if (eval_if_condition(str, parent_active, &condition_true)) {
+                    return 1;
+                }
+            } else {
+                if (eval_ifdef_condition(str, parent_active,
+                                         opcode->type == pseudo_ifndef,
+                                         &condition_true)) {
+                    return 1;
+                }
+            }
+
+            if (add_cond_record(condition_true)) {
+                return 1;
+            }
+        } else {
+            if (!cond_replay) {
+                error = SYNTAX_ERROR;
+                return 1;
+            }
+            condition_true = cond_replay->condition_true;
+            cond_replay = cond_replay->next;
+        }
+
+        if (push_condition(parent_active, condition_true)) {
+            return 1;
+        }
+
+        print_listing_line(line);
+        finish_asm_line();
+        return 0;
+    }
+
+    SKIP_BLANK(str);
+    if (*str) {
+        error = EXTRA_SYMBOLS;
+        return 1;
+    }
+
+    if (opcode->type == pseudo_else) {
+        if (cond_depth == 0) {
+            error = UNMATCHED_ELSE;
+            return 1;
+        }
+        if (cond_stack[cond_depth - 1].else_seen) {
+            error = DUPLICATE_ELSE;
+            return 1;
+        }
+
+        cond_stack[cond_depth - 1].else_seen = 1;
+        cond_stack[cond_depth - 1].active =
+            cond_stack[cond_depth - 1].parent_active &&
+            !cond_stack[cond_depth - 1].condition_true;
+    } else if (opcode->type == pseudo_endif) {
+        if (cond_depth == 0) {
+            error = UNMATCHED_ENDIF;
+            return 1;
+        }
+        cond_depth--;
+    }
+
+    print_listing_line(line);
+    finish_asm_line();
+    return 0;
+}
+
 static int do_asm(FILE *inf, char *line)
 {
     char last;
@@ -1008,13 +1356,27 @@ static int do_asm(FILE *inf, char *line)
     }
     *ptr1 = 0;
 
+    OpCode *first_opcode = NULL;
+    if (ptr1 - ptr > 0) {
+        first_opcode = find_opcode(ptr);
+        if (is_conditional_opcode(first_opcode)) {
+            return handle_conditional_directive(first_opcode, str, line);
+        }
+    }
+
+    if (!cond_current_active()) {
+        print_listing_line(line);
+        finish_asm_line();
+        return 0;
+    }
+
     if (ptr1 - ptr > 0) {
         char *label = NULL;
         char *first_tok = ptr;
 
-        OpCode *opcode = NULL;
+        OpCode *opcode = first_opcode;
         Macro *mac = find_macro(first_tok);
-        if (!mac) {
+        if (!mac && !opcode) {
             opcode = find_opcode(first_tok);
         }
 
@@ -1096,13 +1458,23 @@ static int do_asm(FILE *inf, char *line)
             } else {
                 SKIP_BLANK(str);
                 unsigned int val = exp_(&str);
-                if (src_pass == 2) {
+                int resolved = !to_second_pass && error == NO_ERROR;
+
+                if (src_pass == 1 && error == NO_ERROR) {
                     if (in_proc) {
-                        add_label(&in_proc->equs, label, val, src_line);
+                        add_label_ex(&in_proc->equs, label, val, src_line,
+                                     resolved);
                     } else {
-                        add_label(&equs, label, val, src_line);
+                        add_label_ex(&equs, label, val, src_line, resolved);
+                    }
+                } else if (src_pass == 2 && error == NO_ERROR) {
+                    if (in_proc) {
+                        set_label(&in_proc->equs, label, val, src_line, 1);
+                    } else {
+                        set_label(&equs, label, val, src_line, 1);
                     }
                 }
+                to_second_pass = 0;
 
                 if (src_pass == 2) {
                     fprintf(stderr, "%04X: %04X\t%s\n", output_addr, val, line);
@@ -1396,13 +1768,7 @@ static int do_asm(FILE *inf, char *line)
         }
     }
 
-    if (src_pass == 1) {
-        fprintf(stderr, "Line: %d\r", src_line);
-    }
-
-    if (!in_macro) {
-        src_line++;
-    }
+    finish_asm_line();
 
     return 0;
 }
@@ -1531,6 +1897,18 @@ static char *get_error_string(int error)
         return "Macro name already used";
     case PROC_ALREADY_DEFINED:
         return "Procedure name already used";
+    case NO_MEMORY_FOR_COND:
+        return "No memory for conditional assembly";
+    case CONDITIONAL_NESTING_TOO_DEEP:
+        return "Conditional nesting too deep";
+    case UNMATCHED_ELSE:
+        return "Unmatched ELSE";
+    case UNMATCHED_ENDIF:
+        return "Unmatched ENDIF";
+    case DUPLICATE_ELSE:
+        return "Duplicate ELSE";
+    case UNTERMINATED_IF:
+        return "Unterminated IF";
     case EXTRA_SYMBOLS:
         return "Extra symbols";
     case SYNTAX_ERROR:
@@ -1560,33 +1938,206 @@ static char *get_out_name(char *in_str, char *ext)
     return str;
 }
 
-int main(int argc, char *argv[])
+static void print_usage(char *prog)
 {
-    int out_type = 0;
+    fprintf(stderr,
+            "Usage: %s [-verilog|-binary] [-D name[=expr]|--define name[=expr]] "
+            "[-U name|--undef name] <input_file> [output_file]\n"
+            "       %s [-verilog|-binary] [-Dname[=expr]|--define=name[=expr]] "
+            "[-Uname|--undef=name] <input_file> [output_file]\n",
+            prog, prog);
+}
 
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s [-verilog|-binary] <input_file>\n", argv[0]);
+static int parse_define_name(char *str, char **expr)
+{
+    char *ptr = str;
+    char *end;
+    char last;
+
+    SKIP_BLANK(ptr);
+    end = ptr;
+    SKIP_TOKEN(end);
+
+    if (end == ptr) {
+        error = SYNTAX_ERROR;
         return 1;
     }
 
-    if (!strcmp(argv[1], "-verilog")) {
-        out_type = 1;
-        argv++;
-        argc--;
-    } else if (!strcmp(argv[1], "-binary")) {
-        out_type = 2;
-        argv++;
-        argc--;
+    last = *end;
+    *end = 0;
+
+    if (last == '=') {
+        *expr = end + 1;
+    } else {
+        char *tail = end + (last ? 1 : 0);
+
+        if (last) {
+            SKIP_BLANK(tail);
+        }
+
+        if (last && last != 0 && *tail) {
+            error = EXTRA_SYMBOLS;
+            return 1;
+        }
+        *expr = NULL;
+    }
+
+    return 0;
+}
+
+static int add_cmdline_define(char *arg)
+{
+    char *copy = strdup(arg);
+    char *expr = NULL;
+    unsigned int val = 1;
+
+    if (!copy) {
+        error = NO_MEMORY_FOR_LABEL;
+        return 1;
+    }
+
+    if (parse_define_name(copy, &expr)) {
+        free(copy);
+        return 1;
+    }
+
+    if (expr && *expr) {
+        char *ptr = expr;
+
+        to_second_pass = 0;
+        val = exp_(&ptr);
+        if (error != NO_ERROR) {
+            free(copy);
+            return 1;
+        }
+        if (to_second_pass) {
+            to_second_pass = 0;
+            error = CANNOT_RESOLVE_REF;
+            free(copy);
+            return 1;
+        }
+
+        SKIP_BLANK(ptr);
+        if (*ptr) {
+            error = EXTRA_SYMBOLS;
+            free(copy);
+            return 1;
+        }
+    }
+
+    set_label(&equs, copy, val, 0, 1);
+    free(copy);
+    return error != NO_ERROR;
+}
+
+static int remove_cmdline_define(char *arg)
+{
+    char *copy = strdup(arg);
+    char *expr = NULL;
+
+    if (!copy) {
+        error = NO_MEMORY_FOR_LABEL;
+        return 1;
+    }
+
+    if (parse_define_name(copy, &expr)) {
+        free(copy);
+        return 1;
+    }
+    if (expr) {
+        error = SYNTAX_ERROR;
+        free(copy);
+        return 1;
+    }
+
+    delete_label(&equs, copy);
+    free(copy);
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    int out_type = 0;
+    char *input_name = NULL;
+    char *output_name = NULL;
+
+    if (argc < 2) {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-verilog")) {
+            out_type = 1;
+        } else if (!strcmp(argv[i], "-binary")) {
+            out_type = 2;
+        } else if (!strcmp(argv[i], "-D") || !strcmp(argv[i], "--define")) {
+            if (++i >= argc || add_cmdline_define(argv[i])) {
+                fprintf(stderr, "Invalid define option: %s\n",
+                        (i < argc) ? argv[i] : "");
+                fprintf(stderr, "%s\n", get_error_string(error));
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else if (!strncmp(argv[i], "-D", 2) && argv[i][2]) {
+            if (add_cmdline_define(argv[i] + 2)) {
+                fprintf(stderr, "Invalid define option: %s\n", argv[i]);
+                fprintf(stderr, "%s\n", get_error_string(error));
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else if (!strncmp(argv[i], "--define=", 9)) {
+            if (add_cmdline_define(argv[i] + 9)) {
+                fprintf(stderr, "Invalid define option: %s\n", argv[i]);
+                fprintf(stderr, "%s\n", get_error_string(error));
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else if (!strcmp(argv[i], "-U") || !strcmp(argv[i], "--undef")) {
+            if (++i >= argc || remove_cmdline_define(argv[i])) {
+                fprintf(stderr, "Invalid undef option: %s\n",
+                        (i < argc) ? argv[i] : "");
+                fprintf(stderr, "%s\n", get_error_string(error));
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else if (!strncmp(argv[i], "-U", 2) && argv[i][2]) {
+            if (remove_cmdline_define(argv[i] + 2)) {
+                fprintf(stderr, "Invalid undef option: %s\n", argv[i]);
+                fprintf(stderr, "%s\n", get_error_string(error));
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else if (!strncmp(argv[i], "--undef=", 8)) {
+            if (remove_cmdline_define(argv[i] + 8)) {
+                fprintf(stderr, "Invalid undef option: %s\n", argv[i]);
+                fprintf(stderr, "%s\n", get_error_string(error));
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else if (!input_name) {
+            input_name = argv[i];
+        } else if (!output_name) {
+            output_name = argv[i];
+        } else {
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
+
+    if (!input_name) {
+        print_usage(argv[0]);
+        return 1;
     }
 
     start_addr = 0;
 
-    in_file = fopen(argv[1], "rb");
+    in_file = fopen(input_name, "rb");
     if (in_file) {
         int err;
         char str[512];
 
-        in_file_path = strdup(argv[1]);
+        in_file_path = strdup(input_name);
         get_file_path(in_file_path);
 
         output_addr = start_addr;
@@ -1594,6 +2145,10 @@ int main(int argc, char *argv[])
         src_line = 1;
         in_macro = 0;
         in_proc = NULL;
+        cond_depth = 0;
+        cond_records = NULL;
+        cond_records_tail = NULL;
+        cond_replay = NULL;
 
         // Pass 1
 
@@ -1621,11 +2176,22 @@ int main(int argc, char *argv[])
             }
         } while(files);
 
+        if (cond_depth != 0) {
+            error = UNTERMINATED_IF;
+            fprintf(stderr, "Line %d: unterminated conditional\n",
+                    cond_stack[cond_depth - 1].line);
+            fprintf(stderr, "Compilation failed: %s\n\n",
+                    get_error_string(error));
+            return 1;
+        }
+
         output_addr = start_addr;
         src_pass = 2;
         src_line = 1;
         in_macro = 0;
         in_proc = NULL;
+        cond_depth = 0;
+        cond_replay = cond_records;
 
         if (fseek(in_file, 0, SEEK_SET) != 0) {
             fprintf(stderr, "Error rewinding file for pass 2\n");
@@ -1636,66 +2202,81 @@ int main(int argc, char *argv[])
 
         fprintf(stderr, "\n\nPass 2\n\n");
 
-            do {
-                if (files) {
-                    fclose(in_file);
-                    in_file = files->in_file;
-                    in_file_path = files->in_file_path;
-                    src_line = files->src_line;
-                    File *tmp = files->prev;
-                    free(files);
-                    files = tmp;
-                }
-
-                while(fgets(str, sizeof(str), in_file)) {
-                    char *ptr = str;
-                    REMOVE_ENDLINE(ptr);
-                    if ((err = do_asm(in_file, str)) || error != NO_ERROR) {
-                        fprintf(stderr, "Line %d: %s\n", src_line, str);
-                        fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
-                        return 1;
-                    }
-                }
-            } while(files);
-
-            relink_refs();
-
-            if (use_chksum) {
-                calculate_chksum();
+        do {
+            if (files) {
+                fclose(in_file);
+                in_file = files->in_file;
+                in_file_path = files->in_file_path;
+                src_line = files->src_line;
+                File *tmp = files->prev;
+                free(files);
+                files = tmp;
             }
 
-            fprintf(stderr, "\nConstants:\n");
-            dump_labels(equs);
-            fprintf(stderr, "\nLabels:\n");
-            dump_labels(labels);
-            fprintf(stderr, "\nRefs:\n");
-            dump_labels(refs);
-
-            fprintf(stderr, "\nErrors: %s\n\n", get_error_string(error));
-
-            if (error == NO_ERROR) {
-                char *name;
-                if (argc > 2) {
-                    name = strdup(argv[2]);
-                } else {
-                    name = get_out_name(argv[1], (out_type == 2) ? ".bin" : (out_type == 1) ? ".v" : ".mem");
+            while(fgets(str, sizeof(str), in_file)) {
+                char *ptr = str;
+                REMOVE_ENDLINE(ptr);
+                if ((err = do_asm(in_file, str)) || error != NO_ERROR) {
+                    fprintf(stderr, "Line %d: %s\n", src_line, str);
+                    fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
+                    return 1;
                 }
-                FILE *outf = fopen(name, "wb");
-                if (outf) {
-                    if (out_type == 2) {
-                        output_binary(outf);
-                    } else if (out_type) {
-                        output_verilog(outf);
-                    } else {
-                        output_hex(outf);
-                    }
-                    fclose(outf);
+            }
+        } while(files);
+
+        if (cond_depth != 0) {
+            error = UNTERMINATED_IF;
+            fprintf(stderr, "Line %d: unterminated conditional\n",
+                    cond_stack[cond_depth - 1].line);
+            fprintf(stderr, "Compilation failed: %s\n\n",
+                    get_error_string(error));
+            return 1;
+        }
+        if (cond_replay) {
+            error = SYNTAX_ERROR;
+            fprintf(stderr, "Compilation failed: %s\n\n",
+                    get_error_string(error));
+            return 1;
+        }
+
+        relink_refs();
+
+        if (use_chksum) {
+            calculate_chksum();
+        }
+
+        fprintf(stderr, "\nConstants:\n");
+        dump_labels(equs);
+        fprintf(stderr, "\nLabels:\n");
+        dump_labels(labels);
+        fprintf(stderr, "\nRefs:\n");
+        dump_labels(refs);
+
+        fprintf(stderr, "\nErrors: %s\n\n", get_error_string(error));
+
+        if (error == NO_ERROR) {
+            char *name;
+            if (output_name) {
+                name = strdup(output_name);
+            } else {
+                name = get_out_name(input_name, (out_type == 2) ? ".bin" : (out_type == 1) ? ".v" : ".mem");
+            }
+            FILE *outf = fopen(name, "wb");
+            if (outf) {
+                if (out_type == 2) {
+                    output_binary(outf);
+                } else if (out_type) {
+                    output_verilog(outf);
                 } else {
-                    error = 1;
-                    fprintf(stderr, "Can't create output file!\n");
+                    output_hex(outf);
                 }
-                 free(name);
-             }
+                fclose(outf);
+            } else {
+                error = 1;
+                fprintf(stderr, "Can't create output file!\n");
+            }
+            free(name);
+        }
 
         fclose(in_file);
     } else {

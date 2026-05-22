@@ -541,6 +541,22 @@ These mnemonics are not ISA instructions; they are assembler directives.
 - Checksum algorithm: sum all 16-bit words from `start_addr` to `output_addr`
   (inclusive of the reserved word), then bitwise invert (`^ 0xFFFF`).
 
+### Conditional assembly
+- Syntax:
+  - `IF <expression>`
+  - `IFDEF <symbol>`
+  - `IFNDEF <symbol>`
+  - `ELSE`
+  - `ENDIF`
+- Effect: controls which source lines are assembled. Disabled lines are not
+  parsed as labels, directives, macros, or instructions.
+- Conditions are evaluated during pass 1. Pass 2 replays the pass-1 decisions.
+- `IF` treats any non-zero expression value as true. The expression must be
+  resolvable in pass 1.
+- `IFDEF` and `IFNDEF` test labels, constants, procedures, and macros that have
+  already been seen by pass 1, including command-line defines.
+- Nesting limit: 32 conditional levels.
+
 ## 6. Macros and Procedures
 
 ### Macros
@@ -575,12 +591,17 @@ These mnemonics are not ISA instructions; they are assembler directives.
 Usage (as implemented):
 
 ```
-microasm [-verilog|-binary] <input_file> [output_file]
+microasm [-verilog|-binary] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input_file> [output_file]
+microasm [-verilog|-binary] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input_file> [output_file]
 ```
 
 - `-verilog`: output a Verilog `sram` module with memory initialization.
 - `-binary`: output raw binary bytes.
 - default: output a `.mem` hex file with address and bytes.
+- `-D` / `--define`: define a global constant before pass 1. If `=expr` is
+  omitted, the value is `1`. The expression may reference earlier command-line
+  defines.
+- `-U` / `--undef`: remove a command-line define before pass 1.
 
 If `output_file` is omitted, the assembler derives it from the input name and
 appends `.v`, `.bin`, or `.mem` depending on the output type.

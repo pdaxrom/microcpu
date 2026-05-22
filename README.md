@@ -14,7 +14,8 @@
   * [Interrupts](#interrupts)
 * [MicroAssembler](#microassembler)
   * [Assembler directives](#assembler-directives)
-  * [Accembler macro definition](#accembler-macro-definition)
+  * [Conditional assembly](#conditional-assembly)
+  * [Assembler macro definition](#assembler-macro-definition)
   * [Assembler procedures](#assembler-procedures)
   * [Command line options](#command-line-options)
 * [Bootloader](#bootloader)
@@ -191,7 +192,9 @@ The system supports two interrupts - the CPU command to switch to superuser mode
 
 ## MicroAssembler
 
-Assembler has support for macros, procedures. Since the processor has a limited number of instructions, some instructions can be implemented as macros.
+Assembler has support for macros, procedures, include files, constants, and
+conditional assembly. Since the processor has a limited number of instructions,
+some instructions can be implemented as macros.
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
@@ -202,11 +205,16 @@ Directive | Description
 `<symbol> EQU <exp>`|Set a symbol equal to an expression
 `DB <imm>[,<imm>...]`|Define constant byte(s)
 `DW <imm16>[,<imm16>...]`|Define constant word(s)
-`DS <imm16>[,<imm>]`|Reserves num bytes of space and initializes them to val (optional, defaul 0).
+`DS <imm16>[,<imm>]`|Reserves num bytes of space and initializes them to val (optional, default 0).
 `ALIGN <imm>`|Align address to num bits
 `ORG <imm16>`|Set location address counter
 `INCLUDE <file name>`|Include external source file
 `CHKSUM`|Insert constant word to binary to sum all words as $FFFF
+`IF <exp>`|Assemble following lines if expression is non-zero
+`IFDEF <symbol>`|Assemble following lines if symbol is already defined
+`IFNDEF <symbol>`|Assemble following lines if symbol is not defined
+`ELSE`|Switch to alternate conditional assembly branch
+`ENDIF`|End conditional assembly block
 
 Examples:
 ```
@@ -225,7 +233,40 @@ CONST_TWO EQU 2
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
-### Accembler macro definition
+### Conditional assembly
+
+Conditional directives are evaluated in pass 1 and control which lines are
+assembled in both passes. Skipped lines are not parsed as labels, directives,
+macros, or instructions.
+
+Directive | Description
+---------|-----------
+`IF <exp>`|True when expression evaluates to non-zero. The expression must be resolvable in pass 1.
+`IFDEF <symbol>`|True when symbol was already seen by pass 1.
+`IFNDEF <symbol>`|True when symbol was not already seen by pass 1.
+`ELSE`|Selects the opposite branch of the current conditional block.
+`ENDIF`|Closes the current conditional block.
+
+Conditional blocks may be nested up to 32 levels.
+
+Example:
+```
+FEATURE_UART EQU 1
+
+IF FEATURE_UART
+    INCLUDE uart.inc
+ELSE
+    DB "UART disabled", 0
+ENDIF
+
+IFDEF DEBUG
+    DB "debug", 0
+ENDIF
+```
+
+[Top](#microcpu---16-bit-risc-cpu-version-2)
+
+### Assembler macro definition
 
 Directive | Description
 ---------|-----------
@@ -274,12 +315,23 @@ get_2 SET V0, 2
 
 ### Command line options
 
-`microasm [-verilog|-binary] <input.asm> [output]`
+`microasm [-verilog|-binary] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]`
+
+`microasm [-verilog|-binary] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]`
 
 * -verilog - create verilog ram file
 * -binary  - create binary file
+* -D, --define - define a global constant before pass 1. If value is omitted,
+  it defaults to 1. The expression may reference earlier command-line defines.
+* -U, --undef - remove a command-line define before pass 1.
 
-By default, the output file is hex file.
+By default, the output file is a hex file.
+
+Examples:
+```
+microasm -D DEBUG -D ROM_BASE='$8000' source.asm out.mem
+microasm --define=FEATURE_UART=1 --undef DEBUG source.asm
+```
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
