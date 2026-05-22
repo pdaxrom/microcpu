@@ -28,7 +28,9 @@ SRCS := \
 
 TRACE_ARG := $(if $(filter 1,$(TRACE)),--trace,)
 TEST_ARG := $(if $(TEST),--test $(TEST),)
-TEST_RUNNER_ARGS := --expected tests/expected.txt --compiler $(CC_BIN) \
+TEST_RUNNER_ARGS := --expected tests/expected.txt \
+	--expected-uart tests/expected_uart.txt \
+	--input-uart tests/input_uart.txt --compiler $(CC_BIN) \
 	--assembler $(ASM) --emulator $(EMU) --board $(EMU_BOARD) \
 	--max-steps $(MAX_STEPS) --build-dir $(TEST_BUILD)
 

@@ -134,3 +134,12 @@
 134_strchr_found 66
 135_strchr_not_found 1
 136_strchr_zero 1
+137_putchar_A 65
+138_putchar_newline 0
+139_puts_ABC 0
+140_puts_empty 0
+141_putchar_loop 3
+142_getchar_one 65
+143_getchar_two 131
+144_echo_one 90
+145_echo_string_until_newline 3

@@ -20,6 +20,9 @@ make -C smallc-microcpu test
 The test target compiles every `tests/*.c` file to readable microasm, assembles
 it with `../asm/microasm`, runs it on `../microemu/microemu`, and checks `V0`
 (`r3` in the emulator register dump) against `tests/expected.txt`.
+Tests listed in `tests/expected_uart.txt` also compare UART TX output, and
+tests listed in `tests/input_uart.txt` preload UART RX using `microemu
+--uart-rx`.
 
 The emulator defaults are:
 
@@ -88,6 +91,8 @@ The current backend is intentionally small and supports:
 - `sizeof` for `char`, `int`, pointers, and arrays
 - tiny libc string/memory helpers through `runtime/string.asm`: `strlen`,
   `memset`, `memcpy`, `memcmp`, `strcpy`, `strcmp`, and `strchr`
+- tiny UART stdio helpers through `runtime/uart.asm`: `putchar`, `puts`, and
+  `getchar`
 - multiply, divide, and modulo through runtime helpers
 
 Multiply, divide, modulo, comparisons, and variable shifts are emitted as calls
@@ -102,6 +107,11 @@ memory helpers are declared in tests with temporary compatible prototypes such
 as `char *memset(char *s, int c, int n);` and
 `char *memcpy(char *dst, char *src, int n);`.  `memcpy` does not support
 overlapping regions; add `memmove` separately when overlap is needed.
+The UART helpers use temporary Small-C-compatible prototypes:
+`int putchar(int c);`, `int puts(char *s);`, and `int getchar();`.
+`putchar` writes the low 8 bits and returns that byte as an unsigned value.
+`puts` writes the string followed by `\n` and returns 0.  `getchar` spins until
+a UART RX byte is available and returns it as an unsigned 8-bit value.
 
 Intentionally unsupported at this stage:
 
@@ -110,7 +120,7 @@ Intentionally unsupported at this stage:
 - optimizer/register allocator
 - function pointers
 - `void` and `void *` type semantics
-- `memmove`, `printf`, `putchar`, `puts`, UART libc tests, `malloc`, and `free`
+- `memmove`, `printf`, `scanf`, UART line buffering, `malloc`, and `free`
 - hexadecimal `\xHH` string escapes
 - self-hosting
 - full libc beyond the current small runtime helpers

@@ -32,6 +32,85 @@ def load_expected(path: pathlib.Path) -> "OrderedDict[str, int]":
     return expected
 
 
+def decode_escapes(value: str, path: pathlib.Path, lineno: int) -> str:
+    out: list[str] = []
+    i = 0
+    while i < len(value):
+        ch = value[i]
+        if ch != "\\":
+            out.append(ch)
+            i += 1
+            continue
+        i += 1
+        if i >= len(value):
+            raise ValueError(f"{path}:{lineno}: incomplete escape")
+        esc = value[i]
+        i += 1
+        if esc == "n":
+            out.append("\n")
+        elif esc == "r":
+            out.append("\r")
+        elif esc == "t":
+            out.append("\t")
+        elif esc == "0":
+            out.append("\0")
+        elif esc == "\\":
+            out.append("\\")
+        elif esc == '"':
+            out.append('"')
+        elif esc == "x":
+            if i + 2 > len(value):
+                raise ValueError(f"{path}:{lineno}: incomplete hex escape")
+            digits = value[i:i + 2]
+            if not re.fullmatch(r"[0-9a-fA-F]{2}", digits):
+                raise ValueError(f"{path}:{lineno}: invalid hex escape '\\x{digits}'")
+            out.append(chr(int(digits, 16)))
+            i += 2
+        else:
+            raise ValueError(f"{path}:{lineno}: unsupported escape '\\{esc}'")
+    return "".join(out)
+
+
+def load_text_manifest(path: pathlib.Path) -> "OrderedDict[str, str]":
+    values: "OrderedDict[str, str]" = OrderedDict()
+    if not path.exists():
+        return values
+    for lineno, raw in enumerate(path.read_text().splitlines(), 1):
+        line = raw.rstrip("\n")
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if not parts:
+            continue
+        name = parts[0]
+        value = parts[1] if len(parts) == 2 else ""
+        values[name] = decode_escapes(value, path, lineno)
+    return values
+
+
+def escape_display(value: str) -> str:
+    out: list[str] = []
+    for ch in value:
+        code = ord(ch)
+        if ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch == "\0":
+            out.append("\\0")
+        elif ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif code < 32 or code >= 127:
+            out.append(f"\\x{code:02x}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def discover_tests(test_dir: pathlib.Path) -> dict[str, pathlib.Path]:
     return {
         path.stem: path
@@ -62,20 +141,41 @@ def validate_manifest(
     return ok
 
 
+def validate_text_manifest(
+    tests: dict[str, pathlib.Path],
+    values: "OrderedDict[str, str]",
+    label: str,
+) -> bool:
+    ok = True
+    for name in values:
+        if name not in tests:
+            print(f"FAIL manifest: {label} entry for {name}, but tests/{name}.c is missing", file=sys.stderr)
+            ok = False
+    return ok
+
+
+def output_text(value: str | bytes) -> str:
+    if isinstance(value, bytes):
+        return value.decode("latin-1")
+    return value
+
+
 def append_log(log_path: pathlib.Path, title: str, argv: list[str], proc: subprocess.CompletedProcess[str]) -> None:
     with log_path.open("a") as log:
         log.write(f"== {title} ==\n")
         log.write(f"$ {shell_join(argv)}\n")
         log.write(f"exit={proc.returncode}\n")
         if proc.stdout:
+            stdout = output_text(proc.stdout)
             log.write("-- stdout --\n")
-            log.write(proc.stdout)
-            if not proc.stdout.endswith("\n"):
+            log.write(stdout)
+            if not stdout.endswith("\n"):
                 log.write("\n")
         if proc.stderr:
+            stderr = output_text(proc.stderr)
             log.write("-- stderr --\n")
-            log.write(proc.stderr)
-            if not proc.stderr.endswith("\n"):
+            log.write(stderr)
+            if not stderr.endswith("\n"):
                 log.write("\n")
         log.write("\n")
 
@@ -102,7 +202,9 @@ def run_test(
     trace: bool,
     bin_path: pathlib.Path,
     log_path: pathlib.Path,
-) -> tuple[bool, int | None, str | None]:
+    uart_input: str | None,
+    expect_uart: bool,
+) -> tuple[bool, int | None, str | None, str]:
     argv = [
         str(emulator),
         "--board",
@@ -116,22 +218,26 @@ def run_test(
         "--stop-on-self-branch",
         "--dump-regs",
         "--stats",
-        "--quiet-uart",
     ]
+    if not expect_uart:
+        argv.append("--quiet-uart")
+    if uart_input is not None:
+        argv.extend(["--uart-rx", escape_display(uart_input)])
     if trace:
         argv.append("--trace")
     argv.append(str(bin_path))
 
-    proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     append_log(log_path, "run", argv, proc)
 
-    output = proc.stdout + proc.stderr
+    uart_output = output_text(proc.stdout)
+    output = uart_output + output_text(proc.stderr)
     if "stopped on self-branch" not in output:
-        return False, None, "emulator did not reach self-branch halt before MAX_STEPS"
+        return False, None, "emulator did not reach self-branch halt before MAX_STEPS", uart_output
     matches = REG_RE.findall(output)
     if proc.returncode != 0 or not matches:
-        return False, None, "emulator failed before final V0 could be parsed"
-    return True, int(matches[-1], 16), None
+        return False, None, "emulator failed before final V0 could be parsed", uart_output
+    return True, int(matches[-1], 16), None, uart_output
 
 
 def run_one(
@@ -139,6 +245,8 @@ def run_one(
     source: pathlib.Path,
     expected: int,
     args: argparse.Namespace,
+    expected_uart: str | None,
+    uart_input: str | None,
 ) -> bool:
     asm_path = args.build_dir / f"{name}.asm"
     bin_path = args.build_dir / f"{name}.bin"
@@ -161,13 +269,15 @@ def run_one(
         print(f"  log: {log_path}")
         return False
 
-    run_ok, actual, reason = run_test(
+    run_ok, actual, reason, uart_output = run_test(
         args.emulator,
         args.board,
         args.max_steps,
         args.trace,
         bin_path,
         log_path,
+        uart_input,
+        expected_uart is not None,
     )
     if not run_ok:
         print(f"  RUN FAIL {reason}")
@@ -180,12 +290,32 @@ def run_one(
         return False
 
     print(f"  RUN PASS expected={expected} actual={actual}")
+    if expected_uart is not None:
+        if reason is not None:
+            print(f"  UART FAIL {reason}")
+            print(f"  log: {log_path}")
+            return False
+        if uart_output != expected_uart:
+            print(
+                "  UART FAIL "
+                f"expected={escape_display(expected_uart)} "
+                f"actual={escape_display(uart_output)}"
+            )
+            print(f"  log: {log_path}")
+            return False
+        print(
+            "  UART PASS "
+            f"expected={escape_display(expected_uart)} "
+            f"actual={escape_display(uart_output)}"
+        )
     return True
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected", required=True, type=pathlib.Path)
+    parser.add_argument("--expected-uart", type=pathlib.Path)
+    parser.add_argument("--input-uart", type=pathlib.Path)
     parser.add_argument("--compiler", required=True, type=pathlib.Path)
     parser.add_argument("--assembler", required=True, type=pathlib.Path)
     parser.add_argument("--emulator", required=True, type=pathlib.Path)
@@ -197,8 +327,14 @@ def main() -> int:
     args = parser.parse_args()
 
     expected = load_expected(args.expected)
+    expected_uart = load_text_manifest(args.expected_uart) if args.expected_uart else OrderedDict()
+    input_uart = load_text_manifest(args.input_uart) if args.input_uart else OrderedDict()
     tests = discover_tests(args.expected.parent)
     if not validate_manifest(tests, expected):
+        return 1
+    if not validate_text_manifest(tests, expected_uart, "expected UART"):
+        return 1
+    if not validate_text_manifest(tests, input_uart, "input UART"):
         return 1
 
     if not args.compiler.exists():
@@ -221,7 +357,14 @@ def main() -> int:
 
     ok = True
     for name in selected:
-        ok = run_one(name, tests[name], expected[name], args) and ok
+        ok = run_one(
+            name,
+            tests[name],
+            expected[name],
+            args,
+            expected_uart.get(name),
+            input_uart.get(name),
+        ) and ok
     return 0 if ok else 1
 
 

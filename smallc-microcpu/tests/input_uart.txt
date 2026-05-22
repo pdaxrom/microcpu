@@ -1,0 +1,4 @@
+142_getchar_one A
+143_getchar_two AB
+144_echo_one Z
+145_echo_string_until_newline ABC\n

@@ -1,0 +1,7 @@
+137_putchar_A A
+138_putchar_newline A\nB
+139_puts_ABC ABC\n
+140_puts_empty \n
+141_putchar_loop XYZ
+144_echo_one Z
+145_echo_string_until_newline ABC

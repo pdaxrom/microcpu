@@ -390,6 +390,7 @@ int trailer()  {
   outline("align 1");
   outline("include ../../runtime/lib16.asm");
   outline("include ../../runtime/string.asm");
+  outline("include ../../runtime/uart.asm");
   outline("align 1");
   outline("__smallc_stack:");
   outline("ds 512");

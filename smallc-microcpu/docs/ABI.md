@@ -169,6 +169,20 @@ Pointer-returning helpers return the pointer value in `v0`.  `memcmp` and
 non-equal inputs only the sign of the result is specified.  `memcpy` does not
 define overlapping-copy behavior.
 
+UART stdio helpers live in `runtime/uart.asm`, use the `hc1200-mcu` UART at
+byte address `$ffe0`, and follow the same leading-underscore symbol convention:
+
+- `_putchar`: `int putchar(int c);`
+- `_puts`: `int puts(char *s);`
+- `_getchar`: `int getchar();`
+
+`putchar` writes the low 8 bits of `c` to UART TX and returns that unsigned
+byte in `v0`.  `puts` writes bytes until the terminating NUL, writes a single
+line feed byte (`'\n'`, value 10), and returns 0 in `v0`.  `getchar` blocks by
+spinning on the UART RX status bit until a byte is available, then returns that
+byte zero-extended in `v0`.  These helpers may clobber `v0`, `v1`, `v2`, and
+`v3`; they do not use `v4`.
+
 ## Test Startup And Halt
 
 The generated test crt0 starts at load address 0:
