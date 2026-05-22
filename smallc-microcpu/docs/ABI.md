@@ -18,6 +18,19 @@ exists now; future backend changes must update this file.
 - `int *` arithmetic is scaled by 2 bytes, so `p + 1` points to the next
   16-bit `int`.  `char *` arithmetic is scaled by 1 byte.
 - `int` arrays use 2 bytes per element.  `char` arrays use 1 byte per element.
+- Return values are the raw 16-bit contents of `v0`.  Negative `int` results
+  therefore appear as their unsigned two's-complement representation in tests;
+  for example, `-5` is dumped and compared as `65531`.
+
+## Expression Results
+
+- Logical operators and logical negation return integer `0` or `1`.
+- `&&` and `||` use C short-circuit evaluation; the skipped operand is not
+  evaluated and its side effects do not occur.
+- Left shift uses 16-bit arithmetic modulo the target word size.
+- Right shift currently uses the backend's arithmetic shift helper (`__sar16`),
+  so the sign bit is preserved.  A separate logical right shift for `unsigned`
+  is not emitted yet.
 
 ## Registers
 

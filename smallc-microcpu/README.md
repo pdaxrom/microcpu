@@ -61,9 +61,16 @@ The current backend is intentionally small and supports:
 - constants and local/global `int` variables
 - local/global unsigned plain `char`
 - assignment and return values
-- addition/subtraction and bitwise operations
+- unary `-`, `!`, and `~`
+- arithmetic, bitwise, and shift operators: `+`, `-`, `*`, `/`, `%`, `&`, `|`,
+  `^`, `<<`, `>>`
+- short-circuit logical operators: `&&`, `||`
+- compound assignments: `+=`, `-=`, `&=`, `|=`, `^=`, `<<=`, `>>=`
+- pre/post increment and decrement
 - `if`/`else`
 - `while`
+- `for` and `do`/`while`
+- `break` and `continue`
 - direct function calls, nested calls, and calls using locals/globals
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
@@ -80,6 +87,8 @@ Multiply, divide, modulo, comparisons, and variable shifts are emitted as calls
 to simple helpers in `runtime/lib16.asm`.  The target memory model is
 byte-addressed: `int` and pointers are 2 bytes, `char` is 1 byte, `int *`
 arithmetic advances by 2 bytes, and `char *` arithmetic advances by 1 byte.
+Return values are compared as raw 16-bit `V0`; for example, `-5` is `65531`.
+Right shift is currently arithmetic.
 
 Intentionally unsupported at this stage:
 
