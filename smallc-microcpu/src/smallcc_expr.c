@@ -17,10 +17,10 @@
 #define SA 6   /* is[SA] - stage address of "op 0" code, else 0 */
 
 extern char
- *litq, *glbptr, *lptr,  ssname[NAMESIZE],  quote[2];
+ *litq, *glbptr, *lptr, *symtab, ssname[NAMESIZE],  quote[2];
 extern int
   ch,  csp,  litlab,  litptr,  nch,  op[16],  op2[16],
-  opindex,  opsize, *snext;
+  opindex,  opsize, backend, *snext;
 
 int level2();
 int level3();
@@ -326,6 +326,13 @@ int level13(is)  int is[];  {
     ptr = is[ST];
     if(ptr) is[TA] = ptr[TYPE];
     else    is[TA] = is[TI];
+    if(backend == BACKEND_PCODE && ptr) {
+      if(ptr >= STARTLOC && ptr < ENDLOC)
+           gen(POINT1s, getint(ptr+OFFSET, 2));
+      else gen(POINT1m, ptr);
+      is[TI] = ptr[TYPE];
+      return 0;
+      }
     if(is[TI]) return 0;
     gen(POINT1m, ptr);
     is[TI] = ptr[TYPE];
@@ -482,6 +489,18 @@ int primary(is)  int *is; {
       if(ptr[IDENT] == LABEL) {
         experr();
         return 0;
+        }
+      if(backend == BACKEND_PCODE) {
+        is[ST] = ptr;
+        is[TI] = 0;
+        if(ptr[IDENT] == ARRAY) {
+          gen(POINT1s, getint(ptr+OFFSET, 2));
+          is[TI] =
+          is[TA] = ptr[TYPE];
+          return 0;
+          }
+        if(ptr[IDENT] == POINTER) is[TA] = ptr[TYPE];
+        return 1;
         }
       gen(POINT1s, getint(ptr+OFFSET, 2));
       is[ST] = ptr;

@@ -1,0 +1,8 @@
+001_return_const 123
+002_add 5
+003_local_var 12
+004_if_else 1
+005_while 10
+006_call 30
+007_string_strlen_native 3
+008_putchar_native 0

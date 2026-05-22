@@ -1,0 +1,201 @@
+# Experimental p-code backend
+
+This document describes the first external p-code VM used by
+`smallcc --backend pcode`.  The native microcpu backend remains the default.
+
+## Frontend strategy
+
+The first p-code backend does not rewrite the Small-C frontend as a stack
+compiler.  It translates the existing register-oriented internal pseudo-code
+into an external stack VM form.  Internal primary/secondary register values are
+spilled to reserved p-code frame temporary slots, then loaded onto the operand
+stack as needed.  Unsupported internal opcodes produce a compiler error:
+
+```text
+unsupported internal pcode for stack backend: <opcode>
+```
+
+The current supported subset is intentionally small: constants, local/global
+integer variables, assignment, add/sub/and/or/xor, comparisons, `if`/`else`,
+`while`, simple direct calls, native calls such as `strlen` and `putchar`, and
+string literals for native calls.
+
+## Encoding
+
+- The bytecode stream is byte-addressed.
+- Opcode size is 8 bits.
+- Operands are 0 or more bytes.
+- 16-bit immediates are little-endian.
+- VM stack cells are 16-bit.
+- `int` and pointers are 16-bit.
+- `char` memory is 8-bit; byte loads zero-extend to 16-bit cells.
+- The interpreter fetches operands byte-by-byte; bytecode does not require word
+  alignment.
+
+## Opcodes
+
+| Opcode | Mnemonic | Operands |
+|--------|----------|----------|
+| `$00` | `NOP` | none |
+| `$01` | `HALT` | none |
+| `$02` | `ICONST_M1` | none |
+| `$03` | `ICONST_0` | none |
+| `$04` | `ICONST_1` | none |
+| `$05` | `ICONST_2` | none |
+| `$06` | `ICONST_S8` | signed byte |
+| `$07` | `ICONST_U16` | low byte, high byte |
+| `$08` | `DROP` | none |
+| `$09` | `DUP` | none |
+| `$0a` | `SWAP` | none |
+| `$10..$13` | `LLOCAL_0..3` | none |
+| `$14..$17` | `SLOCAL_0..3` | none |
+| `$18` | `LLOCAL_S8` | signed byte offset |
+| `$19` | `SLOCAL_S8` | signed byte offset |
+| `$1a` | `LLOCAL_U16` | signed 16-bit offset |
+| `$1b` | `SLOCAL_U16` | signed 16-bit offset |
+| `$1c` | `ADDR_LOCAL_S8` | signed byte offset |
+| `$1d` | `ADDR_LOCAL_U16` | signed 16-bit offset |
+| `$20` | `LGLOBAL_U16` | 16-bit data address |
+| `$21` | `SGLOBAL_U16` | 16-bit data address |
+| `$22` | `ADDR_GLOBAL_U16` | 16-bit data address |
+| `$30` | `LBYTE` | none |
+| `$31` | `SBYTE` | none |
+| `$32` | `LWORD` | none |
+| `$33` | `SWORD` | none |
+| `$40` | `JMP_S8` | signed byte relative offset |
+| `$41` | `JMP_S16` | signed 16-bit relative offset |
+| `$42` | `JZ_S8` | signed byte relative offset |
+| `$43` | `JZ_S16` | signed 16-bit relative offset |
+| `$44` | `JNZ_S8` | signed byte relative offset |
+| `$45` | `JNZ_S16` | signed 16-bit relative offset |
+| `$50` | `CALL_U16` | 16-bit p-code address, argc byte |
+| `$51` | `RET` | none |
+| `$52` | `ENTER_U8` | frame byte count |
+| `$53` | `ENTER_U16` | frame byte count |
+| `$54` | `NCALL_U8` | native id byte, argc byte |
+| `$55` | `NCALL_U16` | native id word, argc byte |
+| `$56` | `LEAVE` | none |
+| `$60` | `ADD` | none |
+| `$61` | `SUB` | none |
+| `$62` | `AND` | none |
+| `$63` | `OR` | none |
+| `$64` | `XOR` | none |
+| `$65` | `SHL` | none |
+| `$66` | `SHR` | none |
+| `$67` | `NEG` | none |
+| `$68` | `BNOT` | none |
+| `$69` | `LNOT` | none |
+| `$6a` | `EQ` | none |
+| `$6b` | `NE` | none |
+| `$6c` | `LT` | none |
+| `$6d` | `LE` | none |
+| `$6e` | `GT` | none |
+| `$6f` | `GE` | none |
+| `$70` | `MUL` | none |
+| `$71` | `UDIV` | none |
+| `$72` | `UMOD` | none |
+| `$73` | `SDIV` | none |
+| `$74` | `SMOD` | none |
+
+Binary operators pop the right operand first, then the left operand, and push a
+16-bit result.  Comparisons push `0` or `1`.
+
+## Textual p-code assembly
+
+The backend currently emits readable text first.  The host interpreter encodes
+that text into the byte stream above before execution.
+
+Example:
+
+```text
+entry _main
+func _main
+iconst 123
+slocal -30000
+llocal -30000
+ret
+end
+```
+
+Data uses `data_label`, `data8`, `data16`, and `zero`.  Labels use `label`.
+Direct calls use `call <function> <argc>`.  Native calls use
+`ncall <symbol> <argc>`.
+
+## Native calls
+
+`NCALL` looks up a native-table entry.  The p-code stack holds arguments in
+source order before the call.  The interpreter pops the last argument first,
+reconstructs the ordinary argument order, calls the native helper, and pushes
+the 16-bit return value.
+
+The host interpreter currently implements enough native calls for the first
+p-code tests:
+
+- `_strlen`
+- `_putchar`
+- `_puts`
+- `_getchar`
+- `_strcmp`
+
+The target microcpu interpreter uses the same bytecode semantics.  The p-code
+object emits a native table with relocations to linked object symbols such as
+runtime libc helpers or optional user native objects.  The current microcpu
+interpreter implements `NCALL_U8`; `NCALL_U16` is reserved for a later larger
+native table.
+
+## Microcpu interpreter
+
+`runtime/pcode_interpreter.asm` is a compact assembly interpreter for the
+microcpu target.  The p-code test link order is:
+
+```text
+pcode_interpreter.o
+runtime_object.o        ; only when native calls are present
+pcode.o
+```
+
+The p-code object exports `__pcode_entry`, `__pcode_start`, and
+`__pcode_end`.  Because the current object format limits symbol names, the
+target data/native-table labels use short aliases:
+
+```text
+__pcd_native    native address table
+__pcd_ncount    native entry count
+__pcd_global    p-code global/string data
+__pcd_gend      end of p-code data
+```
+
+`ADDR_GLOBAL_U16`, `LGLOBAL_U16`, and `SGLOBAL_U16` operands are offsets from
+`__pcd_global` in the target object path.  This avoids byte-splitting absolute
+relocations inside the 8-bit bytecode stream.
+
+Interpreter state:
+
+- p-code IP lives in a native register while executing.
+- operand stack is a fixed 512-byte area of 16-bit cells.
+- call depth is 16 frames.
+- each p-code frame has a fixed 64-byte local/temporary area.
+- native `sp` remains available for interpreter helper calls and `NCALL`.
+
+When the top-level p-code function returns, the interpreter leaves the result
+in native `v0` and branches to `__test_halt`, so `microemu
+--stop-on-self-branch` can verify the final register value.
+
+The microcpu interpreter currently covers the opcodes emitted by
+`pcode-tests/001..008`: constants, locals, p-code direct calls, conditional
+branches, arithmetic/logical comparisons, byte/word memory operations,
+global-data addressing, `RET`, and `NCALL_U8`.
+
+## Size report
+
+`make -C smallc-microcpu test-pcode-host` writes
+`build/pcode/size-report.txt`.  `make -C smallc-microcpu
+test-pcode-microemu` writes `build/pcode-microemu/size-report.txt`.  For each
+p-code test the reports record:
+
+- raw bytecode bytes
+- global data bytes
+- native table bytes
+- total p-code object data size
+- linked interpreter size status
+- native backend assembly/binary comparison

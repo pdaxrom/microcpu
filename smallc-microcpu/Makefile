@@ -14,8 +14,10 @@ BUILD := build
 TEST_BUILD := $(BUILD)/tests
 MULTI_TEST_BUILD := $(BUILD)/tests-multi
 SELFHOST_BUILD := $(BUILD)/selfhost-smoke
+PCODE_BUILD := $(BUILD)/pcode
 CPP_BIN := $(BUILD)/smallcpp
 CC_ONLY_BIN := $(BUILD)/smallcc
+PCINTERP_BIN := $(BUILD)/pcinterp
 
 HOST_CFLAGS := -std=gnu89 -fsigned-char -Wall \
 	-Wno-implicit-int -Wno-implicit-function-declaration \
@@ -44,6 +46,7 @@ CC_ONLY_SRCS := \
 	src/smallcc_expr.c \
 	src/smallcc_emit.c \
 	src/smallcc_codegen_microcpu.c \
+	src/smallcc_codegen_pcode.c \
 	src/shared_host_compat.c
 
 SELFHOST_SRCS := \
@@ -62,6 +65,7 @@ SELFHOST_SRCS := \
 	src/smallcc_expr.c \
 	src/smallcc_emit.c \
 	src/smallcc_codegen_microcpu.c \
+	src/smallcc_codegen_pcode.c \
 	src/shared_host_compat.c
 
 SELFHOST_INPUTS := $(SELFHOST_SRCS)
@@ -84,6 +88,7 @@ SELFHOST_CC_OBJECT_FILES := \
 	$(SELFHOST_BUILD)/smallcc_expr.o \
 	$(SELFHOST_BUILD)/smallcc_emit.o \
 	$(SELFHOST_BUILD)/smallcc_codegen_microcpu.o \
+	$(SELFHOST_BUILD)/smallcc_codegen_pcode.o \
 	$(SELFHOST_BUILD)/shared_host_compat.o
 
 EMU_SRCS := \
@@ -110,7 +115,21 @@ TEST_RUNNER_ARGS := --expected tests/expected.txt \
 	--max-steps $(MAX_STEPS) --build-dir $(TEST_BUILD) \
 	--include-dir tests/include --include-dir include --runtime-dir runtime
 
-.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed selfhost-smoke selfhost-link-smoke assemble run clean
+PCODE_TEST_RUNNER_ARGS := --expected pcode-tests/expected.txt \
+	--expected-uart pcode-tests/expected_uart.txt \
+	--preprocessor $(CPP_BIN) --cc-only $(CC_ONLY_BIN) \
+	--pcinterp $(PCINTERP_BIN) --assembler $(ASM) \
+	--build-dir $(PCODE_BUILD) --include-dir include
+
+PCODE_MICROEMU_RUNNER_ARGS := --expected pcode-tests/expected.txt \
+	--expected-uart pcode-tests/expected_uart.txt \
+	--preprocessor $(CPP_BIN) --cc-only $(CC_ONLY_BIN) \
+	--assembler $(ASM) --linker $(LD) --emulator $(EMU) \
+	--board $(EMU_BOARD) --max-steps $(MAX_STEPS) \
+	--build-dir $(BUILD)/pcode-microemu --include-dir include \
+	--runtime-dir runtime
+
+.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu selfhost-smoke selfhost-link-smoke assemble run clean
 
 all: $(CPP_BIN) $(CC_ONLY_BIN)
 
@@ -140,6 +159,14 @@ test-multi: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD) $(EMU)
 		--max-steps $(MAX_STEPS) --build-dir $(MULTI_TEST_BUILD) \
 		--include-dir tests/include --include-dir include \
 		--runtime-dir runtime $(TRACE_ARG) $(PREPROCESS_ARG) $(TEST_ARG)
+
+test-pcode-host: $(CPP_BIN) $(CC_ONLY_BIN) $(PCINTERP_BIN) $(ASM)
+	$(PYTHON) tests/run_pcode_tests.py $(PCODE_TEST_RUNNER_ARGS) \
+		--max-steps $(MAX_STEPS) $(TEST_ARG)
+
+test-pcode-microemu: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD) $(EMU)
+	$(PYTHON) tests/run_pcode_microemu.py $(PCODE_MICROEMU_RUNNER_ARGS) \
+		$(TEST_ARG)
 
 selfhost-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM)
 	$(PYTHON) selfhost/run_smoke.py --compiler $(CC_ONLY_BIN) \
@@ -179,6 +206,10 @@ $(CPP_BIN): $(CPP_SRCS) src/cc.h src/notice.h src/host_compat.h src/smallc_proto
 
 $(CC_ONLY_BIN): $(CC_ONLY_SRCS) src/cc.h src/notice.h src/host_compat.h src/smallc_proto.h src/smallcc_globals.h | $(BUILD)
 	$(HOSTCC) $(HOST_CFLAGS) -o $@ $(CC_ONLY_SRCS)
+
+$(PCINTERP_BIN): pcode/pcinterp.c | $(BUILD)
+	$(HOSTCC) -std=gnu89 -Wall -Wno-unused-function \
+		-Wno-deprecated-non-prototype -o $@ pcode/pcinterp.c
 
 clean:
 	rm -rf $(BUILD)

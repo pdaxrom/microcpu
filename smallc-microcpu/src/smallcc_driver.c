@@ -6,7 +6,7 @@
 #include "host_compat.h"
 
 extern int
-  argcs, *argvs, input, output, objectmode, listfp, nxtlab;
+  argcs, *argvs, input, output, objectmode, backend, listfp, nxtlab;
 
 extern char
   *line, *pline;
@@ -36,6 +36,7 @@ int smallcc_ask() {
   output = stdout;
   input = EOF;
   objectmode = NO;
+  backend = BACKEND_MICROCPU;
   line = pline;
   while(getarg(++i, line, LINESIZE, argcs, argvs) != EOF) {
     if(skipnext) {
@@ -43,6 +44,28 @@ int smallcc_ask() {
       continue;
       }
     if(line[0] == '-' || line[0] == '/') {
+      if(line[1] == '-'
+      && line[2] == 'b'
+      && line[3] == 'a'
+      && line[4] == 'c'
+      && line[5] == 'k'
+      && line[6] == 'e'
+      && line[7] == 'n'
+      && line[8] == 'd'
+      && line[9] <= ' ') {
+        if(getarg(++i, line, LINESIZE, argcs, argvs) == EOF) {
+          fputs("missing backend after --backend\n", stderr);
+          abort(ERRCODE);
+          }
+        if(streq(line, "pcode")) backend = BACKEND_PCODE;
+        else if(streq(line, "microcpu")) backend = BACKEND_MICROCPU;
+        else {
+          fputs("unknown backend: ", stderr);
+          lout(line, stderr);
+          abort(ERRCODE);
+          }
+        continue;
+        }
       if(line[1] == '-'
       && line[2] == 'o'
       && line[3] == 'b'
@@ -72,7 +95,7 @@ int smallcc_ask() {
         continue;
         }
       if(toupper(line[1]) == 'I' || toupper(line[1]) == 'D') continue;
-      fputs("usage: smallcc [--object] [-o file] file.i\n", stderr);
+      fputs("usage: smallcc [--backend microcpu|pcode] [--object] [-o file] file.i\n", stderr);
       abort(ERRCODE);
       }
     if(input == EOF) input = smallcc_open(line);

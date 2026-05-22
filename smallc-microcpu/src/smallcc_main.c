@@ -53,6 +53,7 @@ int
   macro_param_count, /* next function-like macro parameter slot */
   include_open_count, /* number of include files opened */
   objectmode, /* emit object-file compatible assembly */
+  backend, /* selected output backend */
   pubclass, /* storage class of symbol currently being emitted */
   decltype2, /* full type from the most recent declarator */
   functype,  /* return type of next function */

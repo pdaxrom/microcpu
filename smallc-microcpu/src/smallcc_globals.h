@@ -46,6 +46,7 @@ extern int
   macro_param_count,
   include_open_count,
   objectmode,
+  backend,
   pubclass,
   decltype2,
   functype,

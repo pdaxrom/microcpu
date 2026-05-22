@@ -79,6 +79,52 @@ flow:
 make -C smallc-microcpu test-multi
 ```
 
+## Experimental p-code backend
+
+The native microcpu backend remains the default.  An experimental backend can
+emit an external stack-VM p-code form instead:
+
+```sh
+smallcc --backend pcode build/source.i -o build/source.pca
+```
+
+This first implementation is intentionally a lowering layer from the existing
+register-oriented internal pseudo-code to an external 8-bit bytecode VM.  It
+does not rewrite the frontend into a stack-machine compiler.  Unsupported
+internal opcodes fail explicitly with:
+
+```text
+unsupported internal pcode for stack backend: <opcode>
+```
+
+The host interpreter encodes the textual `.pca` into compact bytecode and runs
+it with 16-bit VM cells:
+
+```sh
+make -C smallc-microcpu test-pcode-host
+```
+
+The microcpu-side interpreter links the bytecode object after the interpreter
+and optional runtime/native objects, then runs the result under `microemu`:
+
+```sh
+make -C smallc-microcpu test-pcode-microemu
+```
+
+The initial p-code test suite lives under `pcode-tests/` and currently covers
+return constants, integer constants, local variables, arithmetic, comparisons,
+`if`/`else`, `while`, direct C calls, string literals passed to native
+`strlen`, and native `putchar` UART output.  The microcpu interpreter uses the
+same bytecode semantics as the host interpreter and currently supports
+`NCALL_U8` through a link-time native table.  P-code is not used by the normal
+native test flow yet.
+
+`build/pcode/size-report.txt` records raw bytecode bytes, global data bytes,
+native table bytes, total p-code object data size, and a comparison with the
+native backend output for each host p-code test.  `test-pcode-microemu` writes
+the target-side size report to `build/pcode-microemu/size-report.txt`.  See
+`docs/PCODE.md` for the VM encoding and link model.
+
 ## Self-hosting smoke checks
 
 The port is not self-hosting yet.  A non-default smoke target checks source

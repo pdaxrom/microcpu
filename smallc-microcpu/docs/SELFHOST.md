@@ -88,6 +88,7 @@ compiler path.
 - `src/smallcc_expr.c`
 - `src/smallcc_emit.c`
 - `src/smallcc_codegen_microcpu.c`
+- `src/smallcc_codegen_pcode.c`
 - `src/shared_host_compat.c`
 
 The split is the canonical source layout for host, object, and selfhost smoke
@@ -155,11 +156,28 @@ compiler.  Current report-only status:
 - `smallcpp`: object compilation passes; link fails on unresolved target-hosted
   `_stderr` support.  Estimated text/data are about 30310/31319 bytes.
 - `smallcc`: object compilation passes; link still exceeds the current linker
-  output buffer.  Estimated text/data are about 81372/26362 bytes, so further
+  output buffer.  With the experimental p-code backend module included in the
+  canonical build, estimated text/data are about 90800/27543 bytes, so further
   split/reduction or a larger target layout is still needed.
 
 A link failure here is still report-only by default; full target execution
 remains future work.
+
+An experimental p-code backend now exists as a size-reduction path.  It lowers
+the existing internal register-oriented pseudo-code into an external 8-bit
+stack-VM bytecode and has both host and microcpu interpreter coverage for the
+initial subset.  `test-pcode-host` and `test-pcode-microemu` currently pass
+`pcode-tests/001..008`, including native calls to `_strlen` and `_putchar`
+through the target native table.  This does not replace the native backend and
+is not full self-hosting yet.
+
+The target-side p-code size report is written to
+`build/pcode-microemu/size-report.txt`.  In the current small tests the
+microcpu interpreter object is about 4.6 KB, pure p-code linked images are
+about 3.8-3.9 KB, and native-call tests link in `runtime_object.o` for a total
+around 4.5 KB.  The next p-code self-hosting step is compiling larger compiler
+modules to p-code and measuring whether `smallcc` bytecode plus the
+interpreter fits the 64K-class target better than native generated code.
 
 The global symbol table was raised from 200 to 300 entries only after the
 self-host report showed real compiler frontend pressure with include guards

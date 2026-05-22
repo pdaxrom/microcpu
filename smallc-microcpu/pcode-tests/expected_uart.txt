@@ -1,0 +1,1 @@
+008_putchar_native A

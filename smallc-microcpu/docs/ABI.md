@@ -252,6 +252,50 @@ runtime/stack_object.o
 UART helper routines.  `stack_object.o` provides the test stack symbol
 `__sc_stktop`.
 
+## Experimental P-code VM
+
+The experimental p-code backend is an alternative compiler backend, not the
+default ABI for native generated code.  It lowers the existing internal
+register-oriented pseudo-code into an external stack VM.
+
+P-code data model:
+
+- Instruction stream: 8-bit opcodes with 0 or more byte operands.
+- 16-bit operands are little-endian low byte then high byte.
+- VM stack cell: 16 bits.
+- `int` and pointers: 16-bit VM cells.
+- `char` memory: byte-addressed and zero-extended on load.
+- Bytecode fetch is byte-by-byte, so bytecode does not require word alignment.
+
+The first host interpreter keeps a p-code operand stack plus per-call frame
+temporary/local slots.  The backend maps the internal primary and secondary
+register values to reserved frame temporary slots, then materializes those
+slots onto the VM stack when emitting stack operations.  This is deliberately
+correctness-first; peephole compaction is future work.
+
+P-code direct calls use the same source-order argument convention as the native
+ABI.  The caller pushes argument values in source order; the interpreter maps
+the last argument to frame offset 4, the previous argument to offset 6, and so
+on, matching the native generated frame layout.  `RET` leaves the function
+result as a 16-bit VM cell.
+
+Native p-code calls use `NCALL` with a compact native-table id and argument
+count.  Host p-code tests provide native implementations for `_strlen`,
+`_putchar`, `_puts`, `_getchar`, and `_strcmp`.  The microcpu interpreter
+resolves the native table to linked object symbols.  For each `NCALL_U8`, it
+pops p-code arguments, rebuilds the ordinary native source-order argument
+stack, calls the native symbol, restores interpreter state, and pushes the
+16-bit `v0` return value onto the p-code stack.
+
+For microcpu p-code tests the linked image starts in
+`runtime/pcode_interpreter.asm`.  When p-code `main` returns, the interpreter
+places the final 16-bit result in native `v0` and branches to the usual
+`__test_halt` self-branch.  The current interpreter uses fixed internal areas:
+512 bytes for the p-code operand stack, 16 call frames, and 64 bytes per
+p-code frame.  The object-format-visible p-code symbols are `__pcode_entry`,
+`__pcode_start`, `__pcode_end`, plus short object-safe aliases
+`__pcd_native` and `__pcd_global` for the native table and data area.
+
 ## Test Startup And Halt
 
 The generated test crt0 starts at load address 0:

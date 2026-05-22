@@ -74,6 +74,12 @@
 #define PRIVATE   5
 
 /*
+** output backends
+*/
+#define BACKEND_MICROCPU 0
+#define BACKEND_PCODE    1
+
+/*
 ** segment types
 */
 #define DATASEG 1
