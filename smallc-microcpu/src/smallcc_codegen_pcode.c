@@ -81,6 +81,12 @@ int pcode_emit_global_op(op, ptr) char *op, *ptr; {
   newline();
   }
 
+int pcode_emit_function_addr(ptr) char *ptr; {
+  outstr("addr_func ");
+  pcode_name(ptr + NAME);
+  newline();
+  }
+
 int pcode_emit_data_prefix(op) char *op; {
   outstr(op);
   }
@@ -273,6 +279,8 @@ int pcode_outcode(pcode, value) int pcode, value; {
     case POINT1m:
       if(pcode_islocal(ptr))
         pcode_emit_local_op("addr_local", getint(ptr + OFFSET, 2));
+      else if(ptr[IDENT] == FUNCTION)
+        pcode_emit_function_addr(ptr);
       else
         pcode_emit_global_op("addr_global", ptr);
       pcode_store_tmp(0);
@@ -281,6 +289,8 @@ int pcode_outcode(pcode, value) int pcode, value; {
     case POINT2m_:
       if(pcode_islocal(ptr))
         pcode_emit_local_op("addr_local", getint(ptr + OFFSET, 2));
+      else if(ptr[IDENT] == FUNCTION)
+        pcode_emit_function_addr(ptr);
       else
         pcode_emit_global_op("addr_global", ptr);
       pcode_store_tmp(1);
@@ -424,7 +434,12 @@ int pcode_outcode(pcode, value) int pcode, value; {
       pcode_call(ptr);
       return 0;
     case CALL1:
-      return pcode_unsupported(pcode);
+      pcode_load_tmp(0);
+      outstr("icall ");
+      outdec(pcode_argc);
+      newline();
+      pcode_store_tmp(0);
+      return 0;
     case ADDSP:
     case ENTER:
       return 0;

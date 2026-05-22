@@ -41,6 +41,9 @@ __pcode_loop:
 	pcode_dispatch	$05, __pcode_op_iconst_2
 	pcode_dispatch	$06, __pcode_op_iconst_s8
 	pcode_dispatch	$07, __pcode_op_iconst_u16
+	pcode_dispatch	$08, __pcode_op_drop
+	pcode_dispatch	$09, __pcode_op_dup
+	pcode_dispatch	$0a, __pcode_op_swap
 	pcode_dispatch	$10, __pcode_op_llocal_0
 	pcode_dispatch	$11, __pcode_op_llocal_1
 	pcode_dispatch	$12, __pcode_op_llocal_2
@@ -71,6 +74,7 @@ __pcode_loop:
 	pcode_dispatch	$50, __pcode_op_call_u16
 	pcode_dispatch	$51, __pcode_op_ret
 	pcode_dispatch	$54, __pcode_op_ncall_u8
+	pcode_dispatch	$57, __pcode_op_icall_u8
 	pcode_dispatch	$60, __pcode_op_add
 	pcode_dispatch	$61, __pcode_op_sub
 	pcode_dispatch	$62, __pcode_op_and
@@ -111,6 +115,27 @@ __pcode_op_iconst_s8:
 	b	__pcode_loop
 __pcode_op_iconst_u16:
 	bsr	__pcode_fetch_u16
+	bsr	__pcode_push_v0
+	b	__pcode_loop
+
+__pcode_op_drop:
+	bsr	__pcode_pop_v0
+	b	__pcode_loop
+
+__pcode_op_dup:
+	bsr	__pcode_pop_v0
+	bsr	__pcode_push_v0
+	bsr	__pcode_push_v0
+	b	__pcode_loop
+
+__pcode_op_swap:
+	bsr	__pcode_pop_v0
+	push	v0
+	bsr	__pcode_pop_v0
+	mov	v1, v0
+	pop	v0
+	bsr	__pcode_push_v0
+	mov	v0, v1
 	bsr	__pcode_push_v0
 	b	__pcode_loop
 
@@ -273,6 +298,18 @@ __pcode_op_call_u16:
 	bsr	__pcode_fetch_u8
 	set	v1, __pcode_call_argc
 	str	v0, v1, 0
+	b	__pcode_call_enter
+
+__pcode_op_icall_u8:
+	bsr	__pcode_fetch_u8
+	set	v1, __pcode_call_argc
+	str	v0, v1, 0
+	bsr	__pcode_pop_v0
+	set	v1, __pcode_call_target
+	str	v0, v1, 0
+	b	__pcode_call_enter
+
+__pcode_call_enter:
 	push	v4
 	push	v2
 	set	v0, PCODE_FRAME_SIZE

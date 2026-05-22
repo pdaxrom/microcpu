@@ -279,6 +279,13 @@ the last argument to frame offset 4, the previous argument to offset 6, and so
 on, matching the native generated frame layout.  `RET` leaves the function
 result as a 16-bit VM cell.
 
+P-code function pointers to p-code functions are 16-bit bytecode entry offsets.
+`ICALL_U8` expects the target offset on top of the p-code stack with arguments
+below it in the same order used by direct calls.  The interpreter pops the
+target, builds a normal p-code frame, transfers the arguments, and pushes the
+return value after `RET`.  Function pointers to native `NCALL` entries are not
+part of the current ABI.
+
 Native p-code calls use `NCALL` with a compact native-table id and argument
 count.  Host p-code tests provide native implementations for `_strlen`,
 `_putchar`, `_puts`, `_getchar`, and `_strcmp`.  The microcpu interpreter

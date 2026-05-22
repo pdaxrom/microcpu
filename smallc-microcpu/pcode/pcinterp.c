@@ -71,6 +71,8 @@
 #define IK_LEAVE      43
 #define IK_NOP        44
 #define IK_HALT       45
+#define IK_ADDR_FUNC  46
+#define IK_ICALL      47
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -117,6 +119,7 @@
 #define OP_NCALL_U8         0x54
 #define OP_NCALL_U16        0x55
 #define OP_LEAVE            0x56
+#define OP_ICALL_U8         0x57
 #define OP_ADD              0x60
 #define OP_SUB              0x61
 #define OP_AND              0x62
@@ -363,6 +366,8 @@ static int insn_base_size(ip) struct Insn *ip; {
   case IK_SGLOBAL:
   case IK_ADDR_GLOBAL:
     return 3;
+  case IK_ADDR_FUNC:
+    return 3;
   case IK_JMP:
   case IK_JZ:
   case IK_JNZ:
@@ -372,6 +377,8 @@ static int insn_base_size(ip) struct Insn *ip; {
   case IK_NCALL:
     if(native_id(ip->name) <= 255) return 3;
     return 4;
+  case IK_ICALL:
+    return 2;
   case IK_ENTER:
     if(v >= 0 && v <= 255) return 2;
     return 3;
@@ -512,6 +519,10 @@ static void encode() {
       emit8(OP_ADDR_GLOBAL_U16);
       emit16(symbol_addr(insn[i].name, SYM_DATA));
       break;
+    case IK_ADDR_FUNC:
+      emit8(OP_ICONST_U16);
+      emit16(symbol_addr(insn[i].name, SYM_CODE));
+      break;
     case IK_LBYTE: emit8(OP_LBYTE); break;
     case IK_SBYTE: emit8(OP_SBYTE); break;
     case IK_LWORD: emit8(OP_LWORD); break;
@@ -573,6 +584,10 @@ static void encode() {
         emit16(id);
         emit8(insn[i].a);
       }
+      break;
+    case IK_ICALL:
+      emit8(OP_ICALL_U8);
+      emit8(insn[i].a);
       break;
     case IK_RET:
       emit8(OP_RET);
@@ -717,6 +732,11 @@ static int parse_file(path) char *path; {
       else add_insn(IK_ADDR_GLOBAL, 0, 0, tok);
       continue;
     }
+    if(str_eq(op, "addr_func")) {
+      if(!next_token(&p, tok)) return fail("addr_func without name");
+      add_insn(IK_ADDR_FUNC, 0, 0, tok);
+      continue;
+    }
     if(str_eq(op, "jmp") || str_eq(op, "jz") || str_eq(op, "jnz")) {
       if(!next_token(&p, tok)) return fail("branch without target");
       if(str_eq(op, "jmp")) add_insn(IK_JMP, 0, 0, tok);
@@ -735,6 +755,11 @@ static int parse_file(path) char *path; {
       } else {
         add_insn(IK_CALL, v, 0, name);
       }
+      continue;
+    }
+    if(str_eq(op, "icall")) {
+      if(!next_token(&p, tok)) return fail("icall without argc");
+      add_insn(IK_ICALL, parse_int(tok), 0, 0);
       continue;
     }
     if(str_eq(op, "enter")) {
@@ -1059,6 +1084,17 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_CALL_U16:
       target = read16(&pc);
       argc = read8(&pc);
+      if(fp + 1 >= MAX_FRAMES) return fail("call stack overflow");
+      ++fp;
+      frames[fp].ret_pc = pc;
+      frames[fp].used = 0;
+      for(a = 0; a < argc; ++a) store_local(4 + a * 2, pop());
+      pc = target;
+      break;
+    case OP_ICALL_U8:
+      argc = read8(&pc);
+      target = pop();
+      if(target < 0 || target >= code_size) return fail("invalid indirect p-code call target");
       if(fp + 1 >= MAX_FRAMES) return fail("call stack overflow");
       ++fp;
       frames[fp].ret_pc = pc;

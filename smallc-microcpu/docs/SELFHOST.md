@@ -167,12 +167,12 @@ An experimental p-code backend now exists as a size-reduction path.  It lowers
 the existing internal register-oriented pseudo-code into an external 8-bit
 stack-VM bytecode and has both host and microcpu interpreter coverage for a
 broader subset.  `test-pcode-host` and `test-pcode-microemu` currently pass
-`pcode-tests/001..037`, including comparisons, short-circuit logical
+`pcode-tests/001..041`, including comparisons, short-circuit logical
 operators, bitwise/shift operations, local/global arrays, basic pointers,
 string indexing, enum/typedef basics, simple struct access, `switch`, static
 and void functions, pointer-to-pointer loads, casts, pre/post increment and
-decrement, and native calls to `_strlen`, `_strcpy`, and `_putchar` through the
-target native table.
+decrement, p-code function-pointer indirect calls, and native calls to
+`_strlen`, `_strcpy`, and `_putchar` through the target native table.
 `test-pcode-native` also passes and validates calls from p-code into
 separately compiled native object files, including native globals, native
 pointer returns, and p-code string pointers passed to native code.  This does
@@ -195,17 +195,16 @@ It writes `build/selfhost-pcode/size-report.txt` and does not link or run a
 p-code-hosted compiler.  Current report-only measurements show:
 
 - `smallcpp`: all modules generate p-code.  Estimated p-code image is about
-  51.9 KB versus 87.1 KB summed native object size, roughly 35.2 KB smaller.
-- `smallcc`: measurement is incomplete because `smallcc_expr.c` still hits
-  unsupported internal p-code `CALL1` near `k = (*level)(is);`, which is the
-  expression parser's function-pointer dispatch.  The measured modules already
-  estimate about 65.1 KB versus 186.3 KB summed native object size, but this
-  excludes `smallcc_expr.c` p-code payload.
+  52.1 KB versus 87.1 KB summed native object size, roughly 35.1 KB smaller.
+- `smallcc`: all modules now generate p-code.  Estimated p-code image is about
+  77.5 KB versus 187.0 KB summed native object size, roughly 109.6 KB smaller.
+  The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
+  support for p-code function pointers.
 
 This suggests p-code is a promising size path, but the remaining work is not
 just bytecode density.  The next blockers are indirect p-code calls/function
-pointers, cross-module p-code linking semantics, target-hosted file I/O/argv
-support, and final image layout.
+pointers to native functions, cross-module p-code linking semantics,
+target-hosted file I/O/argv support, and final image layout.
 
 The global symbol table was raised from 200 to 300 entries only after the
 self-host report showed real compiler frontend pressure with include guards
@@ -223,7 +222,7 @@ The most likely next blockers are:
 - complex initializers and struct initializers
 - anonymous structs and anonymous typedef structs
 - `union`
-- full function pointer semantics beyond simple indirect calls
+- full function pointer semantics beyond p-code-to-p-code indirect calls
 - command-line `argc`/`argv` and environment handling on the target
 - target file I/O for compiler input and output
 

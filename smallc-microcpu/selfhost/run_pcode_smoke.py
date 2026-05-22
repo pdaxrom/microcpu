@@ -20,12 +20,15 @@ from run_pcode_microemu import (  # noqa: E402
     OP_ADDR_LOCAL_S8,
     OP_ADDR_LOCAL_U16,
     OP_CALL_U16,
+    OP_DROP,
+    OP_DUP,
     OP_ICONST_0,
     OP_ICONST_1,
     OP_ICONST_2,
     OP_ICONST_M1,
     OP_ICONST_S8,
     OP_ICONST_U16,
+    OP_ICALL_U8,
     OP_JMP_S16,
     OP_JMP_S8,
     OP_JNZ_S16,
@@ -37,7 +40,9 @@ from run_pcode_microemu import (  # noqa: E402
     OP_LLOCAL_S8,
     OP_LLOCAL_U16,
     OP_NCALL_U8,
+    OP_LEAVE,
     OP_RET,
+    OP_SWAP,
     OP_SGLOBAL_U16,
     OP_SLOCAL_0,
     OP_SLOCAL_S8,
@@ -212,6 +217,9 @@ def encode_pca_module(
             if args[0] not in data_labels:
                 externs[args[0]] = 1
             emit_word_symbol(out, args[0])
+        elif op == "addr_func":
+            out.append(OP_ICONST_U16)
+            emit_u16(out, labels[args[0]])
         elif op in ("jmp", "jz", "jnz"):
             target = labels[args[0]]
             if insn.size == 2:
@@ -234,6 +242,8 @@ def encode_pca_module(
                 out.append(OP_CALL_U16)
                 emit_u16(out, labels[args[0]])
                 out.append(parse_int(args[1]) & 0xFF)
+        elif op == "icall":
+            out.extend([OP_ICALL_U8, parse_int(args[0]) & 0xFF])
         elif op == "ncall":
             native = args[0]
             if native not in native_ids:
@@ -245,6 +255,14 @@ def encode_pca_module(
             out.extend([OP_NCALL_U8, native_id, parse_int(args[1]) & 0xFF])
         elif op == "ret":
             out.append(OP_RET)
+        elif op == "drop":
+            out.append(OP_DROP)
+        elif op == "dup":
+            out.append(OP_DUP)
+        elif op == "swap":
+            out.append(OP_SWAP)
+        elif op == "leave":
+            out.append(OP_LEAVE)
         elif op in SIMPLE_OPS:
             out.append(SIMPLE_OPS[op])
         else:
@@ -255,13 +273,16 @@ def encode_pca_module(
 def pca_counts(path: pathlib.Path) -> dict[str, int]:
     functions = 0
     native_calls = 0
+    indirect_calls = 0
     for line in read_lines(path):
         stripped = line.strip()
         if stripped.startswith("func "):
             functions += 1
         elif stripped.startswith("ncall "):
             native_calls += 1
-    return {"functions": functions, "native_calls": native_calls}
+        elif stripped.startswith("icall "):
+            indirect_calls += 1
+    return {"functions": functions, "native_calls": native_calls, "indirect_calls": indirect_calls}
 
 
 def literal_bytes(data: list[int], data_labels: dict[str, int]) -> int:
@@ -327,6 +348,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "native_table_bytes": 0,
         "functions": 0,
         "native_calls": 0,
+        "indirect_calls": 0,
         "native_entries": 0,
         "globals": 0,
         "pcode_obj_size": 0,
@@ -369,6 +391,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                 "native_table_bytes": native_table_bytes,
                 "functions": counts["functions"],
                 "native_calls": counts["native_calls"],
+                "indirect_calls": counts["indirect_calls"],
                 "native_entries": len(natives),
                 "globals": global_count(data_labels),
                 "pcode_obj_size": pcode_obj_size,
@@ -427,6 +450,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "native_obj": 0,
         "functions": 0,
         "native_calls": 0,
+        "indirect_calls": 0,
         "native_entries": 0,
         "globals": 0,
         "failed": 0,
@@ -444,6 +468,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["native_obj"] += int(item["native_obj_size"])
         total["functions"] += int(item["functions"])
         total["native_calls"] += int(item["native_calls"])
+        total["indirect_calls"] += int(item["indirect_calls"])
         total["native_entries"] += int(item["native_entries"])
         total["globals"] += int(item["globals"])
     return total
@@ -466,6 +491,7 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
     fp.write(f"  native call table bytes: {result['native_table_bytes']}\n")
     fp.write(f"  p-code functions: {result['functions']}\n")
     fp.write(f"  native call instructions: {result['native_calls']}\n")
+    fp.write(f"  indirect call instructions: {result['indirect_calls']}\n")
     fp.write(f"  native table entries: {result['native_entries']}\n")
     fp.write(f"  globals: {result['globals']}\n")
     fp.write(f"  pcode.o size: {result['pcode_obj_size'] if result['pcode_obj_ok'] else 'unavailable'}\n")
@@ -506,6 +532,7 @@ def write_group_report(
     fp.write(f"  pcode.o object bytes: {total['pcode_obj']}\n")
     fp.write(f"  p-code functions: {total['functions']}\n")
     fp.write(f"  native call instructions: {total['native_calls']}\n")
+    fp.write(f"  indirect call instructions: {total['indirect_calls']}\n")
     fp.write(f"  native table entries: {total['native_entries']}\n")
     fp.write(f"  globals: {total['globals']}\n")
     fp.write(f"  estimated p-code linked bytes: {pcode_est}\n")

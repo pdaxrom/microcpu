@@ -226,7 +226,7 @@ int decl2(type, aid, id, sz, baseid) int type, aid, *id, *sz, baseid; {
   if(p && match(")")) ;
   if(match("(")) {
     if(!p || *id != POINTER) error("try (*...)()");
-    need(")");
+    skipprotoargs();
     }
   else if(match("[")) {
     dim = needsub();

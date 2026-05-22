@@ -21,6 +21,9 @@ OP_ICONST_1 = 0x04
 OP_ICONST_2 = 0x05
 OP_ICONST_S8 = 0x06
 OP_ICONST_U16 = 0x07
+OP_DROP = 0x08
+OP_DUP = 0x09
+OP_SWAP = 0x0A
 OP_LLOCAL_0 = 0x10
 OP_LLOCAL_1 = 0x11
 OP_LLOCAL_2 = 0x12
@@ -52,6 +55,8 @@ OP_CALL_U16 = 0x50
 OP_RET = 0x51
 OP_NCALL_U8 = 0x54
 OP_NCALL_U16 = 0x55
+OP_LEAVE = 0x56
+OP_ICALL_U8 = 0x57
 
 SIMPLE_OPS = {
     "lbyte": OP_LBYTE,
@@ -249,10 +254,14 @@ def insn_size(insn: Insn, labels: dict[str, int]) -> int:
         return 2 if -128 <= value <= 127 else 3
     if op in ("lglobal", "sglobal", "addr_global"):
         return 3
+    if op == "addr_func":
+        return 3
     if op in ("jmp", "jz", "jnz"):
         return insn.size
     if op == "call":
         return 4
+    if op == "icall":
+        return 2
     if op == "ncall":
         return 3
     if op in ("ret", "drop", "dup", "swap", "leave") or op in SIMPLE_OPS:
@@ -389,6 +398,9 @@ def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[i
             if args[0] not in data_labels:
                 externs[args[0]] = 1
             emit_word_symbol(out, args[0])
+        elif op == "addr_func":
+            out.append(OP_ICONST_U16)
+            emit_u16(out, labels[args[0]])
         elif op in ("jmp", "jz", "jnz"):
             target = labels[args[0]]
             if insn.size == 2:
@@ -404,6 +416,8 @@ def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[i
             out.append(OP_CALL_U16)
             emit_u16(out, labels[args[0]])
             out.append(parse_int(args[1]) & 0xFF)
+        elif op == "icall":
+            out.extend([OP_ICALL_U8, parse_int(args[0]) & 0xFF])
         elif op == "ncall":
             native = args[0]
             if native not in native_ids:
@@ -415,6 +429,14 @@ def encode_pca(path: pathlib.Path) -> tuple[int, list[int | WordOperand], list[i
             out.extend([OP_NCALL_U8, native_id, parse_int(args[1]) & 0xFF])
         elif op == "ret":
             out.append(OP_RET)
+        elif op == "drop":
+            out.append(OP_DROP)
+        elif op == "dup":
+            out.append(OP_DUP)
+        elif op == "swap":
+            out.append(OP_SWAP)
+        elif op == "leave":
+            out.append(OP_LEAVE)
         elif op in SIMPLE_OPS:
             out.append(SIMPLE_OPS[op])
         else:

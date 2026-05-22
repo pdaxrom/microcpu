@@ -21,8 +21,8 @@ variables, assignment, arithmetic/bitwise/shift operations, comparisons,
 short-circuit logical operators, `if`/`else`, `while`, `switch`, simple direct
 calls, native calls, global/local int and char arrays, basic pointer operations,
 string indexing, enum/typedef basics, simple struct field access, static
-functions, void functions, pointer-to-pointer loads, and casts used by the
-current tests.
+functions, void functions, pointer-to-pointer loads, function-pointer indirect
+calls, pre/post increment and decrement, and casts used by the current tests.
 
 ## Encoding
 
@@ -79,6 +79,7 @@ current tests.
 | `$54` | `NCALL_U8` | native id byte, argc byte |
 | `$55` | `NCALL_U16` | native id word, argc byte |
 | `$56` | `LEAVE` | none |
+| `$57` | `ICALL_U8` | argc byte |
 | `$60` | `ADD` | none |
 | `$61` | `SUB` | none |
 | `$62` | `AND` | none |
@@ -123,7 +124,31 @@ end
 
 Data uses `data_label`, `data8`, `data16`, and `zero`.  Labels use `label`.
 Direct calls use `call <function> <argc>`.  Native calls use
-`ncall <symbol> <argc>`.
+`ncall <symbol> <argc>`.  Function-address constants use
+`addr_func <function>` and lower to `ICONST_U16` with the target function's
+bytecode offset.  Indirect p-code calls use `icall <argc>`.
+
+## Indirect calls
+
+Function pointers to p-code functions are represented as 16-bit bytecode entry
+offsets.  The backend emits `addr_func` when a C function name is used as a
+value, and `CALL1` lowers to `icall`.
+
+`ICALL_U8` expects the target function offset on top of the p-code stack, with
+arguments below it in the same source-order convention as direct calls:
+
+```text
+... arg0 arg1 ... argN target
+```
+
+The interpreter pops `target`, creates a normal p-code call frame, then moves
+the arguments into that frame exactly like `CALL_U16`.  The return value is
+pushed back onto the p-code stack.  Host `pcinterp` validates that the target is
+inside the bytecode image; the microcpu interpreter keeps the compact path and
+assumes compiler-generated p-code is well-formed.
+
+Native function pointers are not implemented yet.  External function
+declarations still call through `NCALL` and the native table.
 
 ## Native calls
 
@@ -205,11 +230,11 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..037`: constants, local/global loads and stores, local/global
+`pcode-tests/001..041`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls, conditional branches, arithmetic/logical
-comparisons, byte/word memory operations, `RET`, and `NCALL_U8`.  `switch` is
-lowered by the p-code backend into an explicit compare-and-branch chain, not a
-dedicated VM opcode.
+comparisons, byte/word memory operations, `DROP`/`DUP`/`SWAP`, `RET`,
+`NCALL_U8`, and `ICALL_U8`.  `switch` is lowered by the p-code backend into an
+explicit compare-and-branch chain, not a dedicated VM opcode.
 
 Opcodes defined in the bytecode table but not yet exercised by the target test
 suite remain implementation candidates for later coverage expansion.  The
@@ -249,7 +274,7 @@ The report is written to `build/selfhost-pcode/size-report.txt` and includes:
 - per-module p-code generation PASS/FAIL
 - unsupported internal pseudo-code opcode, if any
 - bytecode, global data, string/literal, and native-table bytes
-- p-code function, native-call, native-table, and global counts
+- p-code function, native-call, indirect-call, native-table, and global counts
 - pcode.o size when the current p-code object path can assemble it
 - equivalent native object size
 - estimated `smallcpp` and `smallcc` p-code image sizes

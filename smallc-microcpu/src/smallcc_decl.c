@@ -16,16 +16,25 @@ int declglb(type, class)  int type, class; {
   }
 
 int declglb2(type, class, baseid)  int type, class, baseid; {
-  int id, dim, stars, levels, dtype, size;
+  int id, dim, stars, levels, dtype, size, p;
   char *ptr;
   while(1) {
     contline();
     if(endst()) return;  /* do line */
     stars = 0;
+    p = 0;
     skipconst();
     while(match("*")) {
       ++stars;
       skipconst();
+      }
+    if(match("(")) {
+      p = 1;
+      skipconst();
+      while(match("*")) {
+        ++stars;
+        skipconst();
+        }
       }
     levels = stars;
     if(baseid == POINTER) ++levels;
@@ -40,7 +49,11 @@ int declglb2(type, class, baseid)  int type, class, baseid; {
       dim = 1;
       }
     if(symname(ssname) == 0) illname();
-    if(match("(")) {
+    if(p) {
+      need(")");
+      if(match("(")) skipprotoargs();
+      }
+    else if(match("(")) {
       id = FUNCTION;
       skipprotoargs();
       ptr = findglb(ssname);

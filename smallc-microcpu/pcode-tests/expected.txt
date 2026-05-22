@@ -35,3 +35,7 @@
 035_post_increment 35
 036_pre_decrement 36
 037_post_decrement 37
+038_funcptr_basic 38
+039_funcptr_two_args 39
+040_funcptr_assign_switch 40
+041_funcptr_global 41

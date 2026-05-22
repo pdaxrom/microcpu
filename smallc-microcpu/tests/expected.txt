@@ -226,3 +226,5 @@
 227_multiline_global_array_init 227
 228_parenthesized_expression 228
 229_function_pointer_call 229
+230_function_pointer_local_decl 230
+231_function_pointer_global_decl 231
