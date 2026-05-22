@@ -14,6 +14,7 @@ BUILD := build
 TEST_BUILD := $(BUILD)/tests
 MULTI_TEST_BUILD := $(BUILD)/tests-multi
 SELFHOST_BUILD := $(BUILD)/selfhost-smoke
+SELFHOST_PCODE_BUILD := $(BUILD)/selfhost-pcode
 PCODE_BUILD := $(BUILD)/pcode
 CPP_BIN := $(BUILD)/smallcpp
 CC_ONLY_BIN := $(BUILD)/smallcc
@@ -136,7 +137,7 @@ PCODE_NATIVE_RUNNER_ARGS := --expected pcode-tests-native/expected.txt \
 	--build-dir $(BUILD)/pcode-native --include-dir include \
 	--runtime-dir runtime
 
-.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu test-pcode-native selfhost-smoke selfhost-link-smoke assemble run clean
+.PHONY: all smallcpp smallcc test test-object test-multi test-preproc test-preprocessed test-pcode-host test-pcode-microemu test-pcode-native selfhost-smoke selfhost-link-smoke selfhost-pcode-smoke assemble run clean
 
 all: $(CPP_BIN) $(CC_ONLY_BIN)
 
@@ -195,6 +196,18 @@ selfhost-link-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM) $(LD)
 		$(STRICT_ARG) \
 		--smallcpp-objects $(SELFHOST_CPP_OBJECT_FILES) \
 		--smallcc-objects $(SELFHOST_CC_OBJECT_FILES)
+
+selfhost-pcode-smoke: $(CPP_BIN) $(CC_ONLY_BIN) $(ASM)
+	$(MAKE) selfhost-link-smoke STRICT=0
+	$(PYTHON) selfhost/run_pcode_smoke.py \
+		--preprocessor $(CPP_BIN) --cc-only $(CC_ONLY_BIN) \
+		--assembler $(ASM) --runtime-dir runtime \
+		--build-dir $(SELFHOST_PCODE_BUILD) \
+		--native-link-report $(SELFHOST_BUILD)/link-report.txt \
+		--include-dir include --define SMALLC_SELFHOST \
+		--timeout-seconds $(SELFHOST_TIMEOUT) $(STRICT_ARG) \
+		--smallcpp-srcs $(CPP_SRCS) \
+		--smallcc-srcs $(CC_ONLY_SRCS)
 
 assemble: test
 

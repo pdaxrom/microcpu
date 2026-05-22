@@ -31,3 +31,7 @@
 031_void_function 31
 032_pointer_pointer 32
 033_cast_char_pointer 33
+034_pre_increment 34
+035_post_increment 35
+036_pre_decrement 36
+037_post_decrement 37

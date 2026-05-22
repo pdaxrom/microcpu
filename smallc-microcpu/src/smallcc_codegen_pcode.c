@@ -332,6 +332,30 @@ int pcode_outcode(pcode, value) int pcode, value; {
       pcode_load_tmp(0);
       outline("sbyte");
       return 0;
+    case rINC1:
+      pcode_load_tmp(0);
+      outline("iconst 1");
+      outline("add");
+      pcode_store_tmp(0);
+      return 0;
+    case rDEC1:
+      pcode_load_tmp(0);
+      outline("iconst 1");
+      outline("sub");
+      pcode_store_tmp(0);
+      return 0;
+    case rINC2:
+      pcode_load_tmp(1);
+      outline("iconst 1");
+      outline("add");
+      pcode_store_tmp(1);
+      return 0;
+    case rDEC2:
+      pcode_load_tmp(1);
+      outline("iconst 1");
+      outline("sub");
+      pcode_store_tmp(1);
+      return 0;
 
     case JMPm:
       outstr("jmp ");

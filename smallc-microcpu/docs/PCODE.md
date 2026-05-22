@@ -205,7 +205,7 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..033`: constants, local/global loads and stores, local/global
+`pcode-tests/001..037`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls, conditional branches, arithmetic/logical
 comparisons, byte/word memory operations, `RET`, and `NCALL_U8`.  `switch` is
 lowered by the p-code backend into an explicit compare-and-branch chain, not a
@@ -237,3 +237,23 @@ test-pcode-microemu` writes `build/pcode-microemu/size-report.txt`.
 - total p-code object data size
 - linked interpreter size status
 - native backend assembly/binary comparison
+
+For self-host size measurement, use:
+
+```sh
+make -C smallc-microcpu selfhost-pcode-smoke
+```
+
+The report is written to `build/selfhost-pcode/size-report.txt` and includes:
+
+- per-module p-code generation PASS/FAIL
+- unsupported internal pseudo-code opcode, if any
+- bytecode, global data, string/literal, and native-table bytes
+- p-code function, native-call, native-table, and global counts
+- pcode.o size when the current p-code object path can assemble it
+- equivalent native object size
+- estimated `smallcpp` and `smallcc` p-code image sizes
+- comparison with `selfhost-link-smoke` when its report is available
+
+This target is a measurement smoke only.  It does not link or run a
+p-code-hosted compiler image.
