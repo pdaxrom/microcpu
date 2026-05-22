@@ -8,6 +8,7 @@ TRACE ?= 0
 
 BUILD := build
 TEST_BUILD := $(BUILD)/tests
+SELFHOST_BUILD := $(BUILD)/selfhost-smoke
 CC_BIN := $(BUILD)/scc-microcpu
 
 HOST_CFLAGS := -std=gnu89 -fsigned-char -DTARGET_MICROCPU -Wall \
@@ -26,7 +27,16 @@ SRCS := \
 	src/codegen_microcpu.c \
 	src/host_compat.c
 
+SELFHOST_SRCS := \
+	src/cc1.c \
+	src/cc2.c \
+	src/cc3.c \
+	src/cc4.c \
+	src/codegen_microcpu.c \
+	src/host_compat.c
+
 TRACE_ARG := $(if $(filter 1,$(TRACE)),--trace,)
+STRICT_ARG := $(if $(filter 1,$(STRICT)),--strict,)
 TEST_ARG := $(if $(TEST),--test $(TEST),)
 TEST_RUNNER_ARGS := --expected tests/expected.txt \
 	--expected-uart tests/expected_uart.txt \
@@ -34,12 +44,16 @@ TEST_RUNNER_ARGS := --expected tests/expected.txt \
 	--assembler $(ASM) --emulator $(EMU) --board $(EMU_BOARD) \
 	--max-steps $(MAX_STEPS) --build-dir $(TEST_BUILD)
 
-.PHONY: all test assemble run clean
+.PHONY: all test selfhost-smoke assemble run clean
 
 all: $(CC_BIN)
 
 test: $(CC_BIN)
 	$(PYTHON) tests/run_tests.py $(TEST_RUNNER_ARGS) $(TRACE_ARG) $(TEST_ARG)
+
+selfhost-smoke: $(CC_BIN)
+	$(PYTHON) selfhost/run_smoke.py --compiler $(CC_BIN) \
+		--build-dir $(SELFHOST_BUILD) $(STRICT_ARG) $(SELFHOST_SRCS)
 
 assemble: test
 

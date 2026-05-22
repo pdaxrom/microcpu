@@ -48,6 +48,28 @@ Generated assembly, binaries, and logs are kept under
 `smallc-microcpu/build/tests/` after `make test` so the output can be inspected
 directly.
 
+## Self-hosting smoke checks
+
+The port is not self-hosting yet.  A non-default smoke target checks source
+compatibility by compiling selected compiler implementation files to microasm:
+
+```sh
+make -C smallc-microcpu selfhost-smoke
+```
+
+The target writes generated `.asm` files, full logs, and
+`build/selfhost-smoke/report.txt`.  It does not assemble, link, or run the
+compiler on microcpu.  By default this is report-only and exits 0 even when
+compiler source files hit unsupported syntax.  Use strict mode when a failure
+should fail the make target:
+
+```sh
+make -C smallc-microcpu selfhost-smoke STRICT=1
+```
+
+Known blockers and the self-hosting coding rules are tracked in
+`docs/SELFHOST.md`.
+
 ## ABI
 
 The ABI is documented in `docs/ABI.md`.  In short: `int`, `unsigned`, and
