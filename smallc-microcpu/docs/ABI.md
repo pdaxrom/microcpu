@@ -110,3 +110,21 @@ Current helpers live in `runtime/lib16.asm`.
 String helpers live in `runtime/string.asm`.  `_strlen` is callable as the C
 function `int strlen(char *s);`; it reads its single stack argument according
 to the normal calling convention and returns the byte length in `v0`.
+
+## Test Startup And Halt
+
+The generated test crt0 starts at load address 0:
+
+```asm
+__smallc_start:
+set sp, __smallc_stack_top
+jsr _main
+__test_halt:
+b __test_halt
+```
+
+`_main` returns its value in `v0`.  The halt path does not modify `v0`, so the
+test runner can execute the binary under `microemu --stop-on-self-branch` and
+compare the final dumped `v0`/`r3` value.  The compiler appends a 512-byte
+stack block after the generated program and initializes `sp` to
+`__smallc_stack_top`.

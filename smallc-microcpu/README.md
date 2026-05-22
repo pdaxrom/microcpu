@@ -17,13 +17,33 @@ Compile and verify the tests:
 make -C smallc-microcpu test
 ```
 
-The test target compiles every `tests/*.c` file to readable microasm,
-assembles it with `../asm/microasm`, runs it on `../microemu/microemu` when the
-emulator is present, and checks `V0` (`r3` in the emulator register dump)
-against `tests/expected.txt`.
+The test target compiles every `tests/*.c` file to readable microasm, assembles
+it with `../asm/microasm`, runs it on `../microemu/microemu`, and checks `V0`
+(`r3` in the emulator register dump) against `tests/expected.txt`.
 
-Generated assembly is kept under `smallc-microcpu/build/*.asm` after
-`make test` so the output can be inspected directly.
+The emulator defaults are:
+
+```sh
+EMU=../microemu/microemu
+EMU_BOARD=hc1200-mcu
+MAX_STEPS=1000000
+```
+
+Run one test:
+
+```sh
+make -C smallc-microcpu test TEST=015_locals_while
+```
+
+Run one test with instruction trace saved to its log:
+
+```sh
+make -C smallc-microcpu test TEST=015_locals_while TRACE=1
+```
+
+Generated assembly, binaries, and logs are kept under
+`smallc-microcpu/build/tests/` after `make test` so the output can be inspected
+directly.
 
 ## ABI
 
@@ -72,8 +92,8 @@ Intentionally unsupported at this stage:
 Generated assembly includes:
 
 ```asm
-include ../../asm/include/pseudo.inc
-include ../runtime/microcpu_cc.inc
+include ../../../asm/include/pseudo.inc
+include ../../runtime/microcpu_cc.inc
 ```
 
 The output is regular microasm source and is meant to stay readable while the

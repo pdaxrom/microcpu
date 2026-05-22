@@ -2,8 +2,12 @@ HOSTCC ?= cc
 PYTHON ?= python3
 ASM ?= ../asm/microasm
 EMU ?= ../microemu/microemu
+EMU_BOARD ?= hc1200-mcu
+MAX_STEPS ?= 1000000
+TRACE ?= 0
 
 BUILD := build
+TEST_BUILD := $(BUILD)/tests
 CC_BIN := $(BUILD)/scc-microcpu
 
 HOST_CFLAGS := -std=gnu89 -fsigned-char -DTARGET_MICROCPU -Wall \
@@ -22,19 +26,20 @@ SRCS := \
 	src/codegen_microcpu.c \
 	src/host_compat.c
 
-TEST_SRCS := $(sort $(wildcard tests/[0-9][0-9][0-9]_*.c))
-TEST_ASMS := $(patsubst tests/%.c,$(BUILD)/%.asm,$(TEST_SRCS))
-TEST_BINS := $(patsubst tests/%.c,$(BUILD)/%.bin,$(TEST_SRCS))
+TRACE_ARG := $(if $(filter 1,$(TRACE)),--trace,)
+TEST_ARG := $(if $(TEST),--test $(TEST),)
+TEST_RUNNER_ARGS := --expected tests/expected.txt --compiler $(CC_BIN) \
+	--assembler $(ASM) --emulator $(EMU) --board $(EMU_BOARD) \
+	--max-steps $(MAX_STEPS) --build-dir $(TEST_BUILD)
 
 .PHONY: all test assemble run clean
-.SECONDARY: $(TEST_ASMS)
 
 all: $(CC_BIN)
 
-test: $(TEST_BINS)
-	$(PYTHON) tests/run_tests.py --expected tests/expected.txt --emulator $(EMU) $(TEST_BINS)
+test: $(CC_BIN)
+	$(PYTHON) tests/run_tests.py $(TEST_RUNNER_ARGS) $(TRACE_ARG) $(TEST_ARG)
 
-assemble: $(TEST_BINS)
+assemble: test
 
 run: test
 
@@ -43,12 +48,6 @@ $(BUILD):
 
 $(CC_BIN): $(SRCS) src/cc.h src/notice.h src/host_compat.h src/smallc_proto.h | $(BUILD)
 	$(HOSTCC) $(HOST_CFLAGS) -o $@ $(SRCS)
-
-$(BUILD)/%.asm: tests/%.c $(CC_BIN) | $(BUILD)
-	$(CC_BIN) $< > $@
-
-$(BUILD)/%.bin: $(BUILD)/%.asm runtime/microcpu_cc.inc runtime/lib16.asm runtime/string.asm
-	$(ASM) -binary $< $@ > $@.log 2>&1 || { cat $@.log; exit 1; }
 
 clean:
 	rm -rf $(BUILD)
