@@ -191,9 +191,34 @@ int typedfunc() {
     }
   while(an(*p)) ++p;
   while(*p && *p <= ' ') ++p;
-  if(*p == '(') return 1;
+  if(*p == '(') {
+    int depth;
+    depth = 1;
+    ++p;
+    while(*p && depth) {
+      if(*p == '(') ++depth;
+      else if(*p == ')') --depth;
+      ++p;
+      }
+    while(*p && *p <= ' ') ++p;
+    if(*p != ';') return 1;
+    }
   lptr = save_lptr; ch = save_ch; nch = save_nch;
   return 0;
+  }
+
+/*
+** skip a modern prototype argument list in a top-level declaration
+*/
+int skipprotoargs() {
+  int depth;
+  depth = 1;
+  while(depth && ch) {
+    if(match("(")) ++depth;
+    else if(match(")")) --depth;
+    else gch();
+    }
+  if(depth) error("no close paren");
   }
 
 /*
@@ -224,7 +249,7 @@ int declglb(type, class)  int type, class; {
     if(symname(ssname) == 0) illname();
     if(findglb(ssname)) multidef(ssname);
     if(id == VARIABLE) {
-      if     (match("("))  {id = FUNCTION; need(")");}
+      if     (match("("))  {id = FUNCTION; skipprotoargs();}
       else if(match("["))  {id = ARRAY; dim = needsub();}
       }
     if     (class == EXTERNAL) external(ssname, type >> 2, id);

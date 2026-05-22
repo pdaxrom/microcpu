@@ -47,20 +47,27 @@ The current backend is intentionally small and supports:
 - direct function calls, nested calls, and calls using locals/globals
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
-- global `int` arrays and indexing
+- address of local variables
+- global and local `int` arrays and indexing
+- scaled `int *` arithmetic and `p[i]` syntax
+- global and local `char` arrays
+- `char *` indexing and stores
+- zero-terminated string literals
+- `strlen(char *)` through `runtime/string.asm`
 - multiply, divide, and modulo through runtime helpers
 
 Multiply, divide, modulo, comparisons, and variable shifts are emitted as calls
-to simple helpers in `runtime/lib16.asm`.
+to simple helpers in `runtime/lib16.asm`.  The target memory model is
+byte-addressed: `int` and pointers are 2 bytes, `char` is 1 byte, `int *`
+arithmetic advances by 2 bytes, and `char *` arithmetic advances by 1 byte.
 
 Intentionally unsupported at this stage:
 
 - structs, unions, typedefs, enums
 - `long`, `float`, and full libc
 - optimizer/register allocator
-- local arrays
 - self-hosting
-- broad string-literal/libc workflows
+- full libc beyond the current small runtime helpers
 
 Generated assembly includes:
 

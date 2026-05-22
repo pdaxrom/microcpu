@@ -34,3 +34,17 @@
 034_mul 42
 035_udiv 20
 036_umod 1
+037_pointer_local_int 123
+038_pointer_store_local_int 77
+039_local_int_array 60
+040_local_int_array_index 55
+041_int_pointer_arithmetic 22
+042_int_pointer_index 12
+043_global_char_array 131
+044_local_char_array 131
+045_char_pointer_global 71
+046_char_pointer_store 161
+047_string_literal_first_char 65
+048_string_literal_second_char 66
+049_string_literal_terminator 0
+050_strlen 3

@@ -15,6 +15,9 @@ exists now; future backend changes must update this file.
   `sizeof(pointer) == 2`.
 - The target memory is byte-addressed.  Word loads and stores use two
   little-endian bytes.  Byte loads and stores use `ldrl` and `strl`.
+- `int *` arithmetic is scaled by 2 bytes, so `p + 1` points to the next
+  16-bit `int`.  `char *` arithmetic is scaled by 1 byte.
+- `int` arrays use 2 bytes per element.  `char` arrays use 1 byte per element.
 
 ## Registers
 
@@ -60,13 +63,15 @@ v4 + 2  saved lr
 v4 + 4  last argument
 v4 + 6  previous argument
 ...
-v4 - 2  first 16-bit local
-v4 - 4  next 16-bit local
+v4 - 2  first 16-bit local, or the high end of a larger local object
+v4 - 4  next 16-bit local, or earlier bytes in a larger local object
 ```
 
 Local variables are allocated by subtracting their byte size from `sp` after
 the prologue.  `int` locals consume 2 bytes.  `char` locals consume 1 byte and
-are accessed with byte load/store instructions.
+are accessed with byte load/store instructions.  Local arrays are allocated as
+one contiguous downward-growing block, and the symbol address points at the
+lowest byte address in that block.
 
 Generated function epilogue:
 
@@ -87,7 +92,8 @@ the C function `main` is emitted as `_main`, and a global variable `g` is
 emitted as `_g`.
 
 Compiler-generated numeric labels use the form `_<number>`.  Literal/string
-data labels use the same numeric label space.
+data labels use the same numeric label space.  String literals are emitted as
+zero-terminated byte data in the function's literal pool.
 
 ## Runtime Helpers
 
@@ -100,3 +106,7 @@ Runtime helpers follow the expression-register convention:
 - Helpers that call other helpers save and restore `lr`.
 
 Current helpers live in `runtime/lib16.asm`.
+
+String helpers live in `runtime/string.asm`.  `_strlen` is callable as the C
+function `int strlen(char *s);`; it reads its single stack argument according
+to the normal calling convention and returns the byte length in `v0`.

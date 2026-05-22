@@ -12,6 +12,7 @@ int parse();
 int typedfunc();
 int dodeclare();
 int declglb();
+int skipprotoargs();
 int initials();
 int init();
 int needsub();
