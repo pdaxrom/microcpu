@@ -180,8 +180,17 @@ def append_log(log_path: pathlib.Path, title: str, argv: list[str], proc: subpro
         log.write("\n")
 
 
-def compile_test(compiler: pathlib.Path, source: pathlib.Path, asm_path: pathlib.Path, log_path: pathlib.Path) -> bool:
-    argv = [str(compiler), str(source)]
+def compile_test(
+    compiler: pathlib.Path,
+    include_dirs: list[pathlib.Path],
+    source: pathlib.Path,
+    asm_path: pathlib.Path,
+    log_path: pathlib.Path,
+) -> bool:
+    argv = [str(compiler)]
+    for include_dir in include_dirs:
+        argv.extend(["-I", str(include_dir)])
+    argv.append(str(source))
     proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     asm_path.write_text(proc.stdout)
     append_log(log_path, "compile", argv, proc)
@@ -255,7 +264,7 @@ def run_one(
     log_path.write_text("")
 
     print(f"{name}:")
-    if compile_test(args.compiler, source, asm_path, log_path):
+    if compile_test(args.compiler, args.include_dir, source, asm_path, log_path):
         print("  COMPILE PASS")
     else:
         print("  COMPILE FAIL")
@@ -322,6 +331,7 @@ def main() -> int:
     parser.add_argument("--board", default="hc1200-mcu")
     parser.add_argument("--max-steps", default=1_000_000, type=int)
     parser.add_argument("--build-dir", default=pathlib.Path("build/tests"), type=pathlib.Path)
+    parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--test")
     parser.add_argument("--trace", action="store_true")
     args = parser.parse_args()

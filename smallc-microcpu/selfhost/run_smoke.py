@@ -104,13 +104,17 @@ def write_log(
 
 def compile_source(
     compiler: pathlib.Path,
+    include_dirs: list[pathlib.Path],
     build_dir: pathlib.Path,
     source: pathlib.Path,
 ) -> dict[str, object]:
     name = source.stem
     asm_path = build_dir / f"{name}.asm"
     log_path = build_dir / f"{name}.log"
-    argv = [str(compiler), str(source)]
+    argv = [str(compiler)]
+    for include_dir in include_dirs:
+        argv.extend(["-I", str(include_dir)])
+    argv.append(str(source))
     proc = subprocess.run(
         argv,
         stdout=subprocess.PIPE,
@@ -146,6 +150,8 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
     with report_path.open("w") as report:
         report.write("Self-host smoke report\n")
         report.write(f"Compiler: {args.compiler}\n")
+        if args.include_dir:
+            report.write("Include dirs: " + ", ".join(str(path) for path in args.include_dir) + "\n")
         report.write(f"Strict: {'yes' if args.strict else 'no'}\n")
         report.write("\n")
         for result in results:
@@ -171,6 +177,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", type=pathlib.Path, required=True)
     parser.add_argument("--build-dir", type=pathlib.Path, required=True)
+    parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("sources", nargs="+", type=pathlib.Path)
     return parser.parse_args(argv)
@@ -182,7 +189,7 @@ def main(argv: list[str]) -> int:
 
     results = []
     for source in args.sources:
-        result = compile_source(args.compiler, args.build_dir, source)
+        result = compile_source(args.compiler, args.include_dir, args.build_dir, source)
         results.append(result)
         if result["ok"]:
             print(f"{result['name']}: PASS")

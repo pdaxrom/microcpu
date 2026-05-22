@@ -47,6 +47,9 @@ int
   filearg,  /* cur file arg index */
   input   = EOF, /* fd for input file */
   input2  = EOF, /* fd for "#include" file */
+  inclevel, /* active include nesting depth */
+  incpath_count, /* number of include search paths */
+  skip_count, /* number of argv indexes consumed by options */
   usexpr  = YES, /* true if value of expression is used */
   ccode   = YES, /* true while parsing C code */
  *snext,    /* next addr in stage */
@@ -75,7 +78,7 @@ char
  *cptr,     /* work ptrs to any char buffer */
  *cptr2,
  *cptr3,
-  msname[NAMESIZE],   /* macro symbol name */
+  msname[MACNAMESIZE],   /* macro symbol name */
   ssname[NAMESIZE];   /* static symbol name */
 
 char
@@ -97,7 +100,13 @@ int
   field_type[MAXFIELDS],
   field_id[MAXFIELDS],
   field_size[MAXFIELDS],
-  field_offset[MAXFIELDS];
+  field_offset[MAXFIELDS],
+  incfile[MAXINCLUDE],
+  skip_arg[MAXSKIPARGS];
+
+char
+  incpath[MAXINCPATHS * LINESIZE],
+  incdir[(MAXINCLUDE + 1) * LINESIZE];
 
 int op[16] = {   /* p-codes of signed binary operators */
   OR12,                        /* level5 */
@@ -180,6 +189,7 @@ int parse() {
     else if( match("#asm"))      doasm();
     else if( match("#include"))  doinclude();
     else if( match("#define"))   dodefine();
+    else if( match("#undef"))    doundef();
     else                         dofunction();
     blanks();                 /* force eof if pending */
     }
@@ -646,22 +656,21 @@ int needsub()  {
 ** open an include file
 */
 int doinclude() {
-  int i; char str[30];
+  int i, quoted; char str[LINESIZE];
   blanks();       /* skip over to name */
+  quoted = (*lptr == '"');
   if(*lptr == '"' || *lptr == '<') ++lptr;
   i = 0;
   while(lptr[i]
      && lptr[i] != '"'
      && lptr[i] != '>'
-     && lptr[i] != '\n') {
+     && lptr[i] != '\n'
+     && i < LINEMAX) {
     str[i] = lptr[i];
     ++i;
     }
   str[i] = NULL;
-  if((input2 = fopen(str,"r")) == NULL) {
-    input2 = EOF;
-    error("open failure on include file");
-    }
+  openinclude(str, quoted);
   kill();   /* make next read come from new file (if open) */
   }
 
@@ -670,13 +679,18 @@ int doinclude() {
 */
 int dodefine() {
   int k;
-  if(symname(msname) == 0) {
+  if(macsymname(msname) == 0) {
     illname();
     kill();
     return;
     }
+  if(ch == '(') {
+    error("unsupported function-like macro");
+    kill();
+    return;
+    }
   k = 0;
-  if(search(msname, macn, NAMESIZE+2, MACNEND, MACNBR, 0) == 0) {
+  if(macsearch(msname) == 0) {
     if(cptr2 = cptr)
       while(*cptr2++ = msname[k++]) ;
     else {
@@ -684,13 +698,32 @@ int dodefine() {
       return;
       }
     }
-  putint(macptr, cptr+NAMESIZE, 2);
+  putint(macptr, cptr+MACNAMESIZE, 2);
   while(white()) gch();
-  while(putmac(gch()));
+  while(ch) {
+    if(ch == '/' && nch == '*') {
+      bump(2);
+      while(ch && (ch == '*' && nch == '/') == 0) gch();
+      if(ch) bump(2);
+      }
+    else putmac(gch());
+    }
+  putmac(NULL);
   if(macptr >= MACMAX) {
     error("macro string queue full");
     abort(ERRCODE);
     }
+  }
+
+int doundef() {
+  if(macsymname(msname) == 0) {
+    illname();
+    kill();
+    return;
+    }
+  if(macsearch(msname))
+    *cptr = 1;
+  kill();
   }
 
 int putmac(c)  char c; {
@@ -1235,6 +1268,18 @@ int ask() {
   line = mline;
   while(getarg(++i, line, LINESIZE, argcs, argvs) != EOF) {
     if(line[0] != '-' && line[0] != '/') continue;
+    if(toupper(line[1]) == 'I') {
+      if(line[2] > ' ') addincpath(line+2);
+      else {
+        if(getarg(++i, line, LINESIZE, argcs, argvs) == EOF) {
+          fputs("missing include directory after -I\n", stderr);
+          abort(ERRCODE);
+          }
+        addincpath(line);
+        addskiparg(i);
+        }
+      continue;
+      }
     if(toupper(line[1]) == 'L'
     && isdigit(line[2])
     && line[3] <= ' ') {
@@ -1252,9 +1297,41 @@ int ask() {
       if(toupper(line[1]) == 'M') {monitor = YES; continue;}
       if(toupper(line[1]) == 'P') {pause   = YES; continue;}
       }
-    fputs("usage: cc [file]... [-m] [-a] [-p] [-l#] [-no]\n", stderr);
+    fputs("usage: cc [file]... [-Idir] [-m] [-a] [-p] [-l#] [-no]\n", stderr);
     abort(ERRCODE);
     }
+  }
+
+int addincpath(path) char *path; {
+  char *dst;
+  int i;
+  if(incpath_count >= MAXINCPATHS) {
+    error("include path table overflow");
+    return 0;
+    }
+  dst = incpath + incpath_count * LINESIZE;
+  i = 0;
+  while(path[i] && i < LINEMAX) {
+    dst[i] = path[i];
+    ++i;
+    }
+  dst[i] = 0;
+  ++incpath_count;
+  return 1;
+  }
+
+int addskiparg(index) int index; {
+  if(skip_count < MAXSKIPARGS) skip_arg[skip_count++] = index;
+  }
+
+int skipfilearg(index) int index; {
+  int i;
+  i = 0;
+  while(i < skip_count) {
+    if(skip_arg[i] == index) return 1;
+    ++i;
+    }
+  return 0;
   }
 
 /*
@@ -1265,6 +1342,7 @@ int openfile() {        /* entire function revised */
   int i, j, ext;
   input = EOF;
   while(getarg(++filearg, pline, LINESIZE, argcs, argvs) != EOF) {
+    if(skipfilearg(filearg)) continue;
     if(pline[0] == '-' || pline[0] == '/') continue;
     ext = NO;
     i = -1;
@@ -1278,6 +1356,7 @@ int openfile() {        /* entire function revised */
       }
     if(!ext) strcpy(pline + i, ".C");
     input = mustopen(pline, "r");
+    setcurdir(pline, incdir);
     if(!files && iscons(stdout)) {
       strcpy(outfn + j, ".ASM");
       output = mustopen(outfn, "w");
@@ -1288,7 +1367,71 @@ int openfile() {        /* entire function revised */
     }
   if(files++) eof = YES;
   else input = stdin;
+  *incdir = 0;
   kill();
+  }
+
+int setcurdir(path, dst) char *path, *dst; {
+  int i, slash, j;
+  i = slash = 0;
+  while(path[i]) {
+    if(path[i] == '/' || path[i] == '\\') slash = i + 1;
+    ++i;
+    }
+  j = 0;
+  while(j < slash && j < LINEMAX) {
+    dst[j] = path[j];
+    ++j;
+    }
+  dst[j] = 0;
+  }
+
+int pathjoin(dir, name, dst) char *dir, *name, *dst; {
+  int i, j;
+  i = 0;
+  while(dir[i] && i < LINEMAX) {
+    dst[i] = dir[i];
+    ++i;
+    }
+  if(i && dst[i-1] != '/' && dst[i-1] != '\\' && i < LINEMAX)
+    dst[i++] = '/';
+  j = 0;
+  while(name[j] && i < LINEMAX) dst[i++] = name[j++];
+  dst[i] = 0;
+  }
+
+int tryinclude(dir, name, outpath) char *dir, *name, *outpath; {
+  int fd;
+  if(dir && *dir) pathjoin(dir, name, outpath);
+  else strcpy(outpath, name);
+  if(fd = fopen(outpath, "r")) return fd;
+  return 0;
+  }
+
+int openinclude(name, quoted) char *name; int quoted; {
+  int fd, i;
+  char path[LINESIZE];
+  if(inclevel >= MAXINCLUDE) {
+    error("include nesting too deep");
+    return 0;
+    }
+  fd = 0;
+  if(quoted) fd = tryinclude(incdir + inclevel * LINESIZE, name, path);
+  i = 0;
+  while(fd == 0 && i < incpath_count) {
+    fd = tryinclude(incpath + i * LINESIZE, name, path);
+    ++i;
+    }
+  if(fd == 0) fd = tryinclude("include", name, path);
+  if(fd == 0) fd = tryinclude("smallc-microcpu/include", name, path);
+  if(fd == 0) {
+    error("open failure on include file");
+    return 0;
+    }
+  incfile[inclevel++] = fd;
+  setcurdir(path, incdir + inclevel * LINESIZE);
+  input2 = fd;
+  return 1;
   }
 
 /*

@@ -11,11 +11,11 @@
 extern char
  *symtab, *macn, *macq, *pline, *mline,  optimize,
   alarm, *glbptr, *line, *lptr, *cptr, *cptr2,  *cptr3,
- *locptr, msname[NAMESIZE],  pause,  quote[2];
+ *locptr, msname[MACNAMESIZE],  pause,  quote[2];
 
 extern int
   *wq,  ccode,  ch,  csp,  eof,  errflag,  iflevel,
-  input,  input2,  listfp,  macptr,  nch,
+  input,  input2,  inclevel,  incfile[MAXINCLUDE],  listfp,  macptr,  nch,
   nxtlab,  op[16],  opindex,  opsize,  output,  pptr,
   skiplevel,  *wqptr;
 
@@ -34,6 +34,15 @@ int preprocess() {
     return;
     }
   pptr = -1;
+  if(streq(lptr, "#define")
+  || streq(lptr, "#undef")
+  || streq(lptr, "#include")) {
+    while(ch != NEWLINE && ch) keepch(gch());
+    keepch(NULL);
+    line = pline;
+    bump(0);
+    return;
+    }
   while(ch != NEWLINE && ch) {
     if(white()) {
       keepch(' ');
@@ -78,13 +87,13 @@ int preprocess() {
       }
     else if(an(ch)) {
       k = 0;
-      while(an(ch) && k < NAMEMAX) {
-        msname[k++] = ch;
-        gch();
+      while(an(ch)) {
+        c = gch();
+        if(k < MACNAMEMAX) msname[k++] = c;
         }
       msname[k] = NULL;
-      if(search(msname, macn, NAMESIZE+2, MACNEND, MACNBR, 0)) {
-        k = getint(cptr+NAMESIZE, 2);
+      if(macsearch(msname)) {
+        k = getint(cptr+MACNAMESIZE, 2);
         while(c = macq[k++]) keepch(c);
         while(an(ch)) gch();
         }
@@ -112,16 +121,16 @@ int ifline() {
     if(match("#ifdef")) {
       ++iflevel;
       if(skiplevel) continue;
-      symname(msname);
-      if(search(msname, macn, NAMESIZE+2, MACNEND, MACNBR, 0) == 0)
+      macsymname(msname);
+      if(macsearch(msname) == 0)
         skiplevel = iflevel;
       continue;
       }
     if(match("#ifndef")) {
       ++iflevel;
       if(skiplevel) continue;
-      symname(msname);
-      if(search(msname, macn, NAMESIZE+2, MACNEND, MACNBR, 0))
+      macsymname(msname);
+      if(macsearch(msname))
         skiplevel = iflevel;
       continue;
       }
@@ -141,6 +150,10 @@ int ifline() {
       else noiferr();
       continue;
       }
+    if(match("#if")) {
+      error("unsupported #if");
+      continue;
+      }
     if(skiplevel) continue;
     if(ch == 0) continue;
     break;
@@ -152,11 +165,15 @@ int inline() {           /* numerous revisions */
   poll(1);           /* allow operator interruption */
   if(input == EOF) openfile();
   if(eof) return;
-  if((unit = input2) == EOF) unit = input;
+  if(inclevel) unit = incfile[inclevel-1];
+  else         unit = input;
   if(fgets(line, LINEMAX, unit) == NULL) {
     fclose(unit);
-    if(input2 != EOF)
-         input2 = EOF;
+    if(inclevel) {
+      --inclevel;
+      if(inclevel) input2 = incfile[inclevel-1];
+      else         input2 = EOF;
+      }
     else input  = EOF;
     *line = NULL;
     }
@@ -176,6 +193,36 @@ int inbyte()  {
   }
 
 /********************* scanning functions ********************/
+
+/*
+** test if next input string is legal macro name
+*/
+int macsymname(sname) char *sname; {
+  int k;char c;
+  blanks();
+  if(alpha(ch) == 0) return (*sname = 0);
+  k = 0;
+  while(an(ch)) {
+    c = gch();
+    if(k < MACNAMEMAX) sname[k++] = c;
+    }
+  sname[k] = 0;
+  return 1;
+  }
+
+/*
+** search for macro match
+*/
+int macsearch(sname) char *sname; {
+  cptr  =
+  cptr2 = macn+((hash(sname)%(MACNBR-1))*(MACNAMESIZE+2));
+  while(*cptr != NULL) {
+    if(astreq(sname, cptr, MACNAMEMAX)) return 1;
+    if((cptr = cptr+MACNAMESIZE+2) >= MACNEND) cptr = macn;
+    if(cptr == cptr2) return (cptr = 0);
+    }
+  return 0;
+  }
 
 /*
 ** test if next input string is legal symbol name

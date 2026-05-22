@@ -42,7 +42,8 @@ TEST_RUNNER_ARGS := --expected tests/expected.txt \
 	--expected-uart tests/expected_uart.txt \
 	--input-uart tests/input_uart.txt --compiler $(CC_BIN) \
 	--assembler $(ASM) --emulator $(EMU) --board $(EMU_BOARD) \
-	--max-steps $(MAX_STEPS) --build-dir $(TEST_BUILD)
+	--max-steps $(MAX_STEPS) --build-dir $(TEST_BUILD) \
+	--include-dir tests/include --include-dir include
 
 .PHONY: all test selfhost-smoke assemble run clean
 
@@ -53,7 +54,8 @@ test: $(CC_BIN)
 
 selfhost-smoke: $(CC_BIN)
 	$(PYTHON) selfhost/run_smoke.py --compiler $(CC_BIN) \
-		--build-dir $(SELFHOST_BUILD) $(STRICT_ARG) $(SELFHOST_SRCS)
+		--build-dir $(SELFHOST_BUILD) --include-dir include \
+		$(STRICT_ARG) $(SELFHOST_SRCS)
 
 assemble: test
 

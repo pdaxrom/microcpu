@@ -49,24 +49,29 @@ multi-file support needed for the compiler source itself.
 
 ## Current result snapshot
 
-No real compiler implementation file is expected to pass yet.  The current
-first blocker for all attempted files is the host header include, usually:
+No real compiler implementation file is expected to pass yet.  The original
+`#include <stdio.h>` open failure is addressed by controlled compatibility
+headers under `smallc-microcpu/include/`; the smoke target passes `-I include`
+and does not search host system include directories.
+
+The current first blocker for all attempted real compiler files is now the
+function-like macro in `src/host_compat.h`:
 
 ```c
-#include <stdio.h>
+#define abort(code) exit((int)(code))
 ```
 
-The smoke report records that as `open failure on include file` and points at
-the exact source line.  This is useful signal: the next self-hosting step is
-not a backend code-generation fix, but a controlled include/preprocessor
-strategy for compiler sources.
+The smoke report records that as `unsupported function-like macro`.  This is
+useful signal: include path handling is no longer the first blocker; the next
+self-hosting work is either avoiding host-only function-like macros in target
+headers or adding a very small function-like macro subset.
 
 ## Known blockers
 
-The most likely first blockers are:
+The most likely next blockers are:
 
-- `#include` handling for host and project headers
-- `#define`, `#undef`, and conditional preprocessing
+- function-like macros in host compatibility headers
+- full `#if` expressions and richer conditional preprocessing
 - `static` declarations and static functions
 - `extern` declarations
 - multiple translation units and cross-unit symbol resolution
@@ -82,6 +87,10 @@ The most likely first blockers are:
 Optional host preprocessing with `cc -E -P` may be useful later, but it can also
 introduce constructs outside the current Small-C subset.  It should remain an
 explicit self-hosting experiment rather than part of the normal test suite.
+
+The compatibility headers in `include/` are intentionally tiny.  They provide
+only declarations and constants needed to parse current smoke inputs; they do
+not implement target file I/O or a hosted libc.
 
 ## Compiler-source coding rules
 
@@ -102,7 +111,7 @@ style so the code moves toward eventual self-hosting:
 
 The next self-hosting steps should be incremental:
 
-1. Add target-friendly include shims or a controlled preprocessing path.
+1. Remove or shim host-only function-like macros for the self-host subset.
 2. Teach the frontend only the smallest missing declaration/preprocessor
    features required by the compiler sources.
 3. Compile individual translation units to assembly consistently.

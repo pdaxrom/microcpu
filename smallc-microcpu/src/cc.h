@@ -110,6 +110,13 @@
 #define LINESIZE 128
 
 /*
+** include path handling
+*/
+#define MAXINCLUDE 8
+#define MAXINCPATHS 12
+#define MAXSKIPARGS 24
+
+/*
 ** entries in staging buffer
 */
 #define STAGESIZE   200
@@ -118,9 +125,11 @@
 ** macro (#define) pool
 */
 #define MACNBR   300
-#define MACNSIZE (MACNBR*(NAMESIZE+2))
+#define MACNAMESIZE 33
+#define MACNAMEMAX  32
+#define MACNSIZE (MACNBR*(MACNAMESIZE+2))
 #define MACNEND  (macn+MACNSIZE)
-#define MACQSIZE (MACNBR*7)
+#define MACQSIZE (MACNBR*24)
 #define MACMAX   (MACQSIZE-1)
 
 /*

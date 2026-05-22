@@ -70,6 +70,27 @@ make -C smallc-microcpu selfhost-smoke STRICT=1
 Known blockers and the self-hosting coding rules are tracked in
 `docs/SELFHOST.md`.
 
+## Minimal Preprocessor
+
+The compiler has a deliberately small preprocessing layer.  It supports:
+
+- `#include "file.h"` with search in the current source directory, then `-I`
+  paths, then the controlled compatibility headers
+- `#include <file.h>` with search in `-I` paths, then the controlled
+  compatibility headers
+- `-I DIR` and `-IDIR`
+- nested includes up to `MAXINCLUDE`
+- object-like `#define NAME value` and `#define NAME`
+- `#undef NAME`
+- header-guard style `#ifdef`, `#ifndef`, `#else`, and `#endif`
+- block comments with `/* ... */`
+
+This is not a full ANSI C preprocessor.  Function-like macros are rejected with
+a clear diagnostic, full `#if` expressions are unsupported, and system include
+directories are not searched by default.  The controlled headers under
+`smallc-microcpu/include/` are small compatibility shims for smoke checks, not
+a hosted libc.
+
 ## ABI
 
 The ABI is documented in `docs/ABI.md`.  In short: `int`, `unsigned`, and
@@ -100,6 +121,8 @@ The current backend is intentionally small and supports:
 - `switch`, `case`, `default`, `break` from switch, and case fallthrough
 - simple `enum` constants with implicit and explicit integer values
 - simple `typedef` aliases for `int`, `char`, pointers, and named structs
+- minimal preprocessing: object-like `#define`, `#undef`, guarded includes,
+  `#ifdef`/`#ifndef`, and `-I` include paths
 - direct function calls, nested calls, and calls using locals/globals
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
@@ -159,6 +182,7 @@ Intentionally unsupported at this stage:
 - function pointers
 - `void` and `void *` type semantics
 - `memmove`, `printf`, `scanf`, UART line buffering, `malloc`, and `free`
+- function-like macros and full `#if` preprocessor expressions
 - hexadecimal `\xHH` string escapes
 - self-hosting
 - full libc beyond the current small runtime helpers
