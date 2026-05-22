@@ -4,6 +4,8 @@ This is an initial microcpu backend for James E. Hendrix Small-C 2.2,
 Revision Level 117.  The untouched baseline imported from the DosWorld
 repository is kept under `original/C/`; the buildable port is under `src/`.
 Original copyright notices are preserved in the copied source files.
+The buildable port is microcpu-only; the legacy 8086 code-generation fallback
+has been removed from `src/`.
 
 ## Build
 
@@ -17,12 +19,25 @@ Compile and verify the tests:
 make -C smallc-microcpu test
 ```
 
-The test target compiles every `tests/*.c` file to readable microasm, assembles
-it with `../asm/microasm -binary`, runs it on `../microemu/microemu`, and checks
-`V0` (`r3` in the emulator register dump) against `tests/expected.txt`.
-Tests listed in `tests/expected_uart.txt` also compare UART TX output, and
-tests listed in `tests/input_uart.txt` preload UART RX using `microemu
---uart-rx`.
+The build produces two host tools, `build/smallcpp` and `build/smallcc`.
+The split source layout is canonical for every build path: host tests,
+object-mode tests, and self-host smoke all compile the same `smallcpp_*`,
+`smallcc_*`, and shared compiler modules.  The old monolithic `cc1.c` path is
+not used for normal builds.
+
+The test target runs the full split pipeline for every `tests/*.c` file:
+
+```text
+smallcpp source.c -I include -I tests/include -o build/source.i
+smallcc build/source.i -o build/source.asm
+microasm source.asm -> source.bin
+microemu source.bin
+```
+
+It then checks `V0` (`r3` in the emulator register dump) against
+`tests/expected.txt`.  Tests listed in `tests/expected_uart.txt` also compare
+UART TX output, and tests listed in `tests/input_uart.txt` preload UART RX
+using `microemu --uart-rx`.
 
 The emulator defaults are:
 
@@ -48,9 +63,9 @@ Generated assembly, binaries, and logs are kept under
 `smallc-microcpu/build/tests/` after `make test` so the output can be inspected
 directly.
 
-The normal test flow still assembles each generated file straight to a binary.
-The optional object/linker flow uses the newer microasm object format and
-microlink:
+The normal test flow assembles each generated file straight to a binary after
+preprocessing and compilation.  The optional object/linker flow uses the newer
+microasm object format and microlink:
 
 ```sh
 make -C smallc-microcpu test-object
@@ -67,7 +82,8 @@ make -C smallc-microcpu test-multi
 ## Self-hosting smoke checks
 
 The port is not self-hosting yet.  A non-default smoke target checks source
-compatibility by compiling selected compiler implementation files to microasm:
+compatibility by compiling the same canonical split compiler modules used by
+the host build to microasm:
 
 ```sh
 make -C smallc-microcpu selfhost-smoke
@@ -92,13 +108,10 @@ assemble every successful translation unit to `.o`:
 make -C smallc-microcpu selfhost-smoke OBJECT_MODE=1
 ```
 
-In object mode, `cc1.c` is smoke-tested through split wrapper translation
-units (`cc1_main.c`, `cc1_types.c`, `cc1_decl.c`, `cc1_preproc.c`,
-`cc1_func.c`, `cc1_stmt.c`, and `cc1_io.c`).  The normal host build still uses
-the original `cc1.c` directly.  This keeps the original source recognizable
-while avoiding a single oversized object module.  Object-mode code generation
-uses long `jmp` macro branches for compiler-sized functions so branch
-displacements do not depend on short relative range.
+Object mode uses the same split modules as the host tools.  There are no
+selfhost-only wrapper modules and no separate monolithic host compiler source.
+Object-mode code generation uses long `jmp` macro branches for compiler-sized
+functions so branch displacements do not depend on short relative range.
 
 After object smoke succeeds, a report-only link experiment can be run:
 
@@ -106,10 +119,11 @@ After object smoke succeeds, a report-only link experiment can be run:
 make -C smallc-microcpu selfhost-link-smoke
 ```
 
-This target links the selfhost objects with the current runtime objects and
-writes `build/selfhost-smoke/link-report.txt`.  It is not full self-hosting and
-does not run the compiler; the current expected blocker is final linked image
-size/runtime-hosting work.
+This target links the selfhost objects as two separate tool images,
+`smallcpp` and `smallcc`, and writes `build/selfhost-smoke/link-report.txt`.
+It is not full self-hosting and does not run either compiler stage; current
+expected blockers are target-hosted file I/O/runtime support and final linked
+image size work.
 
 Known blockers and the self-hosting coding rules are tracked in
 `docs/SELFHOST.md`.
@@ -230,8 +244,8 @@ local symbol table stores a binary name length that must stay below ASCII
 space.  In object mode, externally visible assembler names longer than the
 microasm object-file symbol limit are shortened with a deterministic hash and
 collision suffix.  The global-symbol limit was raised after the self-host
-report showed real `cc1.c` pressure with no repeated includes and controlled
-headers already minimized.
+report showed real compiler frontend pressure with no repeated includes and
+controlled headers already minimized.
 
 The current Small-C frontend supports `void` for function return types and
 `foo(void)` parameter lists.  `void *` is accepted as a pointer-sized

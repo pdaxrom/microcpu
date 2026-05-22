@@ -8,6 +8,13 @@
 #include "cc.h"
 #include "host_compat.h"
 
+#ifndef CC2_PREPROC
+#ifndef CC2_CORE
+#define CC2_PREPROC
+#define CC2_CORE
+#endif
+#endif
+
 extern char
  *symtab, *macn, *macq, *pline, *mline,  optimize,
   alarm, *glbptr, *line, *lptr, *cptr, *cptr2,  *cptr3,
@@ -22,6 +29,8 @@ extern int
   typedef_count, include_open_count;
 
 /********************** input functions **********************/
+
+#ifdef CC2_PREPROC
 
 int preprocess() {
   int k;
@@ -410,6 +419,10 @@ int findmacroparam(idx, name) int idx; char *name; {
   return -1;
   }
 
+#endif
+
+#ifdef CC2_CORE
+
 /*
 ** test if next input string is legal symbol name
 */
@@ -749,6 +762,7 @@ int locused() {
   return used;
   }
 
+#ifndef SMALLCC_DRIVER
 int macused() {
   int used, i;
   char *ptr;
@@ -761,6 +775,7 @@ int macused() {
     }
   return used;
   }
+#endif
 
 int errnum(n, fp) int n, fp; {
   int i;
@@ -790,16 +805,20 @@ int errstats(fp) int fp; {
   errnum(typedef_count, fp);
   fputc('/', fp);
   errnum(MAXTYPEDEFS, fp);
+#ifndef SMALLCC_DRIVER
   fputs(" macros=", fp);
   errnum(macused(), fp);
   fputc('/', fp);
   errnum(MACNBR, fp);
+#endif
   fputs(" literals=", fp);
   errnum(litptr, fp);
   fputc('/', fp);
   errnum(LITABSZ, fp);
+#ifndef SMALLCC_DRIVER
   fputs(" includes=", fp);
   errnum(include_open_count, fp);
+#endif
   fputc(NEWLINE, fp);
   }
 
@@ -822,3 +841,4 @@ int errout(msg, fp) char msg[]; int fp; {
   errstats(fp);
   }
 
+#endif

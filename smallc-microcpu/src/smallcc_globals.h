@@ -1,9 +1,9 @@
 /*
-** Shared declarations for cc1.c split self-host smoke modules.
+** Shared declarations for canonical Small-C split modules.
 */
 
-#ifndef CC1_GLOBALS_H
-#define CC1_GLOBALS_H
+#ifndef SMALLCC_GLOBALS_H
+#define SMALLCC_GLOBALS_H
 
 extern int
   nogo,
@@ -109,5 +109,9 @@ extern int
   macro_argfirst[MACNBR],
   op[16],
   op2[16];
+
+int skipconst();
+int doargs2();
+int contline();
 
 #endif

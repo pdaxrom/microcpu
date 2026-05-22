@@ -404,6 +404,29 @@ def write_log(
                 log.write("\n")
 
 
+def append_command_log(
+    log_path: pathlib.Path,
+    title: str,
+    argv: list[str],
+    proc: subprocess.CompletedProcess[str],
+) -> None:
+    with log_path.open("a") as log:
+        log.write(f"== {title} ==\n")
+        log.write(f"$ {shell_join(argv)}\n")
+        log.write(f"exit={proc.returncode}\n")
+        if proc.stdout:
+            log.write("-- stdout --\n")
+            log.write(proc.stdout)
+            if not proc.stdout.endswith("\n"):
+                log.write("\n")
+        if proc.stderr:
+            log.write("-- stderr --\n")
+            log.write(proc.stderr)
+            if not proc.stderr.endswith("\n"):
+                log.write("\n")
+        log.write("\n")
+
+
 def assemble_object(
     assembler: pathlib.Path,
     asm_path: pathlib.Path,
@@ -458,6 +481,8 @@ def text_or_empty(value: str | bytes | None) -> str:
 
 def compile_source(
     compiler: pathlib.Path,
+    preprocessor: pathlib.Path | None,
+    cc_only: pathlib.Path | None,
     assembler: pathlib.Path | None,
     include_dirs: list[pathlib.Path],
     defines: list[str],
@@ -465,38 +490,90 @@ def compile_source(
     build_dir: pathlib.Path,
     source: pathlib.Path,
     object_mode: bool,
+    preprocess_mode: bool,
 ) -> dict[str, object]:
     name = source.stem
     asm_path = build_dir / f"{name}.asm"
+    i_path = build_dir / f"{name}.i"
     log_path = build_dir / f"{name}.log"
-    argv = [str(compiler)]
-    if object_mode:
-        argv.append("--object")
-    for define in defines:
-        argv.extend(["-D", define])
-    for include_dir in include_dirs:
-        argv.extend(["-I", str(include_dir)])
-    argv.append(str(source))
     timed_out = False
-    try:
-        proc = subprocess.run(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        timed_out = True
-        proc = subprocess.CompletedProcess(
-            argv,
-            124,
-            stdout=text_or_empty(exc.stdout),
-            stderr=text_or_empty(exc.stderr),
-        )
-    asm_path.write_text(proc.stdout)
-    write_log(log_path, argv, proc)
+    log_path.write_text("")
+    if preprocess_mode:
+        argv = [str(preprocessor), "-o", str(i_path)]
+        for define in defines:
+            argv.extend(["-D", define])
+        for include_dir in include_dirs:
+            argv.extend(["-I", str(include_dir)])
+        argv.append(str(source))
+        try:
+            proc = subprocess.run(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            proc = subprocess.CompletedProcess(
+                argv,
+                124,
+                stdout=text_or_empty(exc.stdout),
+                stderr=text_or_empty(exc.stderr),
+            )
+        append_command_log(log_path, "preprocess", argv, proc)
+        if proc.returncode == 0 and not timed_out:
+            argv = [str(cc_only)]
+            if object_mode:
+                argv.append("--object")
+            argv.extend(["-o", str(asm_path), str(i_path)])
+            try:
+                proc = subprocess.run(
+                    argv,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=timeout_seconds,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                timed_out = True
+                proc = subprocess.CompletedProcess(
+                    argv,
+                    124,
+                    stdout=text_or_empty(exc.stdout),
+                    stderr=text_or_empty(exc.stderr),
+                )
+            append_command_log(log_path, "compile", argv, proc)
+    else:
+        argv = [str(compiler)]
+        if object_mode:
+            argv.append("--object")
+        for define in defines:
+            argv.extend(["-D", define])
+        for include_dir in include_dirs:
+            argv.extend(["-I", str(include_dir)])
+        argv.append(str(source))
+        try:
+            proc = subprocess.run(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            proc = subprocess.CompletedProcess(
+                argv,
+                124,
+                stdout=text_or_empty(exc.stdout),
+                stderr=text_or_empty(exc.stderr),
+            )
+        asm_path.write_text(proc.stdout)
+        append_command_log(log_path, "compile", argv, proc)
 
     source_lines = read_source_lines(source)
     err = first_error(proc.stderr, source_lines)
@@ -572,6 +649,7 @@ def compile_source(
         "name": name,
         "source": source,
         "asm": asm_path,
+        "preprocessed": i_path if preprocess_mode else None,
         "log": log_path,
         "ok": ok,
         "error": err,
@@ -591,11 +669,15 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
         all_ok = all(bool(result["ok"]) for result in results)
         report.write("Self-host smoke report\n")
         report.write(f"Compiler: {args.compiler}\n")
+        if args.preprocess_mode:
+            report.write(f"Preprocessor: {args.preprocessor}\n")
+            report.write(f"Compiler-only: {args.cc_only}\n")
         if args.include_dir:
             report.write("Include dirs: " + ", ".join(str(path) for path in args.include_dir) + "\n")
         if args.define:
             report.write("Defines: " + ", ".join(args.define) + "\n")
         report.write(f"Object mode: {'yes' if args.object_mode else 'no'}\n")
+        report.write(f"Preprocess mode: {'yes' if args.preprocess_mode else 'no'}\n")
         if args.object_mode and args.assembler:
             report.write(f"Assembler: {args.assembler}\n")
         report.write(f"Strict: {'yes' if args.strict else 'no'}\n")
@@ -611,6 +693,8 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
             status = "PASS" if result["ok"] else "FAIL"
             report.write(f"{name}: {status}\n")
             report.write(f"  source: {result['source']}\n")
+            if result.get("preprocessed"):
+                report.write(f"  preprocessed: {result['preprocessed']}\n")
             report.write(f"  asm: {result['asm']}\n")
             report.write(f"  log: {result['log']}\n")
             object_result = result.get("object_result")
@@ -696,11 +780,14 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", type=pathlib.Path, required=True)
+    parser.add_argument("--preprocessor", type=pathlib.Path)
+    parser.add_argument("--cc-only", type=pathlib.Path)
     parser.add_argument("--assembler", type=pathlib.Path)
     parser.add_argument("--build-dir", type=pathlib.Path, required=True)
     parser.add_argument("--define", action="append", default=[])
     parser.add_argument("--include-dir", action="append", default=[], type=pathlib.Path)
     parser.add_argument("--object-mode", action="store_true")
+    parser.add_argument("--preprocess-mode", action="store_true")
     parser.add_argument("--timeout-seconds", default=10, type=int)
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("sources", nargs="+", type=pathlib.Path)
@@ -715,6 +802,8 @@ def main(argv: list[str]) -> int:
     for source in args.sources:
         result = compile_source(
             args.compiler,
+            args.preprocessor,
+            args.cc_only,
             args.assembler,
             args.include_dir,
             args.define,
@@ -722,6 +811,7 @@ def main(argv: list[str]) -> int:
             args.build_dir,
             source,
             args.object_mode,
+            args.preprocess_mode,
         )
         results.append(result)
         if result["ok"]:

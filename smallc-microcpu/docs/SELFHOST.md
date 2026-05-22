@@ -1,9 +1,9 @@
 # Self-hosting status
 
 This port is not self-hosting yet.  The current smoke check is deliberately
-narrow: it feeds selected compiler implementation source files to the current
-smallc-microcpu compiler and records whether readable microasm can be produced.
-It does not link or run the compiler on microcpu.
+narrow: it feeds the canonical split compiler implementation modules to the
+current smallc-microcpu compiler and records whether readable microasm can be
+produced.  It does not run the compiler on microcpu.
 
 ## Running the smoke check
 
@@ -56,40 +56,43 @@ available:
 make -C smallc-microcpu selfhost-link-smoke
 ```
 
-This target first runs `selfhost-smoke OBJECT_MODE=1`, then links the emitted
-compiler objects with the current runtime objects.  It writes
+This target first runs `selfhost-smoke OBJECT_MODE=1`, then attempts separate
+links for the split tools, `smallcpp` and `smallcc`.  It writes
 `build/selfhost-smoke/link-report.txt`.  The target exits 0 by default even
 when linking fails; use `STRICT=1` to make a link failure fail the make target.
 
 ## Current inputs
 
-The smoke check currently attempts the real compiler implementation files:
+The smoke check attempts the same canonical modules used by the host build.
+There is no selfhost-only wrapper layout and no active monolithic `cc1.c`
+compiler path.
 
-- `src/cc1.c`
-- `src/cc2.c`
-- `src/cc3.c`
-- `src/cc4.c`
-- `src/codegen_microcpu.c`
-- `src/host_compat.c`
+`smallcpp` modules:
 
-For `OBJECT_MODE=1`, `src/cc1.c` is split into wrapper translation units:
+- `src/smallcpp_main.c`
+- `src/smallcpp_macro.c`
+- `src/smallcpp_io.c`
+- `src/shared_lex.c`
+- `src/shared_host_compat.c`
 
-- `src/cc1_main.c`
-- `src/cc1_types.c`
-- `src/cc1_decl.c`
-- `src/cc1_preproc.c`
-- `src/cc1_func.c`
-- `src/cc1_stmt.c`
-- `src/cc1_io.c`
+`smallcc` modules:
 
-Each wrapper defines one `CC1_*` section macro and includes the original
-`cc1.c`.  Normal host builds and non-object selfhost smoke still use `cc1.c`
-directly.  The split is intentionally mechanical: it avoids a single oversized
-object without rewriting the compiler frontend.
+- `src/smallcc_main.c`
+- `src/smallcc_driver.c`
+- `src/smallcc_input.c`
+- `src/smallcc_types.c`
+- `src/smallcc_decl.c`
+- `src/smallcc_func.c`
+- `src/smallcc_stmt.c`
+- `src/smallcc_lex.c`
+- `src/smallcc_expr.c`
+- `src/smallcc_emit.c`
+- `src/smallcc_codegen_microcpu.c`
+- `src/shared_host_compat.c`
 
-These are host-buildable C sources, not yet target-ready translation units.
-Early failures are expected while the frontend lacks the preprocessing and
-multi-file support needed for the compiler source itself.
+The split is the canonical source layout for host, object, and selfhost smoke
+builds.  If a module is split for target object size, the host build uses that
+split module too.
 
 ## Current result snapshot
 
@@ -131,34 +134,14 @@ The newer blockers from the previous phases are also addressed:
 - unsigned integer suffixes such as `1u`
 - multiline global declarations and multiline initializer lists
 - minimal indirect calls through function-pointer arguments
-- the literal pool capacity needed by `codegen_microcpu.c`
+- the literal pool capacity needed by `smallcc_codegen_microcpu.c`
 
-Without `OBJECT_MODE=1`, all selected compiler source files currently compile
-to generated microasm:
+Without `OBJECT_MODE=1`, all canonical compiler modules currently compile to
+generated microasm.
 
-- `cc1.c`: PASS to `.asm`
-- `cc2.c`: PASS to `.asm`
-- `cc3.c`: PASS to `.asm`
-- `cc4.c`: PASS to `.asm`
-- `codegen_microcpu.c`: PASS to `.asm`
-- `host_compat.c`: PASS to `.asm`
-
-With `OBJECT_MODE=1`, all selected compiler modules now assemble to object
-files.  The former `cc1.c` single-object 64K blocker is resolved by the split
-wrapper modules:
-
-- `cc1_main.c`: PASS to `.o`
-- `cc1_types.c`: PASS to `.o`
-- `cc1_decl.c`: PASS to `.o`
-- `cc1_preproc.c`: PASS to `.o`
-- `cc1_func.c`: PASS to `.o`
-- `cc1_stmt.c`: PASS to `.o`
-- `cc1_io.c`: PASS to `.o`
-- `cc2.c`: PASS to `.o`
-- `cc3.c`: PASS to `.o`
-- `cc4.c`: PASS to `.o`
-- `codegen_microcpu.c`: PASS to `.o`
-- `host_compat.c`: PASS to `.o`
+With `OBJECT_MODE=1`, all canonical compiler modules assemble to object files.
+The former combined-frontend single-object 64K blocker is resolved by making
+the split modules canonical instead of maintaining a monolithic host path.
 
 The split also exposed a separate object-assembler branch-range limit in
 large generated functions.  Object-mode backend output now uses the existing
@@ -166,29 +149,28 @@ microasm `jmp` macro for compiler-generated jumps, so branch targets are not
 limited by the short relative `b` range.  Normal binary-mode output keeps the
 short `b` form.
 
-The link smoke currently fails after object compilation with:
+The link smoke evaluates two separate tool images rather than the old combined
+compiler.  Current report-only status:
 
-```text
-Output buffer overflow
-```
+- `smallcpp`: object compilation passes; link fails on unresolved target-hosted
+  `_stderr` support.  Estimated text/data are about 30310/31319 bytes.
+- `smallcc`: object compilation passes; link still exceeds the current linker
+  output buffer.  Estimated text/data are about 81372/26362 bytes, so further
+  split/reduction or a larger target layout is still needed.
 
-That means object compilation coverage has advanced past the `cc1.c` blocker,
-but the full compiler image/link layout is still future work.  This is not a
-request to increase a limit blindly; the linked compiler image and target
-runtime/hosting plan need to be designed before the compiler can run on the
-target.
+A link failure here is still report-only by default; full target execution
+remains future work.
 
 The global symbol table was raised from 200 to 300 entries only after the
-self-host report showed that `cc1.c` was legitimately using about 253 global
-symbols with include guards working, zero repeated includes, and the controlled
-headers already minimized.
+self-host report showed real compiler frontend pressure with include guards
+working, zero repeated includes, and the controlled headers already minimized.
 
 ## Known blockers
 
 The most likely next blockers are:
 
-- final linked compiler image size and linker output layout
-- full compiler linking and target runtime layout
+- target-hosted file I/O, diagnostics, and command-line runtime support
+- final linked `smallcpp` and `smallcc` image sizes and linker output layout
 - link-time layout for larger compiler data
 - full `#if` expressions and richer conditional preprocessing
 - large switch tables

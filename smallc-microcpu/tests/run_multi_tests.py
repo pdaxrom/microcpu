@@ -38,7 +38,17 @@ def run_one(name: str, test_path: pathlib.Path, expected: int, args: argparse.Na
         stem = source.stem
         asm_path = test_build / f"{name}__{stem}.asm"
         obj_path = test_build / f"{name}__{stem}.o"
-        if compile_test(args.compiler, args.include_dir, source, asm_path, log_path, True):
+        if compile_test(
+            args.compiler,
+            args.preprocessor,
+            args.cc_only,
+            args.include_dir,
+            source,
+            asm_path,
+            log_path,
+            True,
+            args.preprocess_mode,
+        ):
             print(f"  COMPILE {source.name} PASS")
         else:
             print(f"  COMPILE {source.name} FAIL")
@@ -88,6 +98,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected", required=True, type=pathlib.Path)
     parser.add_argument("--compiler", required=True, type=pathlib.Path)
+    parser.add_argument("--preprocessor", type=pathlib.Path)
+    parser.add_argument("--cc-only", type=pathlib.Path)
     parser.add_argument("--assembler", required=True, type=pathlib.Path)
     parser.add_argument("--linker", required=True, type=pathlib.Path)
     parser.add_argument("--emulator", required=True, type=pathlib.Path)
@@ -98,6 +110,7 @@ def main() -> int:
     parser.add_argument("--runtime-dir", default=pathlib.Path("runtime"), type=pathlib.Path)
     parser.add_argument("--test")
     parser.add_argument("--trace", action="store_true")
+    parser.add_argument("--preprocess-mode", action="store_true")
     args = parser.parse_args()
 
     expected = load_expected(args.expected)

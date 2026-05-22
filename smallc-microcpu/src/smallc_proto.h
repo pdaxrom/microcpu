@@ -196,7 +196,6 @@ int dumpstage();
 int toseg();
 int public();
 int external();
-int outsize();
 int point();
 int dumplits();
 int dumpzero();

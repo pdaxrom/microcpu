@@ -233,121 +233,12 @@ int code[PCODES];
 
 /*
 ** First byte contains flag bits indicating:
-**    the value in ax is needed (010) or zapped (020)
-**    the value in bx is needed (001) or zapped (002)
+**    the value in the primary register is needed (010) or zapped (020)
+**    the value in the secondary register is needed (001) or zapped (002)
 */
 int setcodes() {
   setseq();
-#ifdef TARGET_MICROCPU
   setcodes_microcpu();
-  return;
-#endif
-  code[ADD12]   = "\211ADD AX,BX\n";
-  code[ADD1n]   = "\010?ADD AX,<n>\n??";
-  code[ADD21]   = "\211ADD BX,AX\n";
-  code[ADD2n]   = "\010?ADD BX,<n>\n??";
-  code[ADDbpn]  = "\001ADD BYTE PTR [BX],<n>\n";
-  code[ADDwpn]  = "\001ADD WORD PTR [BX],<n>\n";
-  code[ADDm_]   = "\000ADD <m>";
-  code[ADDSP]   = "\000?ADD SP,<n>\n??";
-  code[AND12]   = "\211AND AX,BX\n";
-  code[ANEG1]   = "\010NEG AX\n";
-  code[ARGCNTn] = "\000?MOV CL,<n>?XOR CL,CL?\n";
-  code[ASL12]   = "\011MOV CX,AX\nMOV AX,BX\nSAL AX,CL\n";
-  code[ASR12]   = "\011MOV CX,AX\nMOV AX,BX\nSAR AX,CL\n";
-  code[CALL1]   = "\010CALL AX\n";
-  code[CALLm]   = "\020CALL <m>\n";
-  code[BYTE_]   = "\000 DB ";
-  code[BYTEn]   = "\000 DB <n>\n";
-  code[BYTEr0]  = "\000 DB <n> DUP(0)\n";
-  code[COM1]    = "\010NOT AX\n";
-  code[COMMAn]  = "\000,<n>\n";
-  code[DBL1]    = "\010SHL AX,1\n";
-  code[DBL2]    = "\001SHL BX,1\n";
-  code[DECbp]   = "\001DEC BYTE PTR [BX]\n";
-  code[DECwp]   = "\001DEC WORD PTR [BX]\n";
-  code[DIV12]   = "\011CWD\nIDIV BX\n";                 /* see gen() */
-  code[DIV12u]  = "\011XOR DX,DX\nDIV BX\n";            /* see gen() */
-  code[ENTER]   = "\100PUSH BP\nMOV BP,SP\n";
-  code[EQ10f]   = "\010OR AX,AX\nJE $+5\nJMP _<n>\n";
-  code[EQ12]    = "\211CALL __eq\n";
-  code[GE10f]   = "\010OR AX,AX\nJGE $+5\nJMP _<n>\n";
-  code[GE12]    = "\011CALL __ge\n";
-  code[GE12u]   = "\011CALL __uge\n";
-  code[GETb1m]  = "\020MOV AL,<m>\nCBW\n";
-  code[GETb1mu] = "\020MOV AL,<m>\nXOR AH,AH\n";
-  code[GETb1p]  = "\021MOV AL,?<n>??[BX]\nCBW\n";       /* see gen() */
-  code[GETb1pu] = "\021MOV AL,?<n>??[BX]\nXOR AH,AH\n"; /* see gen() */
-  code[GETb1s]  = "\020MOV AL,<n>[BP]\nCBW\n";
-  code[GETb1su] = "\020MOV AL,<n>[BP]\nXOR AH,AH\n";
-  code[GETw1m]  = "\020MOV AX,<m>\n";
-  code[GETw1m_] = "\020MOV AX,<m>";
-  code[GETw1n]  = "\020?MOV AX,<n>?XOR AX,AX?\n";
-  code[GETw1p]  = "\021MOV AX,?<n>??[BX]\n";            /* see gen() */
-  code[GETw1s]  = "\020MOV AX,<n>[BP]\n";
-  code[GETw2m]  = "\002MOV BX,<m>\n";
-  code[GETw2n]  = "\002?MOV BX,<n>?XOR BX,BX?\n";
-  code[GETw2p]  = "\021MOV BX,?<n>??[BX]\n";
-  code[GETw2s]  = "\002MOV BX,<n>[BP]\n";
-  code[GT10f]   = "\010OR AX,AX\nJG $+5\nJMP _<n>\n";
-  code[GT12]    = "\010CALL __gt\n";
-  code[GT12u]   = "\011CALL __ugt\n";
-  code[INCbp]   = "\001INC BYTE PTR [BX]\n";
-  code[INCwp]   = "\001INC WORD PTR [BX]\n";
-  code[WORD_]   = "\000 DW ";
-  code[WORDn]   = "\000 DW <n>\n";
-  code[WORDr0]  = "\000 DW <n> DUP(0)\n";
-  code[JMPm]    = "\000JMP _<n>\n";
-  code[LABm]    = "\000_<n>:\n";
-  code[LE10f]   = "\010OR AX,AX\nJLE $+5\nJMP _<n>\n";
-  code[LE12]    = "\011CALL __le\n";
-  code[LE12u]   = "\011CALL __ule\n";
-  code[LNEG1]   = "\010CALL __lneg\n";
-  code[LT10f]   = "\010OR AX,AX\nJL $+5\nJMP _<n>\n";
-  code[LT12]    = "\011CALL __lt\n";
-  code[LT12u]   = "\011CALL __ult\n";
-  code[MOD12]   = "\011CWD\nIDIV BX\nMOV AX,DX\n";      /* see gen() */
-  code[MOD12u]  = "\011XOR DX,DX\nDIV BX\nMOV AX,DX\n"; /* see gen() */
-  code[MOVE21]  = "\012MOV BX,AX\n";
-  code[MUL12]   = "\211IMUL BX\n";
-  code[MUL12u]  = "\211MUL BX\n";
-  code[NE10f]   = "\010OR AX,AX\nJNE $+5\nJMP _<n>\n";
-  code[NE12]    = "\211CALL __ne\n";
-  code[NEARm]   = "\000 DW _<n>\n";
-  code[OR12]    = "\211OR AX,BX\n";
-  code[PLUSn]   = "\000?+<n>??\n";
-  code[POINT1l] = "\020MOV AX,OFFSET _<l>+<n>\n";
-  code[POINT1m] = "\020MOV AX,OFFSET <m>\n";
-  code[POINT1s] = "\020LEA AX,<n>[BP]\n";
-  code[POINT2m] = "\002MOV BX,OFFSET <m>\n";
-  code[POINT2m_]= "\002MOV BX,OFFSET <m>";
-  code[POINT2s] = "\002LEA BX,<n>[BP]\n";
-  code[POP2]    = "\002POP BX\n";
-  code[PUSH1]   = "\110PUSH AX\n";
-  code[PUSH2]   = "\101PUSH BX\n";
-  code[PUSHm]   = "\100PUSH <m>\n";
-  code[PUSHp]   = "\100PUSH ?<n>??[BX]\n";
-  code[PUSHs]   = "\100PUSH ?<n>??[BP]\n";
-  code[PUT_m_]  = "\000MOV <m>";
-  code[PUTbm1]  = "\010MOV <m>,AL\n";
-  code[PUTbp1]  = "\011MOV [BX],AL\n";
-  code[PUTwm1]  = "\010MOV <m>,AX\n";
-  code[PUTwp1]  = "\011MOV [BX],AX\n";
-  code[rDEC1]   = "\010#DEC AX\n#";
-  code[rDEC2]   = "\010#DEC BX\n#";
-  code[REFm]    = "\000_<n>";
-  code[RETURN]  = "\000?MOV SP,BP\n??POP BP\nRET\n";
-  code[rINC1]   = "\010#INC AX\n#";
-  code[rINC2]   = "\010#INC BX\n#";
-  code[SUB_m_]  = "\000SUB <m>";
-  code[SUB12]   = "\011SUB AX,BX\n";                    /* see gen() */
-  code[SUB1n]   = "\010?SUB AX,<n>\n??";
-  code[SUBbpn]  = "\001SUB BYTE PTR [BX],<n>\n";
-  code[SUBwpn]  = "\001SUB WORD PTR [BX],<n>\n";
-  code[SWAP12]  = "\011XCHG AX,BX\n";
-  code[SWAP1s]  = "\012POP BX\nXCHG AX,BX\nPUSH BX\n";
-  code[SWITCH]  = "\012CALL __switch\n";
-  code[XOR12]   = "\211XOR AX,BX\n";
   }
 
 /***************** code generation functions *****************/
@@ -357,7 +248,6 @@ int setcodes() {
 ** and ensure that the segments appear in the correct order.
 */
 int header()  {
-#ifdef TARGET_MICROCPU
   oldseg = 0;
   outline("; Generated by Hendrix Small-C 2.2 Rev.117 microcpu backend");
   outline("include ../../../asm/include/pseudo.inc");
@@ -392,31 +282,12 @@ int header()  {
   outline("__test_halt:");
   outline("b __test_halt");
   return;
-#endif
-  toseg(CODESEG);
-  outline("extrn __eq: near");
-  outline("extrn __ne: near");
-  outline("extrn __le: near");
-  outline("extrn __lt: near");
-  outline("extrn __ge: near");
-  outline("extrn __gt: near");
-  outline("extrn __ule: near");
-  outline("extrn __ult: near");
-  outline("extrn __uge: near");
-  outline("extrn __ugt: near");
-  outline("extrn __lneg: near");
-  outline("extrn __switch: near");
-  outline("dw 0"); /* force non-zero code pointers, word alignment */
-  toseg(DATASEG);
-  outline("dw 0"); /* force non-zero data pointers, word alignment */
   }
 
 /*
 ** print any assembler stuff needed at the end
 */
 int trailer()  {  
-  char *cp;
-#ifdef TARGET_MICROCPU
   if(objectmode) {
     outline("");
     outline("align 1");
@@ -440,28 +311,6 @@ int trailer()  {
   outline("ds 512");
   outline("__smallc_stack_top:");
   return;
-#endif
-  cptr = STARTGLB;
-  while(cptr < ENDGLB) {
-    if(cptr[IDENT] == FUNCTION && cptr[CLASS] == AUTOEXT)
-      external(cptr + NAME, 0, FUNCTION);
-    cptr += SYMMAX;
-    }
-  if((cp = findglb("main")) && cp[CLASS]==STATIC)
-    external("_main", 0, FUNCTION);
-  toseg(NULL);
-  outline("END");
-#ifdef DISOPT
-    {
-    int i, *count;
-    printf(";opt   count\n");
-    for(i = -1; ++i <= HIGH_SEQ; ) {
-      count = seq[i];
-      printf("; %2u   %5u\n", i, *count);
-      poll(YES);
-      }
-    }  
-#endif 
   }
 
 /*
@@ -549,26 +398,14 @@ int dumpstage() {
 ** may be called with NULL, CODESEG, or DATASEG
 */
 int toseg(newseg) int newseg; {
-#ifdef TARGET_MICROCPU
   oldseg = newseg;
   return;
-#endif
-  if(oldseg == newseg)  return;
-  if(oldseg == CODESEG) outline("CODE ENDS");
-  else if(oldseg == DATASEG) outline("DATA ENDS");
-  if(newseg == CODESEG) {
-    outline("CODE SEGMENT PUBLIC");
-    outline("ASSUME CS:CODE, SS:DATA, DS:DATA");
-    }
-  else if(newseg == DATASEG) outline("DATA SEGMENT PUBLIC");
-  oldseg = newseg;
   }
 
 /*
 ** declare entry point
 */
 int public(ident) int ident;{
-#ifdef TARGET_MICROCPU
   if(objectmode && pubclass != PRIVATE) {
        outstr("public ");
        outname(ssname);
@@ -583,62 +420,26 @@ int public(ident) int ident;{
   colon();
   newline();
   return;
-#endif
-  if(ident == FUNCTION)
-       toseg(CODESEG);
-  else toseg(DATASEG);
-  outstr("PUBLIC ");
-  outname(ssname);
-  newline();
-  outname(ssname);
-  if(ident == FUNCTION) {
-    colon();
-    newline();
-    }
   }
 
 /*
 ** declare external reference
 */
 int external(name, size, ident) char *name; int size, ident; {
-#ifdef TARGET_MICROCPU
   if(objectmode) {
     outstr("extern ");
     outname(name);
     newline();
     }
   return;
-#endif
-  if(ident == FUNCTION)
-       toseg(CODESEG);
-  else toseg(DATASEG);
-  outstr("EXTRN ");
-  outname(name);
-  colon();
-  outsize(size, ident);
-  newline();
-  }
-
-/*
-** output the size of the object pointed to.
-*/
-int outsize(size, ident) int size, ident; {
-  if(size == 1
-  && ident != POINTER
-  && ident != FUNCTION)      outstr("BYTE");
-  else if(ident != FUNCTION) outstr("WORD");
-  else                       outstr("NEAR");
   }
 
 /*
 ** point to following object(s)
 */
 int point() {
-#ifdef TARGET_MICROCPU
   outline("dw 0");
   return;
-#endif
-  outline(" DW $+2");
   }
 
 /*
@@ -864,7 +665,6 @@ int outline(ptr)  char ptr[];  {
 int outname(ptr) char ptr[]; {
   char buf[16];
   int len;
-#ifdef TARGET_MICROCPU
   if(objectmode) {
     len = 0;
     while(ptr[len] >= ' ') ++len;
@@ -874,7 +674,6 @@ int outname(ptr) char ptr[]; {
       return;
       }
     }
-#endif
   outstr("_");
   while(*ptr >= ' ') fputc(*ptr++, output);
   }

@@ -182,12 +182,41 @@ def append_log(log_path: pathlib.Path, title: str, argv: list[str], proc: subpro
 
 def compile_test(
     compiler: pathlib.Path,
+    preprocessor: pathlib.Path | None,
+    cc_only: pathlib.Path | None,
     include_dirs: list[pathlib.Path],
     source: pathlib.Path,
     asm_path: pathlib.Path,
     log_path: pathlib.Path,
     object_mode: bool,
+    preprocess_mode: bool,
 ) -> bool:
+    if preprocess_mode:
+        if preprocessor is None or cc_only is None:
+            append_log(
+                log_path,
+                "compile",
+                ["missing-preprocessor-or-cc-only"],
+                subprocess.CompletedProcess([], 1, "", "missing split compiler tools"),
+            )
+            return False
+        i_path = asm_path.with_suffix(".i")
+        argv1 = [str(preprocessor), "-o", str(i_path)]
+        for include_dir in include_dirs:
+            argv1.extend(["-I", str(include_dir)])
+        argv1.append(str(source))
+        proc1 = subprocess.run(argv1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+        append_log(log_path, "preprocess", argv1, proc1)
+        if proc1.returncode != 0:
+            return False
+        argv2 = [str(cc_only)]
+        if object_mode:
+            argv2.append("--object")
+        argv2.extend(["-o", str(asm_path), str(i_path)])
+        proc2 = subprocess.run(argv2, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+        append_log(log_path, "compile", argv2, proc2)
+        return proc2.returncode == 0
+
     argv = [str(compiler)]
     if object_mode:
         argv.append("--object")
@@ -311,7 +340,17 @@ def run_one(
     log_path.write_text("")
 
     print(f"{name}:")
-    if compile_test(args.compiler, args.include_dir, source, asm_path, log_path, args.object_mode):
+    if compile_test(
+        args.compiler,
+        args.preprocessor,
+        args.cc_only,
+        args.include_dir,
+        source,
+        asm_path,
+        log_path,
+        args.object_mode,
+        args.preprocess_mode,
+    ):
         print("  COMPILE PASS")
     else:
         print("  COMPILE FAIL")
@@ -384,11 +423,14 @@ def main() -> int:
     parser.add_argument("--expected-uart", type=pathlib.Path)
     parser.add_argument("--input-uart", type=pathlib.Path)
     parser.add_argument("--compiler", required=True, type=pathlib.Path)
+    parser.add_argument("--preprocessor", type=pathlib.Path)
+    parser.add_argument("--cc-only", type=pathlib.Path)
     parser.add_argument("--assembler", required=True, type=pathlib.Path)
     parser.add_argument("--emulator", required=True, type=pathlib.Path)
     parser.add_argument("--linker", type=pathlib.Path)
     parser.add_argument("--runtime-dir", default=pathlib.Path("runtime"), type=pathlib.Path)
     parser.add_argument("--object-mode", action="store_true")
+    parser.add_argument("--preprocess-mode", action="store_true")
     parser.add_argument("--board", default="hc1200-mcu")
     parser.add_argument("--max-steps", default=1_000_000, type=int)
     parser.add_argument("--build-dir", default=pathlib.Path("build/tests"), type=pathlib.Path)
@@ -411,6 +453,13 @@ def main() -> int:
     if not args.compiler.exists():
         print(f"FAIL: compiler not found: {args.compiler}", file=sys.stderr)
         return 1
+    if args.preprocess_mode:
+        if args.preprocessor is None or not args.preprocessor.exists():
+            print(f"FAIL: preprocessor not found: {args.preprocessor}", file=sys.stderr)
+            return 1
+        if args.cc_only is None or not args.cc_only.exists():
+            print(f"FAIL: compiler-only tool not found: {args.cc_only}", file=sys.stderr)
+            return 1
     if not args.assembler.exists():
         print(f"FAIL: assembler not found: {args.assembler}", file=sys.stderr)
         return 1
