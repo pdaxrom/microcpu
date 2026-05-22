@@ -58,7 +58,7 @@ static void usage(FILE *out)
         "Options:\n"
         "  --board hc1200-mcu|hc1200-cpu|hc1200-microcomp\n"
         "                              board model (default: hc1200-mcu)\n"
-        "  --format auto|bin|hex       input format (default: auto)\n"
+        "  --format auto|bin|hex|mem   input format (default: auto)\n"
         "  --load-addr ADDR            binary load address (default: 0)\n"
         "  --max-steps N               instruction limit, 0 means unlimited (default: 1000000)\n"
         "  --stop-on-self-branch       stop successfully on a 'b *' idle loop\n"
@@ -444,7 +444,8 @@ static int parse_args(int argc, char **argv, config_t *cfg)
     }
     if (strcmp(cfg->format, "auto") != 0 &&
         strcmp(cfg->format, "bin") != 0 &&
-        strcmp(cfg->format, "hex") != 0) {
+        strcmp(cfg->format, "hex") != 0 &&
+        strcmp(cfg->format, "mem") != 0) {
         fprintf(stderr, "microemu: unsupported format '%s'\n", cfg->format);
         return -1;
     }
@@ -786,7 +787,7 @@ static int load_image(const board_model_t *board, const config_t *cfg)
         return -1;
     }
 
-    if (strcmp(cfg->format, "hex") == 0) {
+    if (strcmp(cfg->format, "hex") == 0 || strcmp(cfg->format, "mem") == 0) {
         use_hex = true;
     } else if (strcmp(cfg->format, "bin") == 0) {
         use_hex = false;

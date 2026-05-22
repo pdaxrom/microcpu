@@ -36,6 +36,17 @@ SELFHOST_SRCS := \
 	src/codegen_microcpu.c \
 	src/host_compat.c
 
+EMU_SRCS := \
+	../microemu/microemu.c \
+	../microemu/microcpu_core.c \
+	../microemu/microcpu_core.h \
+	../microemu/hc1200_mcu.c \
+	../microemu/hc1200_mcu.h \
+	../microemu/hc1200_cpu.c \
+	../microemu/hc1200_cpu.h \
+	../microemu/hc1200_microcomp.c \
+	../microemu/hc1200_microcomp.h
+
 TRACE_ARG := $(if $(filter 1,$(TRACE)),--trace,)
 STRICT_ARG := $(if $(filter 1,$(STRICT)),--strict,)
 TEST_ARG := $(if $(TEST),--test $(TEST),)
@@ -50,7 +61,7 @@ TEST_RUNNER_ARGS := --expected tests/expected.txt \
 
 all: $(CC_BIN)
 
-test: $(CC_BIN)
+test: $(CC_BIN) $(ASM) $(EMU)
 	$(PYTHON) tests/run_tests.py $(TEST_RUNNER_ARGS) $(TRACE_ARG) $(TEST_ARG)
 
 selfhost-smoke: $(CC_BIN)
@@ -66,6 +77,12 @@ run: test
 
 $(BUILD):
 	mkdir -p $(BUILD)
+
+$(ASM): ../asm/microasm.c
+	$(MAKE) -C ../asm microasm
+
+$(EMU): $(EMU_SRCS)
+	$(MAKE) -C ../microemu microemu
 
 $(CC_BIN): $(SRCS) src/cc.h src/notice.h src/host_compat.h src/smallc_proto.h | $(BUILD)
 	$(HOSTCC) $(HOST_CFLAGS) -o $@ $(SRCS)

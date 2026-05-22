@@ -18,8 +18,8 @@ make -C smallc-microcpu test
 ```
 
 The test target compiles every `tests/*.c` file to readable microasm, assembles
-it with `../asm/microasm`, runs it on `../microemu/microemu`, and checks `V0`
-(`r3` in the emulator register dump) against `tests/expected.txt`.
+it with `../asm/microasm -binary`, runs it on `../microemu/microemu`, and checks
+`V0` (`r3` in the emulator register dump) against `tests/expected.txt`.
 Tests listed in `tests/expected_uart.txt` also compare UART TX output, and
 tests listed in `tests/input_uart.txt` preload UART RX using `microemu
 --uart-rx`.

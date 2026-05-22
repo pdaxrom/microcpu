@@ -65,6 +65,9 @@ asm/microasm -binary microemu/examples/hello_world.asm microemu/build/examples/h
 microemu/microemu --format bin --stop-on-self-branch microemu/build/examples/hello_world.bin
 ```
 
+`microasm` writes `.mem` hex files by default. Use `-binary` whenever the
+emulator command loads the result with `--format bin`.
+
 Run the UART echo example with preloaded RX byte `A`:
 
 ```sh
@@ -99,9 +102,9 @@ microemu/microemu --board hc1200-microcomp --format auto --uart-rx "z" --max-ste
 ```
 
 The `boards/sram.mem` address-label format (`0000: ...`) is accepted by the
-hex loader. Sending `z` enters serial bootloader mode and prints the bootloader
-banner. The emulated SPI FRAM is used by the bootloader when it loads or saves
-virtual memory pages.
+`mem`/hex loader. Sending `z` enters serial bootloader mode and prints the
+bootloader banner. The emulated SPI FRAM is used by the bootloader when it
+loads or saves virtual memory pages.
 
 Load and run a program through the `hc1200-microcomp` UART bootloader:
 
@@ -240,9 +243,10 @@ Run a raw assembler binary:
 microemu/microemu --format bin --stop-on-self-branch testbench/build/board_uart_smoke.bin
 ```
 
-Run a Verilog `$readmemh`-style hex file:
+Run a microasm `.mem` or Verilog `$readmemh`-style hex file:
 
 ```sh
+microemu/microemu --board hc1200-microcomp --format mem --uart-rx "z" --max-steps 5000000 boards/sram.mem
 microemu/microemu --format hex --stop-on-self-branch testbench/build/board_uart_smoke.hex
 ```
 
