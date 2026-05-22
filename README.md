@@ -323,18 +323,22 @@ directive; use `PUBLIC` to export symbols from an object file.
 
 ### Command line options
 
-`microasm [-verilog|-binary|-object] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]`
+`microasm [-verilog|-binary|-object] [--list <file|->] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]`
 
-`microasm [-verilog|-binary|-obj] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]`
+`microasm [-verilog|-binary|-obj] [--list=<file|->] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]`
 
 * -verilog - create verilog ram file
 * -binary  - create binary file
 * -object, -obj - create object file
+* --list <file|-> - write the assembly listing to a file, or to stdout with `-`
 * -D, --define - define a global constant before pass 1. If value is omitted,
   it defaults to 1. The expression may reference earlier command-line defines.
 * -U, --undef - remove a command-line define before pass 1.
 
-By default, the output file is a hex file.
+By default, the output file is a hex file and no listing is printed.
+Compilation status and error lines are always printed to stdout and, when
+`--list` is used, to the listing stream. The final `Constants`, `Labels`, and
+`Refs` tables are included only in the listing stream.
 
 Examples:
 ```

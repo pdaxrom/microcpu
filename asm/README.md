@@ -13,14 +13,18 @@ make -C asm
 Run it:
 
 ```
-asm/microasm [-verilog|-binary|-object] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]
-asm/microasm [-verilog|-binary|-obj] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]
+asm/microasm [-verilog|-binary|-object] [--list <file|->] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]
+asm/microasm [-verilog|-binary|-obj] [--list=<file|->] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]
 ```
 
 - default output is a `.mem` hex file.
 - `-binary` writes raw bytes.
 - `-verilog` writes a Verilog SRAM initialization module.
 - `-object` / `-obj` writes a UniCROSS-style object file for `microlink`.
+- `--list <file|->` writes the assembly listing to a file, or to stdout with
+  `-`. By default no listing is printed. Compilation status and error lines are
+  always printed to stdout and, when `--list` is used, to the listing stream.
+  The final `Constants`, `Labels`, and `Refs` tables are included only there.
 - `-D` / `--define` creates a global constant before pass 1. If `=expr` is
   omitted, the value is `1`.
 - `-U` / `--undef` removes a command-line define before pass 1.

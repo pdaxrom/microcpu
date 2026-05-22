@@ -42,10 +42,37 @@ printf '0000: 11 22\n' >"$cli_expected"
 if "$BIN" -DCLI_FEATURE -DCLI_VALUE='$22' -DCLI_REMOVED -UCLI_REMOVED \
         "$ASM_DIR/group-conditional-cli.asm" "$cli_out" \
         >"$OUT_DIR/group-conditional-cli-define.log" 2>&1 &&
-        cmp -s "$cli_expected" "$cli_out"; then
+        cmp -s "$cli_expected" "$cli_out" &&
+        ! grep -q "0000: 11" "$OUT_DIR/group-conditional-cli-define.log" &&
+        ! grep -q "Constants:" "$OUT_DIR/group-conditional-cli-define.log" &&
+        ! grep -q "Labels:" "$OUT_DIR/group-conditional-cli-define.log" &&
+        ! grep -q "Refs:" "$OUT_DIR/group-conditional-cli-define.log"; then
     :
 else
     failures="$failures group-conditional-cli.define"
+fi
+
+total=$((total + 1))
+list_out="$OUT_DIR/group-conditional-cli-list.mem"
+list_file="$OUT_DIR/group-conditional-cli-list.lst"
+list_status="$OUT_DIR/group-conditional-cli-list.status"
+if "$BIN" --list "$list_file" -DCLI_FEATURE -DCLI_VALUE='$22' \
+        "$ASM_DIR/group-conditional-cli.asm" "$list_out" \
+        >"$list_status" 2>&1 &&
+        cmp -s "$cli_expected" "$list_out" &&
+        grep -q "0000: 11" "$list_file" &&
+        grep -q "Constants:" "$list_file" &&
+        grep -q "\\[CLI_VALUE\\] 0022" "$list_file" &&
+        grep -q "Labels:" "$list_file" &&
+        grep -q "Refs:" "$list_file" &&
+        grep -q "Errors: No error" "$list_file" &&
+        grep -q "Errors: No error" "$list_status" &&
+        ! grep -q "Constants:" "$list_status" &&
+        ! grep -q "Labels:" "$list_status" &&
+        ! grep -q "Refs:" "$list_status"; then
+    :
+else
+    failures="$failures group-conditional-cli.list"
 fi
 
 total=$((total + 1))

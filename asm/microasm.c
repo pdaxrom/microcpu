@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 enum {
     NO_ERROR = 0,
@@ -246,6 +247,8 @@ static unsigned int chksum_addr;
 
 static int src_pass = 1;
 static int src_line = 1;
+static FILE *listing_file = NULL;
+static int listing_file_owned = 0;
 
 static Label *labels = NULL;
 static Label *equs = NULL;
@@ -314,6 +317,47 @@ static CondRecord *cond_replay = NULL;
 	*(s) = tolower(*(s)); \
 	(s)++; \
     } \
+}
+
+static FILE *get_listing_file(void)
+{
+    return listing_file;
+}
+
+static void listing_vprintf(const char *fmt, va_list ap)
+{
+    FILE *out = get_listing_file();
+
+    if (out) {
+        vfprintf(out, fmt, ap);
+    }
+}
+
+static void listing_printf(const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    listing_vprintf(fmt, ap);
+    va_end(ap);
+}
+
+static void status_printf(const char *fmt, ...)
+{
+    va_list ap;
+    va_list listing_ap;
+    FILE *out = get_listing_file();
+
+    va_start(ap, fmt);
+    va_copy(listing_ap, ap);
+    vfprintf(stdout, fmt, ap);
+    fflush(stdout);
+    if (out && out != stdout) {
+        vfprintf(out, fmt, listing_ap);
+        fflush(out);
+    }
+    va_end(listing_ap);
+    va_end(ap);
 }
 
 static void remove_comment(char *str)
@@ -554,7 +598,7 @@ static int add_reloc(unsigned char type, unsigned int offset, Label *label)
 static void dump_labels(Label *list)
 {
     while (list) {
-        fprintf(stderr, "[%s] %04X\n", list->name, list->address);
+        listing_printf("[%s] %04X\n", list->name, list->address);
         list = list->prev;
     }
 }
@@ -570,8 +614,8 @@ static int relink_refs(void)
         if (error == 0 && to_second_pass == 0) {
             output[tmp->address] = val;
         } else {
-            fprintf(stderr, "Can't resolve %s in %s line %d\n", tmp->name, ptr,
-                    tmp->line);
+            status_printf("Can't resolve %s in %s line %d\n", tmp->name, ptr,
+                          tmp->line);
             error = CANNOT_RESOLVE_REF;
             return 1;
         }
@@ -641,6 +685,127 @@ static Macro* find_macro(char *name)
     return NULL;
 }
 
+#define LISTING_BYTES_WIDTH 8
+#define LISTING_MACRO_WIDTH 12
+#define LISTING_LABEL_WIDTH 20
+#define LISTING_OPCODE_WIDTH 8
+
+static char *listing_macro_name = NULL;
+static int listing_macro_line = 0;
+
+static void print_listing_source(char *line)
+{
+    char copy[strlen(line ? line : "") + 1];
+    char *ptr;
+    char *tok1;
+    char *tok2;
+    char *rest;
+    char *label = "";
+    char *opcode = "";
+    int first_is_opcode;
+
+    if (!line) {
+        return;
+    }
+
+    strcpy(copy, line);
+    ptr = copy;
+    SKIP_BLANK(ptr);
+
+    if (!*ptr || *ptr == ';') {
+        listing_printf("%s", ptr);
+        return;
+    }
+
+    tok1 = ptr;
+    SKIP_TOKEN(ptr);
+    if (ptr == tok1) {
+        listing_printf("%s", tok1);
+        return;
+    }
+
+    if (*ptr) {
+        *ptr++ = 0;
+    }
+    rest = ptr;
+    SKIP_BLANK(rest);
+
+    first_is_opcode = (tok1 != copy) || find_opcode(tok1) || find_macro(tok1);
+    if (first_is_opcode) {
+        opcode = tok1;
+    } else {
+        label = tok1;
+        if (*rest && *rest != ';') {
+            tok2 = rest;
+            SKIP_TOKEN(rest);
+            if (rest != tok2) {
+                opcode = tok2;
+                if (*rest) {
+                    *rest++ = 0;
+                }
+                SKIP_BLANK(rest);
+            }
+        }
+    }
+
+    listing_printf("%-*s %-*s %s", LISTING_LABEL_WIDTH, label,
+                   LISTING_OPCODE_WIDTH, opcode, rest);
+}
+
+static void print_listing(unsigned int addr, char *bytes, char *line)
+{
+    char macro[64] = "";
+
+    if (src_pass != 2) {
+        return;
+    }
+
+    if (listing_macro_name) {
+        snprintf(macro, sizeof(macro), "[%s]:%d", listing_macro_name,
+                 listing_macro_line);
+    }
+
+    listing_printf("%04X: %-*s %-*s ", addr & 0xffff,
+                   LISTING_BYTES_WIDTH, bytes ? bytes : "",
+                   LISTING_MACRO_WIDTH, macro);
+    print_listing_source(line);
+    listing_printf("\n");
+}
+
+static void print_listing_line_at(unsigned int addr, char *line)
+{
+    print_listing(addr, NULL, line);
+}
+
+static void print_listing_line(char *line)
+{
+    print_listing_line_at(output_addr, line);
+}
+
+static void print_listing_word(unsigned int addr, unsigned int word, char *line)
+{
+    char bytes[LISTING_BYTES_WIDTH + 1];
+
+    snprintf(bytes, sizeof(bytes), "%04X", word & 0xffff);
+    print_listing(addr, bytes, line);
+}
+
+static void print_listing_insn(unsigned int addr, unsigned int lo,
+                               unsigned int hi, char *line)
+{
+    char bytes[LISTING_BYTES_WIDTH + 1];
+
+    snprintf(bytes, sizeof(bytes), "%02X%02X", lo & 0xff, hi & 0xff);
+    print_listing(addr, bytes, line);
+}
+
+static void print_listing_data(unsigned int addr, char *bytes)
+{
+    if (src_pass == 2) {
+        listing_printf("%04X: %s\n", addr & 0xffff, bytes);
+    }
+}
+
 static int add_macro(FILE *inf, char *name)
 {
     char str[512];
@@ -674,9 +839,7 @@ static int add_macro(FILE *inf, char *name)
         char *ptr = str;
         REMOVE_ENDLINE(ptr);
 
-        if (src_pass == 2) {
-            fprintf(stderr, "%04X:     \t%s\n", output_addr, str);
-        }
+        print_listing_line(str);
 
         strcpy(tmp, str);
         ptr = tmp;
@@ -1231,14 +1394,16 @@ static int expand_macro(FILE *inf, Macro *mac, char *args)
             }
         }
 
-        if (src_pass == 2) {
-            fprintf(stderr, "[%s]:%d ", mac->name, i + 1);
-        }
-
+        char *saved_macro_name = listing_macro_name;
+        int saved_macro_line = listing_macro_line;
+        listing_macro_name = mac->name;
+        listing_macro_line = i + 1;
         int ret = do_asm(inf, line);
+        listing_macro_name = saved_macro_name;
+        listing_macro_line = saved_macro_line;
         if (ret) {
             if (src_pass == 1) {
-                fprintf(stderr, "[%s]:%d %s\n", mac->name, i + 1, line);
+                status_printf("[%s]:%d %s\n", mac->name, i + 1, line);
             }
             return ret;
         }
@@ -1436,17 +1601,10 @@ static int push_condition(int parent_active, int condition_true)
     return 0;
 }
 
-static void print_listing_line(char *line)
-{
-    if (src_pass == 2) {
-        fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-    }
-}
-
 static void finish_asm_line(void)
 {
     if (src_pass == 1) {
-        fprintf(stderr, "Line: %d\r", src_line);
+        status_printf("Line: %d\r", src_line);
     }
 
     if (!in_macro) {
@@ -1702,9 +1860,7 @@ static int do_asm(FILE *inf, char *line)
         }
 
         if (mac) {
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-            }
+            print_listing_line(line);
             SKIP_BLANK(str);
             return expand_macro(inf, mac, last ? str : NULL);
         }
@@ -1727,7 +1883,7 @@ static int do_asm(FILE *inf, char *line)
             src_line = 1;
             SKIP_BLANK(str);
             snprintf(name, sizeof(name), "%s/%s", in_file_path, str);
-            fprintf(stderr, "\r%s\n", name);
+            status_printf("\r%s\n", name);
             in_file = fopen(name, "rb");
             if (!in_file) {
                 error = CANNOT_OPEN_FILE;
@@ -1750,9 +1906,7 @@ static int do_asm(FILE *inf, char *line)
                     return 1;
                 }
             }
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-            }
+            print_listing_line(line);
         } else if (opcode && !strcmp(opcode->name, "public")) {
             if (label) {
                 error = SYNTAX_ERROR;
@@ -1767,9 +1921,7 @@ static int do_asm(FILE *inf, char *line)
                     return 1;
                 }
             }
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-            }
+            print_listing_line(line);
         } else if (opcode && !strcmp(opcode->name, "entry")) {
             if (label) {
                 error = SYNTAX_ERROR;
@@ -1799,9 +1951,7 @@ static int do_asm(FILE *inf, char *line)
                 return 1;
             }
             has_entry = 1;
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-            }
+            print_listing_line(line);
         } else if (opcode && !strcmp(opcode->name, "equ")) {
             if (!label) {
                 error = MISSED_NAME_FOR_EQU;
@@ -1840,9 +1990,7 @@ static int do_asm(FILE *inf, char *line)
                 }
                 to_second_pass = 0;
 
-                if (src_pass == 2) {
-                    fprintf(stderr, "%04X: %04X\t%s\n", output_addr, val, line);
-                }
+                print_listing_word(output_addr, val, line);
             }
         } else if (opcode && !strcmp(opcode->name, "proc")) {
             if (!label) {
@@ -1856,16 +2004,12 @@ static int do_asm(FILE *inf, char *line)
                         in_proc = add_proc(&procs, label, src_line);
                     }
                 }
-                if (src_pass == 2) {
-                    fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-                }
+                print_listing_line(line);
             }
         } else if (opcode && !strcmp(opcode->name, "endp")) {
             in_proc = NULL;
 
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-            }
+            print_listing_line(line);
         } else if (opcode && !strcmp(opcode->name, "global")) {
             if (!in_proc) {
                 error = ONLY_INSIDE_PROC;
@@ -1880,18 +2024,14 @@ static int do_asm(FILE *inf, char *line)
                     add_label(&in_proc->globals, name, output_addr, src_line);
                 } while (*str && (last == ',' || match(&str, ',') == 1));
 
-                if (src_pass == 2) {
-                    fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-                }
+                print_listing_line(line);
             }
         } else if (opcode && !strcmp(opcode->name, "macro")) {
             SKIP_BLANK(str);
             char *name = str;
             SKIP_TOKEN(str);
             *str = 0;
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-            }
+            print_listing_line(line);
             return add_macro(inf, name);
         } else if (opcode && !strcmp(opcode->name, "org")) {
             if (out_type == OUT_OBJECT) {
@@ -1902,9 +2042,7 @@ static int do_asm(FILE *inf, char *line)
             reset_expr_reloc();
             start_addr = exp_(&str);
             output_addr = start_addr;
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-            }
+            print_listing_line(line);
         } else if (opcode && opcode->type == pseudo_chksum) {
             if (out_type == OUT_OBJECT) {
                 error = CHKSUM_NOT_ALLOWED_IN_OBJECT;
@@ -1914,9 +2052,7 @@ static int do_asm(FILE *inf, char *line)
             chksum_addr = output_addr;
             output[output_addr++] = 0;
             output[output_addr++] = 0;
-            if (src_pass == 2) {
-                fprintf(stderr, "%04X: 0000 \t%s\n", output_addr - 2, line);
-            }
+            print_listing_word(output_addr - 2, 0, line);
         } else if (opcode) {
             unsigned int old_addr = output_addr;
             Register *reg;
@@ -2110,52 +2246,56 @@ static int do_asm(FILE *inf, char *line)
                     || opcode->type == pseudo_align) {
                 if (src_pass == 2) {
                     int i;
-                    fprintf(stderr, "%04X:     \t%s\n", old_addr, line);
+                    char bytes[3 * 8];
+                    char *ptr_bytes = bytes;
+
+                    print_listing_line_at(old_addr, line);
                     for (i = 0; i < output_addr - old_addr; i++) {
                         if ((i % 8) == 0) {
-                            fprintf(stderr, "%04X:", old_addr + i);
+                            ptr_bytes = bytes;
+                            *ptr_bytes = 0;
                         }
 
-                        fprintf(stderr, " %02X", output[old_addr + i]);
+                        snprintf(ptr_bytes, sizeof(bytes) - (ptr_bytes - bytes),
+                                 "%s%02X", (i % 8) ? " " : "",
+                                 output[old_addr + i]);
+                        ptr_bytes += strlen(ptr_bytes);
 
-                        if ((i % 8) == 7) {
-                            fprintf(stderr, "\n");
+                        if ((i % 8) == 7 || i == output_addr - old_addr - 1) {
+                            print_listing_data(old_addr + i - (i % 8), bytes);
                         }
-                    }
-
-                    if ((i % 8) != 0) {
-                        fprintf(stderr, "\n");
                     }
                 }
             } else if (opcode->type == pseudo_dw) {
                 if (src_pass == 2) {
                     int i;
-                    fprintf(stderr, "%04X:     \t%s\n", old_addr, line);
+                    char bytes[5 * 4];
+                    char *ptr_bytes = bytes;
+
+                    print_listing_line_at(old_addr, line);
                     for (i = 0; i < output_addr - old_addr; i += 2) {
                         if ((i % 8) == 0) {
-                            fprintf(stderr, "%04X:", old_addr + i);
+                            ptr_bytes = bytes;
+                            *ptr_bytes = 0;
                         }
 
-                        fprintf(stderr, " %02X%02X", output[old_addr + i],
-                                output[old_addr + i + 1]);
+                        snprintf(ptr_bytes, sizeof(bytes) - (ptr_bytes - bytes),
+                                 "%s%02X%02X", (i % 8) ? " " : "",
+                                 output[old_addr + i],
+                                 output[old_addr + i + 1]);
+                        ptr_bytes += strlen(ptr_bytes);
 
-                        if ((i % 8) == 6) {
-                            fprintf(stderr, "\n");
+                        if ((i % 8) == 6 || i >= output_addr - old_addr - 2) {
+                            print_listing_data(old_addr + i - (i % 8), bytes);
                         }
-                    }
-
-                    if ((i % 8) != 0) {
-                        fprintf(stderr, "\n");
                     }
                 }
             } else {
-                if (src_pass == 2) {
 //fprintf(stderr, "%02X %02X %02X %02X\n", opcode->op, arg1, arg2, arg3);
-                    fprintf(stderr, "%04X: %02X%02X\t%s\n", output_addr,
-                            (opcode->op << 3) | (arg1 & 0x07),
-                            ((arg2 << 5) & 0xe0) | (arg3 & 0x1f),
-                            line);
-                }
+                print_listing_insn(output_addr,
+                                   (opcode->op << 3) | (arg1 & 0x07),
+                                   ((arg2 << 5) & 0xe0) | (arg3 & 0x1f),
+                                   line);
 
                 output[output_addr++] = (opcode->op << 3) | (arg1 & 0x07);
                 output[output_addr++] = ((arg2 << 5) & 0xe0) | (arg3 & 0x1f);
@@ -2165,14 +2305,12 @@ static int do_asm(FILE *inf, char *line)
             if (strlen(ptr)) {
                 error = SYNTAX_ERROR;
                 return 1;
-            } else if (src_pass == 2) {
-                fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
+            } else {
+                print_listing_line(line);
             }
         }
     } else {
-        if (src_pass == 2) {
-            fprintf(stderr, "%04X:     \t%s\n", output_addr, line);
-        }
+        print_listing_line(line);
     }
 
     finish_asm_line();
@@ -2510,14 +2648,40 @@ static char *get_out_name(char *in_str, char *ext)
     return str;
 }
 
+static int set_listing_file(char *name)
+{
+    if (listing_file_owned && listing_file) {
+        fclose(listing_file);
+    }
+
+    listing_file = NULL;
+    listing_file_owned = 0;
+
+    if (!strcmp(name, "-")) {
+        listing_file = stdout;
+        return 0;
+    }
+
+    listing_file = fopen(name, "wb");
+    if (!listing_file) {
+        status_printf("Cannot create listing file: %s\n", name);
+        return 1;
+    }
+    listing_file_owned = 1;
+
+    return 0;
+}
+
 static void print_usage(char *prog)
 {
-    fprintf(stderr,
-            "Usage: %s [-verilog|-binary|-object] [-D name[=expr]|--define name[=expr]] "
-            "[-U name|--undef name] <input_file> [output_file]\n"
-            "       %s [-verilog|-binary|-obj] [-Dname[=expr]|--define=name[=expr]] "
-            "[-Uname|--undef=name] <input_file> [output_file]\n",
-            prog, prog);
+    status_printf(
+        "Usage: %s [-verilog|-binary|-object] [--list <file|->] "
+        "[-D name[=expr]|--define name[=expr]] [-U name|--undef name] "
+        "<input_file> [output_file]\n"
+        "       %s [-verilog|-binary|-obj] [--list=<file|->] "
+        "[-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] "
+        "<input_file> [output_file]\n",
+        prog, prog);
 }
 
 static int parse_define_name(char *str, char **expr)
@@ -2648,47 +2812,57 @@ int main(int argc, char *argv[])
             out_type = OUT_BINARY;
         } else if (!strcmp(argv[i], "-object") || !strcmp(argv[i], "-obj")) {
             out_type = OUT_OBJECT;
+        } else if (!strcmp(argv[i], "--list")) {
+            if (++i >= argc || set_listing_file(argv[i])) {
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else if (!strncmp(argv[i], "--list=", 7)) {
+            if (set_listing_file(argv[i] + 7)) {
+                print_usage(argv[0]);
+                return 1;
+            }
         } else if (!strcmp(argv[i], "-D") || !strcmp(argv[i], "--define")) {
             if (++i >= argc || add_cmdline_define(argv[i])) {
-                fprintf(stderr, "Invalid define option: %s\n",
-                        (i < argc) ? argv[i] : "");
-                fprintf(stderr, "%s\n", get_error_string(error));
+                status_printf("Invalid define option: %s\n",
+                              (i < argc) ? argv[i] : "");
+                status_printf("%s\n", get_error_string(error));
                 print_usage(argv[0]);
                 return 1;
             }
         } else if (!strncmp(argv[i], "-D", 2) && argv[i][2]) {
             if (add_cmdline_define(argv[i] + 2)) {
-                fprintf(stderr, "Invalid define option: %s\n", argv[i]);
-                fprintf(stderr, "%s\n", get_error_string(error));
+                status_printf("Invalid define option: %s\n", argv[i]);
+                status_printf("%s\n", get_error_string(error));
                 print_usage(argv[0]);
                 return 1;
             }
         } else if (!strncmp(argv[i], "--define=", 9)) {
             if (add_cmdline_define(argv[i] + 9)) {
-                fprintf(stderr, "Invalid define option: %s\n", argv[i]);
-                fprintf(stderr, "%s\n", get_error_string(error));
+                status_printf("Invalid define option: %s\n", argv[i]);
+                status_printf("%s\n", get_error_string(error));
                 print_usage(argv[0]);
                 return 1;
             }
         } else if (!strcmp(argv[i], "-U") || !strcmp(argv[i], "--undef")) {
             if (++i >= argc || remove_cmdline_define(argv[i])) {
-                fprintf(stderr, "Invalid undef option: %s\n",
-                        (i < argc) ? argv[i] : "");
-                fprintf(stderr, "%s\n", get_error_string(error));
+                status_printf("Invalid undef option: %s\n",
+                              (i < argc) ? argv[i] : "");
+                status_printf("%s\n", get_error_string(error));
                 print_usage(argv[0]);
                 return 1;
             }
         } else if (!strncmp(argv[i], "-U", 2) && argv[i][2]) {
             if (remove_cmdline_define(argv[i] + 2)) {
-                fprintf(stderr, "Invalid undef option: %s\n", argv[i]);
-                fprintf(stderr, "%s\n", get_error_string(error));
+                status_printf("Invalid undef option: %s\n", argv[i]);
+                status_printf("%s\n", get_error_string(error));
                 print_usage(argv[0]);
                 return 1;
             }
         } else if (!strncmp(argv[i], "--undef=", 8)) {
             if (remove_cmdline_define(argv[i] + 8)) {
-                fprintf(stderr, "Invalid undef option: %s\n", argv[i]);
-                fprintf(stderr, "%s\n", get_error_string(error));
+                status_printf("Invalid undef option: %s\n", argv[i]);
+                status_printf("%s\n", get_error_string(error));
                 print_usage(argv[0]);
                 return 1;
             }
@@ -2732,7 +2906,7 @@ int main(int argc, char *argv[])
 
         // Pass 1
 
-        fprintf(stderr, "\nPass 1\n");
+        status_printf("\nPass 1\n");
 
         do {
             if (files) {
@@ -2749,8 +2923,9 @@ int main(int argc, char *argv[])
                 char *ptr = str;
                 REMOVE_ENDLINE(ptr);
                 if ((err = do_asm(in_file, str)) || error != NO_ERROR) {
-                    fprintf(stderr, "Line %d: %s\n", src_line, str);
-                    fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
+                    status_printf("Line %d: %s\n", src_line, str);
+                    status_printf("Compilation failed: %s\n\n",
+                                  get_error_string(error));
                     return 1;
                 }
             }
@@ -2758,10 +2933,10 @@ int main(int argc, char *argv[])
 
         if (cond_depth != 0) {
             error = UNTERMINATED_IF;
-            fprintf(stderr, "Line %d: unterminated conditional\n",
-                    cond_stack[cond_depth - 1].line);
-            fprintf(stderr, "Compilation failed: %s\n\n",
-                    get_error_string(error));
+            status_printf("Line %d: unterminated conditional\n",
+                          cond_stack[cond_depth - 1].line);
+            status_printf("Compilation failed: %s\n\n",
+                          get_error_string(error));
             return 1;
         }
 
@@ -2777,13 +2952,13 @@ int main(int argc, char *argv[])
         has_entry = 0;
 
         if (fseek(in_file, 0, SEEK_SET) != 0) {
-            fprintf(stderr, "Error rewinding file for pass 2\n");
+            status_printf("Error rewinding file for pass 2\n");
             return 1;
         }
 
         // Pass 2
 
-        fprintf(stderr, "\n\nPass 2\n\n");
+        status_printf("\n\nPass 2\n\n");
 
         do {
             if (files) {
@@ -2800,8 +2975,9 @@ int main(int argc, char *argv[])
                 char *ptr = str;
                 REMOVE_ENDLINE(ptr);
                 if ((err = do_asm(in_file, str)) || error != NO_ERROR) {
-                    fprintf(stderr, "Line %d: %s\n", src_line, str);
-                    fprintf(stderr, "Compilation failed: %s\n\n", get_error_string(error));
+                    status_printf("Line %d: %s\n", src_line, str);
+                    status_printf("Compilation failed: %s\n\n",
+                                  get_error_string(error));
                     return 1;
                 }
             }
@@ -2809,16 +2985,16 @@ int main(int argc, char *argv[])
 
         if (cond_depth != 0) {
             error = UNTERMINATED_IF;
-            fprintf(stderr, "Line %d: unterminated conditional\n",
-                    cond_stack[cond_depth - 1].line);
-            fprintf(stderr, "Compilation failed: %s\n\n",
-                    get_error_string(error));
+            status_printf("Line %d: unterminated conditional\n",
+                          cond_stack[cond_depth - 1].line);
+            status_printf("Compilation failed: %s\n\n",
+                          get_error_string(error));
             return 1;
         }
         if (cond_replay) {
             error = SYNTAX_ERROR;
-            fprintf(stderr, "Compilation failed: %s\n\n",
-                    get_error_string(error));
+            status_printf("Compilation failed: %s\n\n",
+                          get_error_string(error));
             return 1;
         }
 
@@ -2828,14 +3004,14 @@ int main(int argc, char *argv[])
             calculate_chksum();
         }
 
-        fprintf(stderr, "\nConstants:\n");
+        listing_printf("\nConstants:\n");
         dump_labels(equs);
-        fprintf(stderr, "\nLabels:\n");
+        listing_printf("\nLabels:\n");
         dump_labels(labels);
-        fprintf(stderr, "\nRefs:\n");
+        listing_printf("\nRefs:\n");
         dump_labels(refs);
 
-        fprintf(stderr, "\nErrors: %s\n\n", get_error_string(error));
+        status_printf("\nErrors: %s\n\n", get_error_string(error));
 
         if (error == NO_ERROR) {
             char *name;
@@ -2862,14 +3038,14 @@ int main(int argc, char *argv[])
                 fclose(outf);
             } else {
                 error = 1;
-                fprintf(stderr, "Can't create output file!\n");
+                status_printf("Can't create output file!\n");
             }
             free(name);
         }
 
         fclose(in_file);
     } else {
-        fprintf(stderr, "Cannot open input file!\n");
+        status_printf("Cannot open input file!\n");
         return -1;
     }
 

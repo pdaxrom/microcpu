@@ -632,14 +632,19 @@ These mnemonics are not ISA instructions; they are assembler directives.
 Usage (as implemented):
 
 ```
-microasm [-verilog|-binary|-object] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input_file> [output_file]
-microasm [-verilog|-binary|-obj] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input_file> [output_file]
+microasm [-verilog|-binary|-object] [--list <file|->] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input_file> [output_file]
+microasm [-verilog|-binary|-obj] [--list=<file|->] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input_file> [output_file]
 ```
 
 - `-verilog`: output a Verilog `sram` module with memory initialization.
 - `-binary`: output raw binary bytes.
 - `-object` / `-obj`: output an object file for `microlink`.
 - default: output a `.mem` hex file with address and bytes.
+- `--list <file|->`: write the assembly listing to a file, or to stdout when
+  the argument is `-`. By default no listing is printed. Compilation status and
+  error lines are always printed to stdout and, when `--list` is used, to the
+  listing stream. The final `Constants`, `Labels`, and `Refs` tables are
+  included only there.
 - `-D` / `--define`: define a global constant before pass 1. If `=expr` is
   omitted, the value is `1`. The expression may reference earlier command-line
   defines.
