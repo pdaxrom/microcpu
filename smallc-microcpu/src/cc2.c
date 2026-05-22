@@ -17,7 +17,7 @@ extern char
 extern int
   *wq,  ccode,  ch,  csp,  eof,  errflag,  iflevel,
   input,  input2,  inclevel,  incfile[MAXINCLUDE],  listfp,  macptr,  nch,
-  nxtlab,  op[16],  opindex,  opsize,  output,  pptr,
+  nxtlab,  op[16],  opindex,  opsize,  output,  pptr,  litptr,
   skiplevel,  *wqptr,  macro_argc[MACNBR],  macro_argfirst[MACNBR],
   typedef_count, include_open_count;
 
@@ -794,6 +794,10 @@ int errstats(fp) int fp; {
   errnum(macused(), fp);
   fputc('/', fp);
   errnum(MACNBR, fp);
+  fputs(" literals=", fp);
+  errnum(litptr, fp);
+  fputc('/', fp);
+  errnum(LITABSZ, fp);
   fputs(" includes=", fp);
   errnum(include_open_count, fp);
   fputc(NEWLINE, fp);

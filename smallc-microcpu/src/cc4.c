@@ -18,6 +18,14 @@ extern int
   *stage, litlab, litptr, csp, output, oldseg, usexpr, objectmode, pubclass,
   *snext, *stail, *slast;
 
+char
+  obj_fullname[MAXOBJNAMES * NAMESIZE],
+  obj_shortname[MAXOBJNAMES * 16];
+
+int obj_name_count;
+
+int objshort();
+
 
 /***************** optimizer command definitions ******************/
 
@@ -855,34 +863,13 @@ int outline(ptr)  char ptr[];  {
 
 int outname(ptr) char ptr[]; {
   char buf[16];
-  int i, len;
-  int hval;
+  int len;
 #ifdef TARGET_MICROCPU
   if(objectmode) {
     len = 0;
     while(ptr[len] >= ' ') ++len;
     if(len > 14) {
-      hval = 5381;
-      i = 0;
-      while(ptr[i] >= ' ') {
-        hval = ((hval << 5) + hval) ^ ptr[i];
-        hval = hval & 65535;
-        ++i;
-        }
-      buf[0] = '_';
-      i = 0;
-      while(i < 9) {
-        buf[i + 1] = ptr[i];
-        ++i;
-        }
-      buf[10] = '_';
-      i = 0;
-      while(i < 4) {
-        len = (hval >> ((3 - i) * 4)) & 15;
-        buf[i + 11] = len < 10 ? len + '0' : len - 10 + 'a';
-        ++i;
-        }
-      buf[15] = 0;
+      objshort(ptr, buf);
       outstr(buf);
       return;
       }
@@ -890,6 +877,88 @@ int outname(ptr) char ptr[]; {
 #endif
   outstr("_");
   while(*ptr >= ' ') fputc(*ptr++, output);
+  }
+
+int objshort(ptr, out) char *ptr, *out; {
+  int i, j, seq, hval, nib;
+  char *full, *shortp;
+  i = 0;
+  while(i < obj_name_count) {
+    full = obj_fullname + i * NAMESIZE;
+    if(astreq(ptr, full, NAMEMAX)) {
+      shortp = obj_shortname + i * 16;
+      j = 0;
+      while(j < 16) {
+        out[j] = shortp[j];
+        ++j;
+        }
+      return 1;
+      }
+    ++i;
+    }
+  if(obj_name_count >= MAXOBJNAMES) {
+    error("object symbol map overflow");
+    out[0] = '_';
+    out[1] = 'o';
+    out[2] = 'v';
+    out[3] = 'f';
+    out[4] = 0;
+    return 0;
+    }
+  hval = 5381;
+  i = 0;
+  while(ptr[i] >= ' ') {
+    hval = ((hval << 5) + hval) ^ ptr[i];
+    hval = hval & 65535;
+    ++i;
+    }
+  seq = 0;
+  while(seq < 16) {
+    out[0] = '_';
+    i = 0;
+    while(i < 8) {
+      out[i + 1] = ptr[i];
+      ++i;
+      }
+    out[9] = '_';
+    i = 0;
+    while(i < 4) {
+      nib = (hval >> ((3 - i) * 4)) & 15;
+      out[i + 10] = nib < 10 ? nib + '0' : nib - 10 + 'a';
+      ++i;
+      }
+    out[14] = seq < 10 ? seq + '0' : seq - 10 + 'a';
+    out[15] = 0;
+    i = 0;
+    while(i < obj_name_count) {
+      shortp = obj_shortname + i * 16;
+      if(astreq(out, shortp, 15) &&
+         astreq(ptr, obj_fullname + i * NAMESIZE, NAMEMAX) == 0)
+        break;
+      ++i;
+      }
+    if(i == obj_name_count) {
+      full = obj_fullname + obj_name_count * NAMESIZE;
+      shortp = obj_shortname + obj_name_count * 16;
+      j = 0;
+      while(j < NAMESIZE) full[j++] = 0;
+      j = 0;
+      while(ptr[j] >= ' ' && j < NAMEMAX) {
+        full[j] = ptr[j];
+        ++j;
+        }
+      j = 0;
+      while(j < 16) {
+        shortp[j] = out[j];
+        ++j;
+        }
+      ++obj_name_count;
+      return 1;
+      }
+    ++seq;
+    }
+  error("object symbol short-name collision");
+  return 0;
   }
 
 int outstr(ptr) char ptr[]; {

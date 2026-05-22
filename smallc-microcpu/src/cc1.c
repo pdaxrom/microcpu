@@ -121,6 +121,7 @@ char
 
 int skipconst();
 int doargs2();
+int contline();
 
 int op[16] = {   /* p-codes of signed binary operators */
   OR12,                        /* level5 */
@@ -147,13 +148,8 @@ int op2[16] = {  /* p-codes of unsigned binary operators */
 /*
 ** execution begins here
 */
-#undef int
-int main(int host_argc, char **host_argv)
-#define int intptr_t
-{
-  int argc, *argv;
-  argc = host_argc;
-  argv = (int *)host_argv;
+int smallc_main(argc, argv)
+  int argc, *argv; {
   fputs(VERSION, stderr);
   fputs(CRIGHT1, stderr);
   argcs   = argc;
@@ -172,16 +168,31 @@ int main(int host_argc, char **host_argv)
   symtab  = calloc((NUMLOCS*SYMAVG + NUMGLBS*SYMMAX), 1);
   locptr  = STARTLOC;
   glbptr  = STARTGLB;
-  
+
   ask();          /* get user options */
   openfile();     /* and initial input file */
   preprocess();   /* fetch first line */
   header();       /* intro code */
-  setcodes();     /* initialize code pointer array */ 
+  setcodes();     /* initialize code pointer array */
   parse();        /* process ALL input */
   trailer();      /* follow-up code */
   fclose(output); /* explicitly close output */
+  return 0;
   }
+
+#ifndef SMALLC_SELFHOST
+#undef int
+int main(int host_argc, char **host_argv)
+{
+  return (int)smallc_main((intptr_t)host_argc, (intptr_t *)host_argv);
+}
+#define int intptr_t
+#else
+int main(argc, argv)
+  int argc, *argv; {
+  return smallc_main(argc, argv);
+  }
+#endif
 
 /******************** high level parsing *******************/
 
@@ -226,6 +237,17 @@ int typedfunc() {
   save_lptr = lptr;
   save_ch = ch;
   save_nch = nch;
+  if(astreq(lptr, "struct", 6)) {
+    amatch("struct", 6);
+    if(symname(fname)) {
+      while(ch && ch <= ' ') gch();
+      if(ch == '{') {
+        lptr = save_lptr; ch = save_ch; nch = save_nch;
+        return 0;
+        }
+      }
+    lptr = save_lptr; ch = save_ch; nch = save_nch;
+    }
   if(decltype(&type, &id, &sz) == 0) {
     return 0;
     }
@@ -354,11 +376,16 @@ int skipprotoargs() {
 */
 int dodeclare(class) int class; {
   int type, id, sz;
-  if(decltype(&type, &id, &sz))   declglb2(type, class, id);
+  if(decltype(&type, &id, &sz))   {contline(); declglb2(type, class, id);}
   else if(class == EXTERNAL)      declglb(INT, class);
   else return 0;
   ns();
   return 1;
+  }
+
+int contline() {
+  while(ch && ch <= ' ') gch();
+  while(ch == 0 && eof == 0) preprocess();
   }
 
 int dostatic() {
@@ -469,13 +496,15 @@ int typedeftype(type, id, sz) int *type, *id, *sz; {
   }
 
 int skipconst() {
-  int matched;
+  int matched, k;
   matched = 0;
-  while(amatch("const", 5)) {
+  while(1) {
+    while(ch && ch <= ' ') gch();
+    if(ch == 0) return matched;
+    if((k = astreq(lptr, "const", 5)) == 0) return matched;
+    bump(k);
     matched = 1;
-    blanks();
     }
-  return matched;
   }
 
 /*
@@ -733,6 +762,7 @@ int declglb2(type, class, baseid)  int type, class, baseid; {
   int id, dim, stars, levels, dtype, size;
   char *ptr;
   while(1) {
+    contline();
     if(endst()) return;  /* do line */
     stars = 0;
     skipconst();
@@ -801,6 +831,7 @@ int declglb2(type, class, baseid)  int type, class, baseid; {
       else addsym(ssname, id, dtype, dim * typesize(dtype, VARIABLE), 0, &glbptr, class);
       }
     if(match(",") == 0) return;
+    contline();
     }
   }
 
@@ -816,10 +847,15 @@ int initials(size, ident, dim) int size, ident, dim; {
   if(match("=")) {
     if(match("{")) {
       while(dim) {
+        contline();
+        if(match("}")) goto initdone;
         init(size, ident, &dim);
+        contline();
         if(match(",") == 0) break;
         }
       need("}");
+initdone:
+      ;
       }
     else init(size, ident, &dim);
     }
@@ -836,6 +872,7 @@ int initials(size, ident, dim) int size, ident, dim; {
 */
 int init(size, ident, dim) int size, ident, *dim; {
   int value;
+  contline();
   if(string(&value)) {
     if(ident == VARIABLE || size != 1)
       error("must assign to char pointer or char array");
@@ -1606,12 +1643,12 @@ int doasm()  {
   }
 
 int doexpr(use) int use; {
-  int const, val;
+  int cnst, val;
   int *before, *start;
   usexpr = use;        /* tell isfree() whether expr value is used */
   while(1) {
     setstage(&before, &start);
-    expression(&const, &val);
+    expression(&cnst, &val);
     clearstage(before, start);
     if(ch != ',') break;
     bump(1);

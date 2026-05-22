@@ -158,7 +158,8 @@ The current backend is intentionally small and supports:
 - simple `typedef` aliases for `int`, `char`, pointers, and named structs
 - minimal preprocessing: object-like and simple function-like `#define`,
   `#undef`, guarded includes, `#ifdef`/`#ifndef`, and `-I` include paths
-- direct function calls, nested calls, and calls using locals/globals
+- direct function calls, nested calls, calls using locals/globals, and minimal
+  indirect calls through function-pointer arguments
 - repeated compatible function prototypes, prototypes before definitions, and
   multiline prototypes
 - `void` function return type, `void` parameter lists, and plain `return;`
@@ -169,6 +170,7 @@ The current backend is intentionally small and supports:
 - basic `int *`: address of global `int`, dereference, store through pointer
 - pointer depth greater than one, including `char **`, `int **`, pointer arrays,
   and pointer-to-pointer dereference/store
+- basic casts between scalar and pointer-shaped types for compatibility code
 - address of local variables
 - global and local `int` arrays and indexing
 - scaled `int *` arithmetic and `p[i]` syntax
@@ -182,7 +184,8 @@ The current backend is intentionally small and supports:
 - char arrays initialized from strings
 - zero-terminated string literals and escapes: `\n`, `\r`, `\t`, octal
   escapes including `\0`, `\\`, and `\"`
-- `sizeof` for `char`, `int`, pointers, and arrays
+- `sizeof` for `char`, `int`, pointers, arrays, and dereferenced pointer
+  expressions such as `sizeof(*p)`
 - tiny libc string/memory helpers through `runtime/string.asm`: `strlen`,
   `memset`, `memcpy`, `memcmp`, `strcpy`, `strcmp`, and `strchr`
 - tiny UART stdio helpers through `runtime/uart.asm`: `putchar`, `puts`, and
@@ -200,20 +203,22 @@ structs use `sizeof(struct Tag)` as their element stride.
 Return values are compared as raw 16-bit `V0`; for example, `-5` is `65531`.
 Right shift is currently arithmetic.
 
-Current fixed compiler metadata limits are `NUMGLBS=200`, `NUMLOCS=25`,
+Current fixed compiler metadata limits are `NUMGLBS=300`, `NUMLOCS=25`,
 `LITABSZ=8192`, `MACNBR=300`, `MAXINCLUDE=8`, `MAXTYPEDEFS=40`,
 `MAXSTRUCTS=20`, and `MAXFIELDS=160`.  Symbol names are significant to 31
 characters.  The limit is 31, not 63, because the original variable-length
 local symbol table stores a binary name length that must stay below ASCII
 space.  In object mode, externally visible assembler names longer than the
-microasm object-file symbol limit are shortened with a deterministic hash.
+microasm object-file symbol limit are shortened with a deterministic hash and
+collision suffix.  The global-symbol limit was raised after the self-host
+report showed real `cc1.c` pressure with no repeated includes and controlled
+headers already minimized.
 
 The current Small-C frontend supports `void` for function return types and
-`foo(void)` parameter lists.  It does not yet support full `void *` semantics,
-so memory helpers are declared in tests with temporary compatible prototypes
-such as `char *memset(char *s, int c, int n);` and
-`char *memcpy(char *dst, char *src, int n);`.  `memcpy` does not support
-overlapping regions; add `memmove` separately when overlap is needed.
+`foo(void)` parameter lists.  `void *` is accepted as a pointer-sized
+compatibility type for simple declarations, calls, and casts, but it is not a
+fully distinct checked type yet.  `memcpy` does not support overlapping
+regions; add `memmove` separately when overlap is needed.
 The UART helpers use temporary Small-C-compatible prototypes:
 `int putchar(int c);`, `int puts(char *s);`, and `int getchar();`.
 `putchar` writes the low 8 bits and returns that byte as an unsigned value.
@@ -233,8 +238,8 @@ Intentionally unsupported at this stage:
 - struct initializers
 - `long`, `float`, and full libc
 - optimizer/register allocator
-- function pointers
-- full `void *` type semantics
+- full function pointer semantics beyond simple indirect calls
+- full `void *` type checking semantics
 - `memmove`, `printf`, `scanf`, UART line buffering, `malloc`, and `free`
 - macro stringification, token pasting, variadic macros, predefined macros,
   and full `#if` preprocessor expressions

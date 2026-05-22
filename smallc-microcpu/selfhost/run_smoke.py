@@ -14,7 +14,8 @@ import sys
 ERROR_RE = re.compile(r"\*\*\*\* (.*)")
 STATS_RE = re.compile(
     r"stats: globals=(\d+)/(\d+) locals=(\d+)/(\d+) "
-    r"typedefs=(\d+)/(\d+) macros=(\d+)/(\d+) includes=(\d+)"
+    r"typedefs=(\d+)/(\d+) macros=(\d+)/(\d+) "
+    r"(?:literals=(\d+)/(\d+) )?includes=(\d+)"
 )
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]')
 DECL_RE = re.compile(
@@ -63,10 +64,26 @@ def parse_stats(stderr: str) -> dict[str, int] | None:
         "typedefs_capacity",
         "macros_used",
         "macros_capacity",
+        "literals_used",
+        "literals_capacity",
         "includes_used",
     ]
-    values = [int(value) for value in match.groups()]
+    values = [int(value) if value is not None else 0 for value in match.groups()]
     return dict(zip(keys, values))
+
+
+def parse_asm_symbols(path: pathlib.Path) -> tuple[list[str], list[str]]:
+    publics: list[str] = []
+    externs: list[str] = []
+    for line in read_source_lines(path):
+        parts = line.strip().split()
+        if len(parts) != 2:
+            continue
+        if parts[0] == "public":
+            publics.append(parts[1])
+        elif parts[0] == "extern":
+            externs.append(parts[1])
+    return publics, externs
 
 
 def resolve_include(
@@ -319,11 +336,24 @@ def assemble_object(
     write_log(log_path, argv, proc)
     ok = proc.returncode == 0
     size = obj_path.stat().st_size if ok and obj_path.exists() else 0
+    asm_lines = len(read_source_lines(asm_path))
+    combined_log = text_or_empty(proc.stdout) + text_or_empty(proc.stderr)
+    fail_reason = "object assembly failed"
+    fail_root = "generated assembly is not object-assembler clean"
+    fail_next = "inspect the object assembly log and emitted microasm"
+    if not ok and "Compilation failed: No error" in combined_log:
+        fail_reason = "object assembly failed after a large asm output"
+        fail_root = "object module is likely hitting the current 64K code-size limit"
+        fail_next = "split the translation unit, improve code density, or extend the object format"
     return {
         "ok": ok,
         "object": obj_path,
         "object_log": log_path,
         "object_size": size,
+        "asm_lines": asm_lines,
+        "fail_reason": fail_reason,
+        "fail_root": fail_root,
+        "fail_next": fail_next,
     }
 
 
@@ -431,14 +461,21 @@ def compile_source(
             if not object_result["ok"]:
                 ok = False
                 err = {
-                    "reason": "object assembly failed",
+                    "reason": object_result.get("fail_reason", "object assembly failed"),
                     "text": "",
                     "line": None,
                     "token": None,
-                    "root_cause": "generated assembly is not object-assembler clean",
-                    "next": "inspect the object assembly log and emitted microasm",
+                    "root_cause": object_result.get(
+                        "fail_root",
+                        "generated assembly is not object-assembler clean",
+                    ),
+                    "next": object_result.get(
+                        "fail_next",
+                        "inspect the object assembly log and emitted microasm",
+                    ),
                 }
 
+    publics, externs = parse_asm_symbols(asm_path)
     return {
         "name": name,
         "source": source,
@@ -447,6 +484,8 @@ def compile_source(
         "ok": ok,
         "error": err,
         "object_result": object_result,
+        "publics": publics,
+        "externs": externs,
         "stats": stats,
         "includes": includes,
         "include_repeats": include_repeats,
@@ -467,7 +506,7 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
             report.write(f"Assembler: {args.assembler}\n")
         report.write(f"Strict: {'yes' if args.strict else 'no'}\n")
         report.write("Conclusion:\n")
-        report.write("  resolved: host-only prototype imports, strict duplicate prototype handling, 31-character identifiers, minimal void/static parsing, multiline function headers, pointer-depth declarators, typedef K&R argument declarations, ignored const qualifiers, and larger literal storage\n")
+        report.write("  resolved: host-only prototype imports, strict duplicate prototype handling, 31-character identifiers, minimal void/static parsing, multiline function headers, pointer-depth declarators, typedef K&R argument declarations, ignored const qualifiers, sizeof(*p), simple casts, function-pointer calls, and larger literal storage\n")
         report.write("  current blockers: see per-file root cause and next-step entries below\n")
         report.write("\n")
         for result in results:
@@ -483,6 +522,8 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
                 report.write(f"  object log: {object_result['object_log']}\n")
                 if object_result.get("ok"):
                     report.write(f"  object size: {object_result['object_size']} bytes\n")
+                elif object_result.get("asm_lines"):
+                    report.write(f"  asm lines before object failure: {object_result['asm_lines']}\n")
             if not result["ok"]:
                 err = result["error"]
                 if isinstance(err, dict):
@@ -502,8 +543,23 @@ def write_report(report_path: pathlib.Path, args: argparse.Namespace, results: l
                     "locals={locals_used}/{locals_capacity} "
                     "typedefs={typedefs_used}/{typedefs_capacity} "
                     "macros={macros_used}/{macros_capacity} "
+                    "literals={literals_used}/{literals_capacity} "
                     "includes={includes_used}\n".format(**stats)
                 )
+            publics = result.get("publics", [])
+            externs = result.get("externs", [])
+            if publics:
+                report.write(f"  object public symbols emitted: {len(publics)}\n")
+                for symbol in publics[:20]:
+                    report.write(f"    {symbol}\n")
+                if len(publics) > 20:
+                    report.write(f"    ... {len(publics) - 20} more\n")
+            if externs:
+                report.write(f"  object extern symbols emitted: {len(externs)}\n")
+                for symbol in externs[:20]:
+                    report.write(f"    {symbol}\n")
+                if len(externs) > 20:
+                    report.write(f"    ... {len(externs) - 20} more\n")
             includes = result.get("includes", [])
             if includes:
                 report.write("  included files:\n")

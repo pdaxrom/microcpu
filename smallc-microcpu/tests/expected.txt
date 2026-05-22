@@ -216,3 +216,13 @@
 217_many_string_literals 36
 218_string_literal_reuse 212
 219_extern_declaration_no_storage 219
+220_typedef_local_decl 220
+221_void_pointer_arg 221
+222_cast_pointer_typedef 222
+223_void_cast 223
+224_unsigned_suffix 224
+225_sizeof_deref_pointer 225
+226_multiline_global_decl 226
+227_multiline_global_array_init 227
+228_parenthesized_expression 228
+229_function_pointer_call 229

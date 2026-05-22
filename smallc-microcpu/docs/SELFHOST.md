@@ -92,40 +92,60 @@ compiler now keeps 31 significant identifier characters, so names such as
 collide.  Minimal `void` functions, file-scope `static` functions/globals, and
 multiline ANSI function definitions are also accepted.
 
-The newer blockers from the previous phase are also addressed:
+The newer blockers from the previous phases are also addressed:
 
 - pointer depth greater than one, including `char **`
 - typedef names in K&R-style argument declarations
-- ignored `const` qualifiers
+- local declarations using typedef names such as `size_t`
+- ignored `const` qualifiers without relying on the host-only `const` macro
+- `void *` as a pointer-sized compatibility type
+- C-style casts used by the host compatibility layer
+- `sizeof(*p)` on pointer expressions
+- unsigned integer suffixes such as `1u`
+- multiline global declarations and multiline initializer lists
+- minimal indirect calls through function-pointer arguments
 - the literal pool capacity needed by `codegen_microcpu.c`
 
-With `OBJECT_MODE=1`, `cc2.c` and `codegen_microcpu.c` currently compile to
-microasm and assemble to object files.  The other source files now fail later:
+Without `OBJECT_MODE=1`, all selected compiler source files currently compile
+to generated microasm:
 
-- `cc1.c`: currently stops near a comma-separated K&R argument declaration
-  form (`nogo, ...`) that the smoke parser still does not understand.
-- `cc3.c`: stops at `sizeof(*is)`, which needs `sizeof` on dereferenced
-  pointer expressions.
-- `cc4.c`: stops near a comma-oriented declaration/initializer form in the
-  backend tables.
-- `host_compat.c`: stops at `size_t limit;`, so local declarations using
-  typedef names still need to be supported.
+- `cc1.c`: PASS to `.asm`
+- `cc2.c`: PASS to `.asm`
+- `cc3.c`: PASS to `.asm`
+- `cc4.c`: PASS to `.asm`
+- `codegen_microcpu.c`: PASS to `.asm`
+- `host_compat.c`: PASS to `.asm`
+
+With `OBJECT_MODE=1`, five of the six selected files now assemble to object
+files:
+
+- `cc1.c`: FAIL after generating a large `.asm`; object assembly appears to
+  hit the current single-object 64K code-size limit.
+- `cc2.c`: PASS to `.o`
+- `cc3.c`: PASS to `.o`
+- `cc4.c`: PASS to `.o`
+- `codegen_microcpu.c`: PASS to `.o`
+- `host_compat.c`: PASS to `.o`
+
+The global symbol table was raised from 200 to 300 entries only after the
+self-host report showed that `cc1.c` was legitimately using about 253 global
+symbols with include guards working, zero repeated includes, and the controlled
+headers already minimized.
 
 ## Known blockers
 
 The most likely next blockers are:
 
-- full `#if` expressions and richer conditional preprocessing
-- local declarations using typedef names
-- comma-separated K&R argument declarations
-- `sizeof` on dereferenced pointer expressions
+- splitting or otherwise shrinking `cc1.c` enough for single-object assembly,
+  or extending the object format/toolchain to represent larger modules
 - full compiler linking and cross-unit runtime layout
 - link-time layout for larger compiler data
+- full `#if` expressions and richer conditional preprocessing
 - large switch tables
 - complex initializers and struct initializers
 - anonymous structs and anonymous typedef structs
 - `union`
-- function pointers
+- full function pointer semantics beyond simple indirect calls
 - command-line `argc`/`argv` and environment handling on the target
 - target file I/O for compiler input and output
 
@@ -156,10 +176,9 @@ style so the code moves toward eventual self-hosting:
 
 The next self-hosting steps should be incremental:
 
-1. Add local declarations using typedef names, including `size_t`.
-2. Add the remaining old-style declaration forms used by `cc1.c` and `cc4.c`.
-3. Extend `sizeof` handling for pointer dereference expressions.
-4. Compile individual translation units to objects consistently.
-5. Link multiple generated compiler units with runtime objects.
-6. Add enough target runtime for compiler input, output, diagnostics, and
+1. Split or shrink `cc1.c`, or extend object handling for modules whose
+   generated code exceeds 64K.
+2. Add a non-default link-only selfhost smoke once all objects can be emitted.
+3. Link multiple generated compiler units with runtime objects.
+4. Add enough target runtime for compiler input, output, diagnostics, and
    command-line handling.

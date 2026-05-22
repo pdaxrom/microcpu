@@ -35,17 +35,18 @@ int level11();
 int level12();
 int level13();
 int level14();
+int postfix();
 
 /***************** lead-in functions *******************/
 
 int constexpr(val) int *val; {
-  int const;
+  int cnst;
   int *before, *start;
   setstage(&before, &start);
-  expression(&const, val);
+  expression(&cnst, val);
   clearstage(before, 0);     /* scratch generated code */
-  if(const == 0) error("must be constant expression");
-  return const;
+  if(cnst == 0) error("must be constant expression");
+  return cnst;
   }
 
 int expression(con, val) int *con, *val;  {
@@ -190,8 +191,9 @@ int level11(is) int is[]; {return down("+ -",         11, level12, is);}
 int level12(is) int is[]; {return down("* / %",       13, level13, is);}
 
 int level13(is)  int is[];  {
-  int k;
+  int k, type, id, sz, stars, levels, save_ch, save_nch;
   char *ptr;
+  char *save_lptr;
   if(match("++")) {                 /* ++lval */
     if(level13(is) == 0) {
       needlval();
@@ -238,6 +240,45 @@ int level13(is)  int is[];  {
     is[CV] = 1;    /* omit fetch() on func call */
     return 1;
     }
+  else if(match("(")) {
+    save_lptr = lptr;
+    save_ch = ch;
+    save_nch = nch;
+    if(decltype(&type, &id, &sz)) {
+      stars = 0;
+      skipconst();
+      while(match("*")) {
+        ++stars;
+        skipconst();
+        }
+      levels = stars;
+      if(id == POINTER) ++levels;
+      if(levels) {
+        id = POINTER;
+        type = ptrtype(type, levels - 1);
+        }
+      need(")");
+      k = level13(is);
+      if(k) fetch(is);
+      is[ST] = is[TC] = is[CV] = is[SA] = 0;
+      if(id == POINTER) {
+        is[TI] = UINT;
+        is[TA] = type;
+        }
+      else {
+        is[TI] = type;
+        if(isptrtype(type)) is[TA] = ptrbasetype(type);
+        else                is[TA] = 0;
+        }
+      return 0;
+      }
+    lptr = save_lptr;
+    ch = save_ch;
+    nch = save_nch;
+    do k = level1(is); while(match(","));
+    need(")");
+    return postfix(is, k);
+    }
   else if(amatch("sizeof", 6)) {    /* sizeof() */
     int sz, p, i;  char *ptr, sname[NAMESIZE];
     if(match("(")) p = 1;
@@ -253,6 +294,18 @@ int level13(is)  int is[];  {
         }
       }
     if(sz) {if(match("*"))          sz = BPW;}
+    else if(match("*")) {
+      if(symname(sname)
+      && ((ptr = findloc(sname)) ||
+          (ptr = findglb(sname)))
+      && ptr[IDENT] != FUNCTION
+      && ptr[IDENT] != LABEL) {
+        if(ptr[IDENT] == POINTER || ptr[IDENT] == ARRAY)
+             sz = typesize(ptr[TYPE], VARIABLE);
+        else if(isptrtype(ptr[TYPE]))
+             sz = typesize(ptrbasetype(ptr[TYPE]), VARIABLE);
+        }
+      }
     else if(symname(sname)
          && ((ptr = findloc(sname)) ||
              (ptr = findglb(sname)))
@@ -300,66 +353,71 @@ int level13(is)  int is[];  {
     }
   }
 
-int level14(is)  int *is; {
-  int k, const, val, elsz;
+int postfix(is, k) int is[], k; {
+  int elsz;
+  int is2[7];
   char *ptr, *before, *start;
-  k = primary(is);
   ptr = is[ST];
   blanks();
-  if(ch == '[' || ch == '(' || ch == '.' || streq(lptr, "->")) {
-    int is2[7];                     /* allocate only if needed */
-    while(1) {
-      if(match("[")) {              /* [subscript] */
-        if(ptr == 0) {
-          error("can't subscript");
-          skip();
-          need("]");
-          return 0;
-          }
-        if(is[TA]) {if(k) fetch(is);}
-        else       {error("can't subscript"); k = 0;}
-        setstage(&before, &start);
-        is2[TC] = 0;
-        down2(0, 0, level1, is2, is2);
+  while(1) {
+    if(match("[")) {              /* [subscript] */
+      if(ptr == 0) {
+        error("can't subscript");
+        skip();
         need("]");
-        if(is2[TC]) {
-          clearstage(before, 0);
-          if(is2[CV]) {             /* only add if non-zero */
-            elsz = typesize(is[TA], VARIABLE);
-            gen(GETw2n, is2[CV] * elsz);
-            gen(ADD12, 0);
-            }
-          }
-        else {
+        return 0;
+        }
+      if(is[TA]) {if(k) fetch(is);}
+      else       {error("can't subscript"); k = 0;}
+      setstage(&before, &start);
+      is2[TC] = 0;
+      down2(0, 0, level1, is2, is2);
+      need("]");
+      if(is2[TC]) {
+        clearstage(before, 0);
+        if(is2[CV]) {             /* only add if non-zero */
           elsz = typesize(is[TA], VARIABLE);
-          scale1(elsz);
+          gen(GETw2n, is2[CV] * elsz);
           gen(ADD12, 0);
           }
-        is[TI] = is[TA];
-        if(isptrtype(is[TI])) is[TA] = ptrbasetype(is[TI]);
-        else                  is[TA] = 0;
-        k = 1;
         }
-      else if(match("(")) {         /* function(...) */
-        if(ptr == 0) callfunc(0);
-        else if(ptr[IDENT] != FUNCTION) {
-          if(k && !is[CV]) fetch(is);
-          callfunc(0);
-          }
-        else callfunc(ptr);
-        k = is[ST] = is[TC] = is[CV] = 0;
+      else {
+        elsz = typesize(is[TA], VARIABLE);
+        scale1(elsz);
+        gen(ADD12, 0);
         }
-      else if(match("->")) {
-        k = memberaccess(is, k, 1);
-        ptr = is[ST];
-        }
-      else if(match(".")) {
-        k = memberaccess(is, k, 0);
-        ptr = is[ST];
-        }
-      else return k;
+      is[TI] = is[TA];
+      if(isptrtype(is[TI])) is[TA] = ptrbasetype(is[TI]);
+      else                  is[TA] = 0;
+      k = 1;
       }
+    else if(match("(")) {         /* function(...) */
+      if(ptr == 0) callfunc(0);
+      else if(ptr[IDENT] != FUNCTION) {
+        if(k && !is[CV]) fetch(is);
+        callfunc(0);
+        }
+      else callfunc(ptr);
+      k = is[ST] = is[TC] = is[CV] = 0;
+      }
+    else if(match("->")) {
+      k = memberaccess(is, k, 1);
+      ptr = is[ST];
+      }
+    else if(match(".")) {
+      k = memberaccess(is, k, 0);
+      ptr = is[ST];
+      }
+    else return k;
     }
+  }
+
+int level14(is)  int *is; {
+  int k;
+  char *ptr;
+  k = primary(is);
+  k = postfix(is, k);
+  ptr = is[ST];
   if(ptr && ptr[IDENT] == FUNCTION) {
     gen(POINT1m, ptr);
     is[ST] = 0;
@@ -473,18 +531,18 @@ int experr() {
   }
  
 int callfunc(ptr)  char *ptr; {      /* symbol table entry or 0 */
-  int nargs, const, val;
+  int nargs, cnst, val;
   nargs = 0;
   blanks();                      /* already saw open paren */
   while(streq(lptr, ")") == 0) {
     if(endst()) break;
     if(ptr) {
-      expression(&const, &val);
+      expression(&cnst, &val);
       gen(PUSH1, 0);
       }
     else {
       gen(PUSH1, 0);
-      expression(&const, &val);
+      expression(&cnst, &val);
       gen(SWAP1s, 0);            /* don't push addr */
       }
     nargs = nargs + BPW;         /* count args*BPW */
@@ -623,6 +681,7 @@ int number(value)  int *value; {
       k = k*8 + (inbyte() - '0');
     }
   else while (isdigit(ch)) k = k*10 + (inbyte() - '0');
+  if(ch == 'u' || ch == 'U') inbyte();
   if(minus) {
     *value = -k;
     return (INT);

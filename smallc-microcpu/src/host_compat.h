@@ -54,6 +54,7 @@ int sc_fputc(sc_word ch, sc_word stream);
 
 #define abort(code) exit((int)(code))
 
+#ifndef SMALLC_SELFHOST
 #ifndef SMALLC_NO_INT_REMAP
 #define inline sc_inline
 #define const sc_const
@@ -64,7 +65,6 @@ int sc_fputc(sc_word ch, sc_word stream);
 #define fgets(buf, size, stream) sc_fgets((buf), (sc_word)(size), (sc_word)(stream))
 #define fputs(text, stream) sc_fputs((text), (sc_word)(stream))
 #define fputc(ch, stream) sc_fputc((sc_word)(ch), (sc_word)(stream))
-#ifndef SMALLC_SELFHOST
 #include "smallc_proto.h"
 #endif
 #endif

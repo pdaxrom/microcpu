@@ -9,8 +9,10 @@ exists now; future backend changes must update this file.
 - `int`: 16-bit signed two's-complement value.
 - `unsigned`: 16-bit unsigned value.
 - `char`: 8-bit value.
-- `void`: only supported as a function return type and as an empty parameter
-  list marker in declarations such as `f(void)`.
+- `void`: supported as a function return type and as an empty parameter list
+  marker in declarations such as `f(void)`.  `void *` is currently accepted as
+  a pointer-sized compatibility type, but the compiler does not enforce full
+  C `void *` type rules.
 - Plain `char`: unsigned 8-bit value.  Loads zero-extend to 16 bits.
 - Pointer: 16-bit byte address.
 - Pointer depth is represented by repeated 16-bit pointer objects.  For
@@ -19,6 +21,8 @@ exists now; future backend changes must update this file.
 - `sizeof(int) == 2`, `sizeof(unsigned) == 2`, `sizeof(char) == 1`,
   `sizeof(pointer) == 2`.
 - `sizeof` on arrays returns the byte size of the whole array object.
+  `sizeof(*p)` is supported for pointer expressions and returns the byte size
+  of the pointed-to object.
 - The target memory is byte-addressed.  Word loads and stores use two
   little-endian bytes.  Byte loads and stores use `ldrl` and `strl`.
 - `int *` arithmetic is scaled by 2 bytes, so `p + 1` points to the next
@@ -42,6 +46,10 @@ declarator shape; they do not create distinct ABI types.
 `const` is currently accepted as a source-compatibility qualifier and ignored
 for storage and code generation.  It does not imply read-only placement and is
 not enforced by assignment diagnostics yet.
+
+Simple C-style casts are accepted for scalar and pointer-shaped values.  They
+adjust the compiler's expression type metadata, but do not emit numeric
+conversion code beyond the ordinary expression load.
 
 Identifiers are significant to 31 characters in the compiler symbol tables.
 
@@ -142,7 +150,8 @@ unresolved `extern` declarations are left for `microlink`.  File-scope
 marked `public`.  If an externally visible assembler symbol would exceed the
 current object-file symbol-name limit, the backend emits a deterministic
 shortened form consisting of the leading underscore, a readable prefix, and a
-hash suffix.  Definitions and references use the same shortened name.
+hash suffix plus a collision suffix.  Definitions and references use the same
+shortened name, and colliding long names are assigned different object symbols.
 
 Compiler-generated numeric labels use the form `_<number>`.  Literal/string
 data labels use the same numeric label space.  String literals are emitted as

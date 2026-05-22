@@ -29,10 +29,10 @@
 #define NUMLOCS   25
 #define STARTLOC  symtab
 #define ENDLOC    (symtab+NUMLOCS*SYMAVG)
-#define NUMGLBS   200
+#define NUMGLBS   300
 #define STARTGLB  ENDLOC
 #define ENDGLB    (ENDLOC+(NUMGLBS-1)*SYMMAX)
-#define SYMTBSZ   9000  /* (NUMLOCS*SYMAVG + NUMGLBS*SYMMAX) */
+#define SYMTBSZ   13000  /* (NUMLOCS*SYMAVG + NUMGLBS*SYMMAX) */
 
 /*
 ** system wide name size (for symbols)
@@ -150,6 +150,11 @@
 #define MAXFIELDS 160
 #define STRUCTBASE 64
 #define PTRBASE 96
+
+/*
+** object backend symbol-shortening table
+*/
+#define MAXOBJNAMES 200
  
 /*
 ** statement types
