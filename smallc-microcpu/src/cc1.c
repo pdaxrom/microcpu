@@ -253,7 +253,11 @@ int declglb(type, class)  int type, class; {
       else if(match("["))  {id = ARRAY; dim = needsub();}
       }
     if     (class == EXTERNAL) external(ssname, type >> 2, id);
-    else if(   id != FUNCTION) initials(type >> 2, id, dim);
+    else if(   id != FUNCTION) {
+      initials(type >> 2, id, dim);
+      if(id == ARRAY && dim == 0)
+        dim = litptr / (type >> 2);
+      }
     if(id == POINTER) 
          addsym(ssname, id, type, BPW, 0, &glbptr, class);
     else addsym(ssname, id, type, dim * (type >> 2), 0, &glbptr, class);

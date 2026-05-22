@@ -214,4 +214,16 @@ __sar16_next:
 	b	__sar16_loop
 
 __switch:
+	ldr	v1, lr, 0
+	add	lr, lr, 2
+	ne	v1, 0
+	b	__switch_no_match
+	ldr	v2, lr, 0
+	add	lr, lr, 2
+	ne	v2, v0
+	b	__switch_match
+	b	__switch
+__switch_match:
+	mov	pc, v1
+__switch_no_match:
 	rts

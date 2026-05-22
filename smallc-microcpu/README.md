@@ -71,6 +71,8 @@ The current backend is intentionally small and supports:
 - `while`
 - `for` and `do`/`while`
 - `break` and `continue`
+- `goto` and labels
+- `switch`, `case`, `default`, `break` from switch, and case fallthrough
 - direct function calls, nested calls, and calls using locals/globals
 - integer comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - basic `int *`: address of global `int`, dereference, store through pointer
@@ -79,7 +81,11 @@ The current backend is intentionally small and supports:
 - scaled `int *` arithmetic and `p[i]` syntax
 - global and local `char` arrays
 - `char *` indexing and stores
-- zero-terminated string literals
+- global scalar and array initializers
+- char arrays initialized from strings
+- zero-terminated string literals and escapes: `\n`, `\r`, `\t`, octal
+  escapes including `\0`, `\\`, and `\"`
+- `sizeof` for `char`, `int`, pointers, and arrays
 - `strlen(char *)` through `runtime/string.asm`
 - multiply, divide, and modulo through runtime helpers
 
@@ -95,6 +101,8 @@ Intentionally unsupported at this stage:
 - structs, unions, typedefs, enums
 - `long`, `float`, and full libc
 - optimizer/register allocator
+- function pointers
+- hexadecimal `\xHH` string escapes
 - self-hosting
 - full libc beyond the current small runtime helpers
 

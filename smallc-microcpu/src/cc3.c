@@ -561,6 +561,7 @@ int litchar() {
   gch();
   switch(ch) {
     case 'n': gch(); return NEWLINE;
+    case 'r': gch(); return 13; /* CR */
     case 't': gch(); return  9;  /* HT */
     case 'b': gch(); return  8;  /* BS */
     case 'f': gch(); return 12;  /* FF */

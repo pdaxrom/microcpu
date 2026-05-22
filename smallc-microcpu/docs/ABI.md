@@ -13,6 +13,7 @@ exists now; future backend changes must update this file.
 - Pointer: 16-bit byte address.
 - `sizeof(int) == 2`, `sizeof(unsigned) == 2`, `sizeof(char) == 1`,
   `sizeof(pointer) == 2`.
+- `sizeof` on arrays returns the byte size of the whole array object.
 - The target memory is byte-addressed.  Word loads and stores use two
   little-endian bytes.  Byte loads and stores use `ldrl` and `strl`.
 - `int *` arithmetic is scaled by 2 bytes, so `p + 1` points to the next
@@ -107,6 +108,30 @@ emitted as `_g`.
 Compiler-generated numeric labels use the form `_<number>`.  Literal/string
 data labels use the same numeric label space.  String literals are emitted as
 zero-terminated byte data in the function's literal pool.
+
+## Initialized Data
+
+Global `int` data is emitted as little-endian 16-bit words with `dw`.  Global
+`char` data is emitted as bytes with `db`.  Default-initialized storage is
+emitted with `ds`.
+
+Global scalar and array initializers are laid out in declaration order.
+`char s[] = "ABC";` emits four bytes: `65, 66, 67, 0`, and the recorded array
+size is 4 bytes.  String literals used in expressions are emitted in the
+function literal pool and are also zero-terminated.
+
+Supported string escapes are `\n`, `\r`, `\t`, `\b`, `\f`, octal escapes
+including `\0`, and escaped ordinary characters such as `\\` and `\"`.
+Hexadecimal `\xHH` escapes are not supported yet.
+
+## Switch
+
+`switch` evaluates the controlling expression into `v0`, then calls
+`__switch`.  The compiler emits a linear table of case-label addresses and
+case values after the switch body.  `__switch` scans that table and transfers
+control to the first matching case label, or returns to the default/no-match
+path when no case matches.  Cases therefore retain normal C fallthrough
+semantics, and `break` exits the current switch.
 
 ## Runtime Helpers
 
