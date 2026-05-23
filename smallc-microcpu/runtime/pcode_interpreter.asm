@@ -7,6 +7,14 @@ include ../../asm/include/pseudo.inc
 
 extern __pcode_entry
 
+public __pcd_vstk
+public __pcd_vstkend
+public __pcd_frames
+public __pcd_frame0
+public __pcd_frameend
+public __pcd_nstk
+public __pcd_nstktop
+
 PCODE_FRAME_SIZE	equ	64
 PCODE_CALL_DEPTH	equ	16
 PCODE_STACK_BYTES	equ	512
@@ -652,12 +660,19 @@ __pcd_native:
 	dw	0
 
 	align	1
+__pcd_vstk:
 __pcode_stack:
 	ds	PCODE_STACK_BYTES
+__pcd_vstkend:
+__pcd_frames:
 __pcode_frames:
 	ds	PCODE_FRAME_SIZE
+__pcd_frame0:
 __pcode_frame0:
 	ds	PCODE_FRAME_SIZE * PCODE_CALL_DEPTH
+__pcd_frameend:
+__pcd_nstk:
 __pcode_native_stack:
 	ds	512
+__pcd_nstktop:
 __pcode_native_stktop:

@@ -311,12 +311,29 @@ halts in a self-branch with
 16-bit address space.  `_fopen` is currently a smoke stub that returns 0; no
 filesystem ABI is defined yet.
 
+The hosted smoke runtime exports object-safe diagnostic aliases for the runner:
+`__hst_lasterr`, `__hst_allocsz`, `__hst_hstart`, `__hst_hcur`, `__hst_hend`,
+`__hst_service`, and `__hst_fhandle`.  These correspond to
+`__hosted_last_error`, `__hosted_last_alloc_size`, `__hosted_heap_start`,
+`__hosted_heap_cur`, `__hosted_heap_end`, `__hosted_fail_service`, and
+`__hosted_fail_file_handle` in the smoke report.  On heap exhaustion the runtime
+also emits a UART diagnostic line:
+
+```text
+HD <error> <requested-size> <heap-current> <heap-start> <heap-end> <service>
+```
+
+Service id `1` currently means `_calloc`.
+
 For microcpu p-code tests the linked image starts in
 `runtime/pcode_interpreter.asm`.  When p-code `main` returns, the interpreter
 places the final 16-bit result in native `v0` and branches to the usual
 `__test_halt` self-branch.  The current interpreter uses fixed internal areas:
 512 bytes for the p-code operand stack, 16 call frames, and 64 bytes per
-p-code frame.  The object-format-visible entry symbol is `__pcode_entry`,
+p-code frame.  For memory-map diagnostics it exports `__pcd_vstk`,
+`__pcd_vstkend`, `__pcd_frames`, `__pcd_frame0`, `__pcd_frameend`,
+`__pcd_nstk`, and `__pcd_nstktop`.  The object-format-visible entry symbol is
+`__pcode_entry`,
 defined only by the p-code object that contains `main`; it contains a word
 relocation to the linked p-code `_main` address.  P-code objects do not define
 duplicate `__pcode_start`/`__pcode_end` symbols.  Public and external p-code

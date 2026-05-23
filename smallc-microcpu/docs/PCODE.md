@@ -396,9 +396,25 @@ implements simple UART `fgetc`/`fgets`/`fputc`/`fputs`, ASCII ctype helpers,
 small string helpers, and a bump `calloc` that starts after `__pcd_gend`.
 `fopen` still returns 0 because no filesystem model exists yet.  `calloc`
 halts with `V0=0xca10` if allocation would pass the hosted heap limit or wrap
-the 16-bit address space.
+the 16-bit address space.  On heap failure it also writes a compact UART
+diagnostic line:
+
+```text
+HD <error> <requested-size> <heap-current> <heap-start> <heap-end> <service>
+```
+
+The execution runner parses that line and writes
+`build/selfhost-pcode-exec/memory-map.txt`.  The map reports linked object
+ranges, p-code bytecode/data ranges, largest exported writable p-code globals,
+VM/native stack ranges, hosted heap diagnostic symbols, and overlap checks.  The
+diagnostic symbols use short object-format aliases such as `__hst_lasterr`,
+`__hst_allocsz`, `__hst_hstart`, `__hst_hcur`, `__hst_hend`, and
+`__hst_service`; the report maps them back to longer hosted-runtime names.
 
 The current execution smoke is report-only and intentionally honest: both
 split tools start, print the Small-C banner through UART, and then hit
-`V0=0xca10` before processing the tiny input.  This means the immediate blocker
-has moved from bytecode/link size to runtime RAM footprint and data layout.
+`V0=0xca10` before processing the tiny input.  The current diagnostics classify
+the failures as `smallcpp` running out of heap on the 13,000-byte `symtab`
+allocation and `smallcc` running out of heap on the 1,600-byte `stage`
+allocation.  This means the immediate blocker has moved from bytecode/link size
+to runtime RAM footprint and data layout.

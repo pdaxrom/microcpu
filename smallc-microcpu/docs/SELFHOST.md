@@ -236,27 +236,36 @@ The p-code execution smoke is:
 make -C smallc-microcpu selfhost-pcode-exec-smoke
 ```
 
-It writes `build/selfhost-pcode-exec/report.txt` and remains report-only unless
+It writes `build/selfhost-pcode-exec/report.txt` and
+`build/selfhost-pcode-exec/memory-map.txt`, and remains report-only unless
 `STRICT=1` is set.  The target relinks each split image from the same direct
 p-code object set used by link smoke, but with `runtime/hosted_io.asm`, a tiny
 native hosted layer that maps standard streams to UART and treats UART RX byte
 `0x04` as EOF.  It does not provide a real filesystem; `fopen` still returns 0.
+The memory map includes linked object ranges, p-code bytecode/data ranges,
+largest exported writable p-code globals, VM/native stack ranges, hosted heap
+diagnostics, and overlap checks.
 
 Current execution status:
 
 - `smallcpp`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is about
-  46.4 KB.
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,750
+  bytes.  The hosted diagnostic identifies the failed allocation as the
+  13,000-byte compiler symbol table (`symtab`), requested after earlier
+  `smallcpp` table allocations left only 286 bytes below the hosted heap guard.
 - `smallcc`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is about
-  63.2 KB.
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 63,529
+  bytes.  The hosted diagnostic identifies the failed allocation as the
+  1,600-byte staging buffer (`stage`), with 742 bytes left below the hosted
+  heap guard.
 
 `V0=0xca10` is the hosted runtime's explicit heap-exhaustion marker.  The
 minimal bump allocator starts after `__pcd_gend` and refuses allocations that
 would pass the `0xfde0` MMIO guard or wrap the 16-bit address space.  The next
 selfhost blocker is therefore not missing bytecode lowering or basic hosted
-I/O, but the runtime RAM footprint of the compiler tables.  Solving that
-requires smaller/lazier tables, a different data layout, or an explicitly
+I/O, but the runtime RAM footprint of the compiler tables and generated p-code
+globals.  Solving that requires smaller/lazier tables, moving unneeded static
+tables out of each split image, a different data layout, or an explicitly
 larger hosted memory model.
 
 The global symbol table was raised from 200 to 300 entries only after the
