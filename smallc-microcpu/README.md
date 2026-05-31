@@ -159,6 +159,10 @@ native backend output for each host p-code test.  `test-pcode-microemu` writes
 the target-side size report to `build/pcode-microemu/size-report.txt`, and
 `test-pcode-native` writes `build/pcode-native/size-report.txt`.  See
 `docs/PCODE.md` for the VM encoding and link model.
+Self-host p-code reports also include measurement-only peephole candidates such
+as same-temp store/load pairs, constant branch opportunities, branch-to-branch
+sites, and hottest local/temp slots.  These diagnostics do not change emitted
+bytecode; they are there to guide the next optimizer pass.
 
 To measure whether p-code helps the self-hosting size problem without trying
 to run a target-hosted compiler yet:

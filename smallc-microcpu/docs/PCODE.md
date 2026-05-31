@@ -156,7 +156,14 @@ The current pass is deliberately local and safe:
 The pass does not do global value numbering, constant folding, dead-code
 elimination, inlining, or branch threading.  Reports include opcode
 histograms, common opcode pairs, largest p-code functions, short/long branch
-counts, and optimizer byte savings.
+counts, and optimizer byte savings.  The self-host size reports also include
+diagnostic-only peephole candidates after the current pass: same-temp
+store/load and load/store pairs, how many same-temp store/load pairs the
+current liveness-limited pass can still remove, constant conditional branches,
+`JMP` to the next instruction, branch-to-branch sites, rough local byte-saving
+estimates, and the hottest local/temp slots by load/store count.  These
+diagnostics are intentionally measurement-only; they do not change emitted
+bytecode.
 
 ## Indirect calls
 

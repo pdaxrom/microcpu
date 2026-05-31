@@ -128,8 +128,14 @@ def compute_temp_liveness(
 
 
 def removable_temp_roundtrips(lines: list[PcaLine]) -> set[int]:
+    remove_lines, _counts = removable_temp_roundtrip_details(lines)
+    return remove_lines
+
+
+def removable_temp_roundtrip_details(lines: list[PcaLine]) -> tuple[set[int], Counter[str]]:
     code, _line_to_code, code_to_line, labels, functions = build_code_maps(lines)
     remove_lines: set[int] = set()
+    counts: Counter[str] = Counter()
     for temp in TEMP_OFFSETS:
         _live_before, live_after = compute_temp_liveness(code, labels, functions, temp)
         for index in range(0, len(code) - 1):
@@ -145,7 +151,8 @@ def removable_temp_roundtrips(lines: list[PcaLine]) -> set[int]:
                 continue
             remove_lines.add(code_to_line[index])
             remove_lines.add(code_to_line[index + 1])
-    return remove_lines
+            counts[temp] += 1
+    return remove_lines, counts
 
 
 def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]:
@@ -197,8 +204,106 @@ def literal_bytes(data: list[int], data_labels: dict[str, int]) -> int:
     return total
 
 
+def pca_line_size(line: PcaLine, insn: pcode.Insn) -> int:
+    if line.op == "iconst":
+        value = pcode.parse_int(line.args[0])
+        if value in (-1, 0, 1, 2):
+            return 1
+        if -128 <= value <= 127:
+            return 2
+        return 3
+    return insn.size
+
+
+def analyze_peephole_candidates(
+    lines: list[PcaLine],
+    insns: list[pcode.Insn],
+) -> dict[str, object]:
+    code, _line_to_code, _code_to_line, labels, _functions = build_code_maps(lines)
+    label_to_index = {label: index for index, names in labels.items() for label in names}
+    temp_loads: Counter[str] = Counter()
+    temp_stores: Counter[str] = Counter()
+    store_load_pairs: Counter[str] = Counter()
+    load_store_pairs: Counter[str] = Counter()
+    const_branch_to_jump = 0
+    const_branch_remove = 0
+    jump_to_next = 0
+    branch_to_branch = 0
+    estimated_savings = 0
+    _remove_lines, removable_by_temp = removable_temp_roundtrip_details(lines)
+
+    for line in code:
+        if line.op == "llocal":
+            temp_loads[line.args[0]] += 1
+        elif line.op == "slocal":
+            temp_stores[line.args[0]] += 1
+
+    for index in range(0, len(code) - 1):
+        first = code[index]
+        second = code[index + 1]
+        if first.op == "slocal" and second.op == "llocal" and first.args == second.args:
+            store_load_pairs[first.args[0]] += 1
+        if first.op == "llocal" and second.op == "slocal" and first.args == second.args:
+            load_store_pairs[first.args[0]] += 1
+
+        if first.op == "iconst" and second.op in ("jz", "jnz"):
+            if labels.get(index) or labels.get(index + 1):
+                continue
+            value = pcode.parse_int(first.args[0])
+            first_size = pca_line_size(first, insns[index])
+            second_size = insns[index + 1].size
+            always_taken = (second.op == "jz" and value == 0) or (second.op == "jnz" and value != 0)
+            always_not_taken = (second.op == "jz" and value != 0) or (second.op == "jnz" and value == 0)
+            if always_taken:
+                const_branch_to_jump += 1
+                estimated_savings += first_size
+            elif always_not_taken:
+                const_branch_remove += 1
+                estimated_savings += first_size + second_size
+
+    for index, line in enumerate(code):
+        if line.op not in BRANCH_OPS:
+            continue
+        target = label_to_index.get(line.args[0])
+        if target is None:
+            continue
+        if line.op == "jmp" and target == index + 1:
+            jump_to_next += 1
+            estimated_savings += insns[index].size
+        if 0 <= target < len(code) and code[target].op == "jmp":
+            branch_to_branch += 1
+
+    temp_rows: list[tuple[str, int, int, int, int, int]] = []
+    for temp in sorted(set(temp_loads) | set(temp_stores), key=lambda item: int(item, 0)):
+        loads = temp_loads[temp]
+        stores = temp_stores[temp]
+        temp_rows.append((
+            temp,
+            loads,
+            stores,
+            store_load_pairs[temp],
+            load_store_pairs[temp],
+            removable_by_temp[temp],
+        ))
+    temp_rows.sort(key=lambda item: item[1] + item[2], reverse=True)
+
+    estimated_savings += sum(removable_by_temp.values()) * 2
+    return {
+        "temp_slot_accesses": temp_rows,
+        "store_load_pairs": sum(store_load_pairs.values()),
+        "load_store_pairs": sum(load_store_pairs.values()),
+        "removable_store_load_pairs": sum(removable_by_temp.values()),
+        "const_branch_to_jump": const_branch_to_jump,
+        "const_branch_remove": const_branch_remove,
+        "jump_to_next": jump_to_next,
+        "branch_to_branch": branch_to_branch,
+        "peephole_estimated_savings": estimated_savings,
+    }
+
+
 def analyze_pca(path: pathlib.Path) -> dict[str, object]:
     entry, insns, _labels, data_labels, data = pcode.parse_pca(path)
+    lines = read_pca_lines(path)
     bytecode_bytes = sum(insn.size for insn in insns)
     histogram: Counter[str] = Counter(insn.op for insn in insns)
     opcode_bytes: Counter[str] = Counter()
@@ -263,11 +368,11 @@ def analyze_pca(path: pathlib.Path) -> dict[str, object]:
     ncall_count = histogram["ncall"]
     natives = {insn.args[0] for insn in insns if insn.op == "ncall"}
 
-    code, _line_to_code, _code_to_line, _labels_by_code, _functions = build_code_maps(read_pca_lines(path))
+    code, _line_to_code, _code_to_line, _labels_by_code, _functions = build_code_maps(lines)
     function_sizes: Counter[str] = Counter()
     current_function = "(prelude)"
     code_index = 0
-    for line in read_pca_lines(path):
+    for line in lines:
         if line.op in ("func", "static_func"):
             current_function = line.args[0]
         elif line.op in NON_CODE_OPS or line.op in CODE_LABEL_OPS:
@@ -277,6 +382,8 @@ def analyze_pca(path: pathlib.Path) -> dict[str, object]:
                 function_sizes[current_function] += insns[code_index].size
                 code_index += 1
 
+    peephole = analyze_peephole_candidates(lines, insns)
+
     return {
         "entry": entry,
         "bytecode_bytes": bytecode_bytes,
@@ -285,7 +392,7 @@ def analyze_pca(path: pathlib.Path) -> dict[str, object]:
         "native_table_bytes": len(natives) * 2,
         "metadata_bytes": 4,
         "payload_bytes": bytecode_bytes + len(data) + len(natives) * 2,
-        "function_count": sum(1 for line in read_pca_lines(path) if line.op in ("func", "static_func")),
+        "function_count": sum(1 for line in lines if line.op in ("func", "static_func")),
         "global_count": len([name for name in data_labels if not LITERAL_LABEL_RE.match(name)]),
         "opcode_histogram": histogram,
         "opcode_bytes": opcode_bytes,
@@ -306,6 +413,15 @@ def analyze_pca(path: pathlib.Path) -> dict[str, object]:
         "slocal_short": slocal_short,
         "slocal_s8": slocal_s8,
         "slocal_u16": slocal_u16,
+        "temp_slot_accesses": peephole["temp_slot_accesses"],
+        "store_load_pairs": peephole["store_load_pairs"],
+        "load_store_pairs": peephole["load_store_pairs"],
+        "removable_store_load_pairs": peephole["removable_store_load_pairs"],
+        "const_branch_to_jump": peephole["const_branch_to_jump"],
+        "const_branch_remove": peephole["const_branch_remove"],
+        "jump_to_next": peephole["jump_to_next"],
+        "branch_to_branch": peephole["branch_to_branch"],
+        "peephole_estimated_savings": peephole["peephole_estimated_savings"],
     }
 
 
@@ -329,6 +445,27 @@ def format_analysis(stats: dict[str, object], indent: str = "  ") -> list[str]:
         f"sshort={stats['slocal_short']} ss8={stats['slocal_s8']} su16={stats['slocal_u16']}"
     )
     lines.append(f"{indent}temp store/load roundtrips: {stats['temp_roundtrips']}")
+    lines.append(f"{indent}peephole candidates:")
+    lines.append(
+        f"{indent}  store/load same temp: {stats['store_load_pairs']} "
+        f"(current pass removable: {stats['removable_store_load_pairs']})"
+    )
+    lines.append(f"{indent}  load/store same temp: {stats['load_store_pairs']}")
+    lines.append(
+        f"{indent}  constant branches: to-jump={stats['const_branch_to_jump']} "
+        f"remove={stats['const_branch_remove']}"
+    )
+    lines.append(
+        f"{indent}  jump-to-next={stats['jump_to_next']} "
+        f"branch-to-branch={stats['branch_to_branch']}"
+    )
+    lines.append(f"{indent}  estimated local savings: {stats['peephole_estimated_savings']} bytes")
+    lines.append(f"{indent}top local/temp slots:")
+    for temp, loads, stores, store_load, load_store, removable in stats["temp_slot_accesses"][:8]:
+        lines.append(
+            f"{indent}  {temp}: loads={loads} stores={stores} "
+            f"store/load={store_load} load/store={load_store} removable={removable}"
+        )
     lines.append(f"{indent}largest functions:")
     for name, size in stats["top_functions"]:
         lines.append(f"{indent}  {name}: {size}")

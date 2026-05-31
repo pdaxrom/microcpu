@@ -369,6 +369,14 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "pcode_opt_saved": 0,
         "pcode_opt_before": 0,
         "pcode_opt_after": 0,
+        "peephole_estimated_savings": 0,
+        "store_load_pairs": 0,
+        "removable_store_load_pairs": 0,
+        "load_store_pairs": 0,
+        "const_branch_to_jump": 0,
+        "const_branch_remove": 0,
+        "jump_to_next": 0,
+        "branch_to_branch": 0,
     }
 
     argv = [str(args.preprocessor), "-o", str(i_path)]
@@ -412,6 +420,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
             write_encoded_pcode_object_asm(pcode_asm, encoded, name)
             pcode_obj_ok, pcode_obj_size = assemble_object(args.assembler, pcode_asm, pcode_obj, log_path)
             counts = pca_counts(pca_path)
+            analysis = pcode_opt.analyze_pca(pca_path)
             bytecode_bytes = bytecode_size(encoded.bytecode)
             native_table_bytes = 0
             result.update({
@@ -429,6 +438,14 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                 "pcode_obj_size": pcode_obj_size,
                 "payload_bytes": bytecode_bytes + len(encoded.data) + native_table_bytes,
                 "natives": encoded.natives,
+                "peephole_estimated_savings": int(analysis["peephole_estimated_savings"]),
+                "store_load_pairs": int(analysis["store_load_pairs"]),
+                "removable_store_load_pairs": int(analysis["removable_store_load_pairs"]),
+                "load_store_pairs": int(analysis["load_store_pairs"]),
+                "const_branch_to_jump": int(analysis["const_branch_to_jump"]),
+                "const_branch_remove": int(analysis["const_branch_remove"]),
+                "jump_to_next": int(analysis["jump_to_next"]),
+                "branch_to_branch": int(analysis["branch_to_branch"]),
             })
             if not pcode_obj_ok:
                 result["reason"] = "p-code object assembly failed"
@@ -488,6 +505,14 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "failed": 0,
         "opt_removed": 0,
         "opt_saved": 0,
+        "peephole_estimated_savings": 0,
+        "store_load_pairs": 0,
+        "removable_store_load_pairs": 0,
+        "load_store_pairs": 0,
+        "const_branch_to_jump": 0,
+        "const_branch_remove": 0,
+        "jump_to_next": 0,
+        "branch_to_branch": 0,
     }
     for source in sources:
         item = results[source.stem]
@@ -507,6 +532,14 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["globals"] += int(item["globals"])
         total["opt_removed"] += int(item["pcode_opt_removed"])
         total["opt_saved"] += int(item["pcode_opt_saved"])
+        total["peephole_estimated_savings"] += int(item["peephole_estimated_savings"])
+        total["store_load_pairs"] += int(item["store_load_pairs"])
+        total["removable_store_load_pairs"] += int(item["removable_store_load_pairs"])
+        total["load_store_pairs"] += int(item["load_store_pairs"])
+        total["const_branch_to_jump"] += int(item["const_branch_to_jump"])
+        total["const_branch_remove"] += int(item["const_branch_remove"])
+        total["jump_to_next"] += int(item["jump_to_next"])
+        total["branch_to_branch"] += int(item["branch_to_branch"])
     return total
 
 
@@ -530,6 +563,15 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
         fp.write(f"  optimizer bytecode saved: {result['pcode_opt_saved']}\n")
     else:
         fp.write("  p-code optimizer: disabled\n")
+    fp.write("  peephole diagnostics:\n")
+    fp.write(f"    store/load same temp: {result['store_load_pairs']}\n")
+    fp.write(f"    current pass removable: {result['removable_store_load_pairs']}\n")
+    fp.write(f"    load/store same temp: {result['load_store_pairs']}\n")
+    fp.write(f"    constant branches to jump: {result['const_branch_to_jump']}\n")
+    fp.write(f"    constant branches removable: {result['const_branch_remove']}\n")
+    fp.write(f"    jump-to-next: {result['jump_to_next']}\n")
+    fp.write(f"    branch-to-branch: {result['branch_to_branch']}\n")
+    fp.write(f"    estimated local savings: {result['peephole_estimated_savings']} bytes\n")
     fp.write(f"  p-code global data bytes: {result['global_data_bytes']}\n")
     fp.write(f"  string/literal bytes: {result['literal_bytes']}\n")
     fp.write(f"  native call table bytes: {result['native_table_bytes']}\n")
@@ -571,6 +613,15 @@ def write_group_report(
     fp.write(f"  p-code bytecode bytes: {total['bytecode']}\n")
     fp.write(f"  optimizer removed temp store/load pairs: {total['opt_removed']}\n")
     fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")
+    fp.write("  peephole candidates after current optimizer:\n")
+    fp.write(f"    store/load same temp: {total['store_load_pairs']}\n")
+    fp.write(f"    current pass removable: {total['removable_store_load_pairs']}\n")
+    fp.write(f"    load/store same temp: {total['load_store_pairs']}\n")
+    fp.write(f"    constant branches to jump: {total['const_branch_to_jump']}\n")
+    fp.write(f"    constant branches removable: {total['const_branch_remove']}\n")
+    fp.write(f"    jump-to-next: {total['jump_to_next']}\n")
+    fp.write(f"    branch-to-branch: {total['branch_to_branch']}\n")
+    fp.write(f"    estimated local savings: {total['peephole_estimated_savings']} bytes\n")
     fp.write(f"  p-code global data bytes: {total['data']}\n")
     fp.write(f"  string/literal bytes: {total['literal']}\n")
     fp.write(f"  native call table bytes: {total['native_table']}\n")

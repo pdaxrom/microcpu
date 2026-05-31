@@ -205,6 +205,13 @@ p-code-hosted compiler.  Current report-only measurements show:
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
+The size smoke also reports diagnostic-only peephole candidates after the
+current optimizer.  The current pass has already consumed the simple proven
+`slocal 0/2; llocal 0/2` roundtrips, so remaining same-temp store/load pairs
+are not removed yet.  They identify where a future basic-block or stack-effect
+optimizer should focus; branch-to-branch counts similarly show candidates for a
+future branch-threading pass without changing bytecode today.
+
 The p-code link smoke is:
 
 ```sh
