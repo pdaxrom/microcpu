@@ -731,6 +731,8 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
         with log_path.open("a") as log:
             log.write("== pcode-opt ==\n")
             log.write(f"removed_temp_roundtrips={stats['removed_temp_roundtrips']}\n")
+            log.write(f"rewritten_store_load_roundtrips={stats['rewritten_store_load_roundtrips']}\n")
+            log.write(f"rewrite_byte_savings={stats['rewrite_byte_savings']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")
             log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")

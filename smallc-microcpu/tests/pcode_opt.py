@@ -155,22 +155,66 @@ def removable_temp_roundtrip_details(lines: list[PcaLine]) -> tuple[set[int], Co
     return remove_lines, counts
 
 
+def local_access_size(temp: str) -> int:
+    value = pcode.parse_int(temp)
+    if 0 <= value <= 3:
+        return 1
+    if -128 <= value <= 127:
+        return 2
+    return 3
+
+
+def rewrite_store_load_roundtrips(lines: list[PcaLine]) -> tuple[list[PcaLine], Counter[str], int]:
+    code, _line_to_code, code_to_line, labels, _functions = build_code_maps(lines)
+    rewrites: dict[int, PcaLine] = {}
+    counts: Counter[str] = Counter()
+    saved = 0
+    for index in range(0, len(code) - 1):
+        first = code[index]
+        second = code[index + 1]
+        if first.op != "slocal" or second.op != "llocal" or first.args != second.args:
+            continue
+        if labels.get(index + 1):
+            continue
+        temp = first.args[0]
+        lload_size = local_access_size(temp)
+        if lload_size <= 1:
+            continue
+        rewrites[code_to_line[index]] = PcaLine("dup", [])
+        rewrites[code_to_line[index + 1]] = PcaLine("slocal", [temp])
+        counts[temp] += 1
+        saved += lload_size - 1
+    if not rewrites:
+        return list(lines), counts, 0
+    return [rewrites.get(index, line) for index, line in enumerate(lines)], counts, saved
+
+
 def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]:
     total_removed = 0
+    total_rewritten = 0
+    total_rewrite_saved = 0
     passes = 0
     current = list(lines)
     while True:
         remove_lines = removable_temp_roundtrips(current)
-        if not remove_lines:
+        removed = len(remove_lines) // 2
+        if remove_lines:
+            current = [line for index, line in enumerate(current) if index not in remove_lines]
+        current, rewrite_counts, rewrite_saved = rewrite_store_load_roundtrips(current)
+        rewritten = sum(rewrite_counts.values())
+        if not removed and not rewritten:
             break
-        current = [line for index, line in enumerate(current) if index not in remove_lines]
-        total_removed += len(remove_lines) // 2
+        total_removed += removed
+        total_rewritten += rewritten
+        total_rewrite_saved += rewrite_saved
         passes += 1
         if passes > 16:
             break
     return current, {
         "passes": passes,
         "removed_temp_roundtrips": total_removed,
+        "rewritten_store_load_roundtrips": total_rewritten,
+        "rewrite_byte_savings": total_rewrite_saved,
     }
 
 
@@ -183,6 +227,8 @@ def optimize_pca_file(input_path: pathlib.Path, output_path: pathlib.Path) -> di
     return {
         "passes": opt_stats["passes"],
         "removed_temp_roundtrips": opt_stats["removed_temp_roundtrips"],
+        "rewritten_store_load_roundtrips": opt_stats["rewritten_store_load_roundtrips"],
+        "rewrite_byte_savings": opt_stats["rewrite_byte_savings"],
         "bytecode_before": int(before["bytecode_bytes"]),
         "bytecode_after": int(after["bytecode_bytes"]),
         "bytecode_saved": int(before["bytecode_bytes"]) - int(after["bytecode_bytes"]),

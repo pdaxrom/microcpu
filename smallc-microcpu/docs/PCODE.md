@@ -146,6 +146,9 @@ The current pass is deliberately local and safe:
 - removes dead `slocal 0`/`llocal 0` and `slocal 2`/`llocal 2` temp
   roundtrips when a simple p-code liveness check proves the temp is not read
   before being overwritten or returning;
+- rewrites live `slocal t`/`llocal t` roundtrips to `dup`/`slocal t` only
+  when this preserves the later temp value, no label targets the load, and the
+  encoded local load would be larger than `DUP`;
 - keeps branch labels, function entries, and data labels as hard boundaries for
   the rewrite;
 - keeps branch relaxation in the encoder, so removed instructions can make
@@ -161,9 +164,7 @@ diagnostic-only peephole candidates after the current pass: same-temp
 store/load and load/store pairs, how many same-temp store/load pairs the
 current liveness-limited pass can still remove, constant conditional branches,
 `JMP` to the next instruction, branch-to-branch sites, rough local byte-saving
-estimates, and the hottest local/temp slots by load/store count.  These
-diagnostics are intentionally measurement-only; they do not change emitted
-bytecode.
+estimates, and the hottest local/temp slots by load/store count.
 
 ## Indirect calls
 

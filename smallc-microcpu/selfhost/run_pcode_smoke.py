@@ -366,6 +366,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "natives": [],
         "pcode_opt": False,
         "pcode_opt_removed": 0,
+        "pcode_opt_rewritten": 0,
         "pcode_opt_saved": 0,
         "pcode_opt_before": 0,
         "pcode_opt_after": 0,
@@ -406,6 +407,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                 result.update({
                     "pcode_opt": True,
                     "pcode_opt_removed": opt_stats["removed_temp_roundtrips"],
+                    "pcode_opt_rewritten": opt_stats["rewritten_store_load_roundtrips"],
                     "pcode_opt_saved": opt_stats["bytecode_saved"],
                     "pcode_opt_before": opt_stats["bytecode_before"],
                     "pcode_opt_after": opt_stats["bytecode_after"],
@@ -413,6 +415,8 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                 with log_path.open("a") as log:
                     log.write("== pcode-opt ==\n")
                     log.write(f"removed_temp_roundtrips={opt_stats['removed_temp_roundtrips']}\n")
+                    log.write(f"rewritten_store_load_roundtrips={opt_stats['rewritten_store_load_roundtrips']}\n")
+                    log.write(f"rewrite_byte_savings={opt_stats['rewrite_byte_savings']}\n")
                     log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
                     log.write(f"bytecode_after={opt_stats['bytecode_after']}\n")
                     log.write(f"bytecode_saved={opt_stats['bytecode_saved']}\n\n")
@@ -504,6 +508,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "globals": 0,
         "failed": 0,
         "opt_removed": 0,
+        "opt_rewritten": 0,
         "opt_saved": 0,
         "peephole_estimated_savings": 0,
         "store_load_pairs": 0,
@@ -531,6 +536,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["native_entries"] += int(item["native_entries"])
         total["globals"] += int(item["globals"])
         total["opt_removed"] += int(item["pcode_opt_removed"])
+        total["opt_rewritten"] += int(item["pcode_opt_rewritten"])
         total["opt_saved"] += int(item["pcode_opt_saved"])
         total["peephole_estimated_savings"] += int(item["peephole_estimated_savings"])
         total["store_load_pairs"] += int(item["store_load_pairs"])
@@ -558,6 +564,7 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
     if result["pcode_opt"]:
         fp.write("  p-code optimizer: enabled\n")
         fp.write(f"  optimizer removed temp store/load pairs: {result['pcode_opt_removed']}\n")
+        fp.write(f"  optimizer rewrote live temp store/load pairs: {result['pcode_opt_rewritten']}\n")
         fp.write(f"  optimizer bytecode before: {result['pcode_opt_before']}\n")
         fp.write(f"  optimizer bytecode after: {result['pcode_opt_after']}\n")
         fp.write(f"  optimizer bytecode saved: {result['pcode_opt_saved']}\n")
@@ -612,6 +619,7 @@ def write_group_report(
     fp.write(f"  runtime/libc object estimate: {runtime_size if needs_runtime else 0}\n")
     fp.write(f"  p-code bytecode bytes: {total['bytecode']}\n")
     fp.write(f"  optimizer removed temp store/load pairs: {total['opt_removed']}\n")
+    fp.write(f"  optimizer rewrote live temp store/load pairs: {total['opt_rewritten']}\n")
     fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")
     fp.write("  peephole candidates after current optimizer:\n")
     fp.write(f"    store/load same temp: {total['store_load_pairs']}\n")

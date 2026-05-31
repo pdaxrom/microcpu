@@ -270,6 +270,7 @@ def write_tool_report(fp, result: dict[str, object]) -> None:
     if opt_stats:
         fp.write("  optimizer: enabled\n")
         fp.write(f"  optimizer removed temp store/load pairs: {opt_stats['removed_temp_roundtrips']}\n")
+        fp.write(f"  optimizer rewrote live temp store/load pairs: {opt_stats['rewritten_store_load_roundtrips']}\n")
         fp.write(f"  optimizer bytecode before: {opt_stats['bytecode_before']}\n")
         fp.write(f"  optimizer bytecode after: {opt_stats['bytecode_after']}\n")
         fp.write(f"  optimizer bytecode saved: {opt_stats['bytecode_saved']}\n")

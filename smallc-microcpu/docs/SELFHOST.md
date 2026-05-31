@@ -196,21 +196,21 @@ It writes `build/selfhost-pcode/size-report.txt` and does not link or run a
 p-code-hosted compiler.  Current report-only measurements show:
 
 - `smallcpp`: all modules generate p-code.  Estimated p-code image is about
-  48.0 KB versus 87.1 KB summed native object size, roughly 39.1 KB smaller.
+  48.1 KB versus 87.1 KB summed native object size, roughly 39.0 KB smaller.
 - `smallcc`: all modules now generate p-code.  Estimated p-code image is about
-  65.1 KB versus 187.3 KB summed native object size, roughly 122.2 KB smaller.
+  65.6 KB versus 187.3 KB summed native object size, roughly 121.7 KB smaller.
   The p-code optimizer removes about 6.1K temp store/load roundtrips from
-  `smallcc` and saves about 12.4 KB of bytecode before link-time object
-  layout.
+  `smallcc`, rewrites a small number of live non-short local temp roundtrips,
+  and saves about 12.4 KB of bytecode before link-time object layout.
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
-The size smoke also reports diagnostic-only peephole candidates after the
-current optimizer.  The current pass has already consumed the simple proven
-`slocal 0/2; llocal 0/2` roundtrips, so remaining same-temp store/load pairs
-are not removed yet.  They identify where a future basic-block or stack-effect
-optimizer should focus; branch-to-branch counts similarly show candidates for a
-future branch-threading pass without changing bytecode today.
+The size smoke also reports remaining peephole candidates after the current
+optimizer.  Most remaining same-temp store/load pairs are short local-temp
+accesses where `dup; slocal` is not smaller than the original pair.  They
+identify where a future basic-block or stack-effect optimizer should focus;
+branch-to-branch counts similarly show candidates for a future branch-threading
+pass.
 
 The p-code link smoke is:
 
@@ -256,14 +256,14 @@ diagnostics, and overlap checks.
 Current execution status:
 
 - `smallcpp`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,750
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,744
   bytes.  The hosted diagnostic identifies the failed allocation as the
   13,000-byte compiler symbol table (`symtab`), requested after earlier
-  `smallcpp` table allocations left only 286 bytes below the hosted heap guard.
+  `smallcpp` table allocations left only 292 bytes below the hosted heap guard.
 - `smallcc`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 63,529
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 63,502
   bytes.  The hosted diagnostic identifies the failed allocation as the
-  1,600-byte staging buffer (`stage`), with 742 bytes left below the hosted
+  1,600-byte staging buffer (`stage`), with 770 bytes left below the hosted
   heap guard.
 
 `V0=0xca10` is the hosted runtime's explicit heap-exhaustion marker.  The
