@@ -80,6 +80,7 @@
 #define IK_ZLOCAL     52
 #define IK_SLOCAL0_S8 53
 #define IK_SLOCAL2_S8 54
+#define IK_LADD_LOCAL0_2 55
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -112,6 +113,7 @@
 #define OP_ADDR_LOCAL_S8    0x1c
 #define OP_ADDR_LOCAL_U16   0x1d
 #define OP_SLOCAL2_S8       0x1e
+#define OP_LADD_LOCAL0_2    0x1f
 #define OP_LGLOBAL_U16      0x20
 #define OP_SGLOBAL_U16      0x21
 #define OP_ADDR_GLOBAL_U16  0x22
@@ -387,6 +389,8 @@ static int insn_base_size(ip) struct Insn *ip; {
   case IK_SLOCAL0_S8:
   case IK_SLOCAL2_S8:
     return 2;
+  case IK_LADD_LOCAL0_2:
+    return 1;
   case IK_ADDI_U16:
     return 3;
   case IK_LLOCAL:
@@ -559,6 +563,9 @@ static void encode() {
       emit8(OP_SLOCAL2_S8);
       emit8(insn[i].a);
       break;
+    case IK_LADD_LOCAL0_2:
+      emit8(OP_LADD_LOCAL0_2);
+      break;
     case IK_LLOCAL:
     case IK_SLOCAL:
     case IK_ADDR_LOCAL:
@@ -697,6 +704,7 @@ static int parse_kind(op) char *op; {
   if(str_eq(op, "zlocal")) return IK_ZLOCAL;
   if(str_eq(op, "slocal0_s8")) return IK_SLOCAL0_S8;
   if(str_eq(op, "slocal2_s8")) return IK_SLOCAL2_S8;
+  if(str_eq(op, "ladd_local0_2")) return IK_LADD_LOCAL0_2;
   if(str_eq(op, "lbyte")) return IK_LBYTE;
   if(str_eq(op, "sbyte")) return IK_SBYTE;
   if(str_eq(op, "lword")) return IK_LWORD;
@@ -826,6 +834,10 @@ static int parse_file(path) char *path; {
     if(str_eq(op, "slocal2_s8")) {
       if(!next_token(&p, tok)) return fail("slocal2_s8 without value");
       add_insn(IK_SLOCAL2_S8, parse_int(tok), 0, 0);
+      continue;
+    }
+    if(str_eq(op, "ladd_local0_2")) {
+      add_insn(IK_LADD_LOCAL0_2, 0, 0, 0);
       continue;
     }
     if(str_eq(op, "llocal") || str_eq(op, "slocal") || str_eq(op, "addr_local")) {
@@ -1172,6 +1184,7 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_ADDI_U16: b = read16(&pc); a = pop(); push(a + b); break;
     case OP_SLOCAL0_S8: store_local(0, read_s8(&pc)); break;
     case OP_SLOCAL2_S8: store_local(2, read_s8(&pc)); break;
+    case OP_LADD_LOCAL0_2: push(load_local(0) + load_local(2)); break;
     case OP_DROP: pop(); break;
     case OP_DUP: a = pop(); push(a); push(a); break;
     case OP_SWAP: a = pop(); b = pop(); push(a); push(b); break;

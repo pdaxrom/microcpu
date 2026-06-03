@@ -65,6 +65,7 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$1c` | `ADDR_LOCAL_S8` | signed byte offset |
 | `$1d` | `ADDR_LOCAL_U16` | signed 16-bit offset |
 | `$1e` | `SLOCAL2_S8` | signed byte |
+| `$1f` | `LADD_LOCAL0_2` | none |
 | `$20` | `LGLOBAL_U16` | 16-bit data address |
 | `$21` | `SGLOBAL_U16` | 16-bit data address |
 | `$22` | `ADDR_GLOBAL_U16` | 16-bit data address |
@@ -181,6 +182,8 @@ The current pass is deliberately local and safe:
   of the single-byte `ICONST_M1/0/1/2` forms;
 - rewrites adjacent `iconst 0`/`slocal <offset>` pairs to `ZLOCAL_*` zero-store
   opcodes when no label targets the `slocal`;
+- rewrites adjacent `llocal 0`/`llocal 2`/`add` triples to `LADD_LOCAL0_2`
+  when no label targets the removed instructions;
 - emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, `CALL2_U16`, and
   `CALL3_U16` for the common 0, 1, 2, and 3 argument cases;
 - emits compact object-mode native-call forms `NCALL0_ADDR_U16`,
@@ -332,11 +335,11 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..049`: constants, local/global loads and stores, local/global
+`pcode-tests/001..050`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls including compact `CALL0/1/2/3_U16`, conditional
 branches, arithmetic/logical comparisons, byte/word memory operations,
 `DROP`/`DUP`/`SWAP`, `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`,
-`SLOCAL0_S8`, `SLOCAL2_S8`, `ZLOCAL_*`,
+`SLOCAL0_S8`, `SLOCAL2_S8`, `ZLOCAL_*`, `LADD_LOCAL0_2`,
 `RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
 `NCALL0/1/2/3_ADDR_U16`, and `ICALL_U8`.
 `switch` is lowered by the p-code backend into an explicit compare-and-branch
@@ -458,6 +461,6 @@ The current execution smoke is report-only and intentionally honest: both
 split tools start, print the Small-C banner through UART, and then hit
 `V0=0xca10` before processing the tiny input.  The current diagnostics classify
 the failures as `smallcpp` running out of heap on the 13,000-byte `symtab`
-allocation and `smallcc` running out of heap on the 1,600-byte `stage`
+allocation and `smallcc` running out of heap on the 8,192-byte `litq`
 allocation.  This means the immediate blocker has moved from bytecode/link size
 to runtime RAM footprint and data layout.

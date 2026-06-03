@@ -172,7 +172,9 @@ rewrites `iconst <s8>; add/sub/eq` to compact `ADDI_S8`, `SUBI_S8`, and
 `EQI_S8`, rewrites larger `iconst <u16>; add` pairs to `ADDI_U16`, and
 rewrites common `iconst <s8>; slocal 0/2` pairs to `SLOCAL0_S8`/`SLOCAL2_S8`
 when that is smaller.  It also rewrites `iconst 0; slocal <offset>` pairs to
-compact `ZLOCAL_*` zero-local stores when no label targets the store.
+compact `ZLOCAL_*` zero-local stores when no label targets the store.  A
+common `llocal 0; llocal 2; add` lowering pattern is compacted to
+`LADD_LOCAL0_2` when no label targets the removed instructions.
 The object-mode encoder uses
 compact `NCALL0/1/2/3_ADDR_U16` forms for common native calls with 0, 1, 2, or
 3 arguments.
@@ -221,7 +223,7 @@ The memory map reports linked object ranges, p-code bytecode/data ranges, VM
 and native stack ranges, hosted heap diagnostics, and overlap checks.  The
 current blocker is now classified precisely: `smallcpp` fails a 13,000-byte
 `symtab` allocation after earlier table allocations, and `smallcc` fails the
-1,600-byte `stage` allocation with only a few hundred bytes left below the
+8,192-byte literal pool (`litq`) allocation with about 1.4 KB left below the
 hosted heap guard.  The next work is reducing runtime RAM footprint/data
 layout, not p-code bytecode link size.
 
