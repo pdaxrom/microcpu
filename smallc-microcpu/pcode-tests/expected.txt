@@ -46,3 +46,4 @@
 046_opt_subi_eqi 46
 047_opt_addi_u16 500
 048_opt_zlocal 48
+049_opt_slocal_const 49

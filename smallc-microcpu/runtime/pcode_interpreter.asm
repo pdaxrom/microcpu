@@ -55,6 +55,7 @@ __pcode_loop:
 	pcode_dispatch	$0c, __pcode_op_subi_s8
 	pcode_dispatch	$0d, __pcode_op_eqi_s8
 	pcode_dispatch	$0e, __pcode_op_addi_u16
+	pcode_dispatch	$0f, __pcode_op_slocal0_s8
 	pcode_dispatch	$10, __pcode_op_llocal_0
 	pcode_dispatch	$11, __pcode_op_llocal_1
 	pcode_dispatch	$12, __pcode_op_llocal_2
@@ -69,6 +70,7 @@ __pcode_loop:
 	pcode_dispatch	$1b, __pcode_op_slocal_u16
 	pcode_dispatch	$1c, __pcode_op_addr_local_s8
 	pcode_dispatch	$1d, __pcode_op_addr_local_u16
+	pcode_dispatch	$1e, __pcode_op_slocal2_s8
 	pcode_dispatch	$20, __pcode_op_lglobal_u16
 	pcode_dispatch	$21, __pcode_op_sglobal_u16
 	pcode_dispatch	$22, __pcode_op_addr_global_u16
@@ -192,6 +194,10 @@ __pcode_op_addi_u16:
 	add	v0, v0, v1
 	bsr	__pcode_push_v0
 	b	__pcode_loop
+__pcode_op_slocal0_s8:
+	bsr	__pcode_fetch_s8
+	str	v0, v4, 0
+	b	__pcode_loop
 
 __pcode_op_llocal_0:
 	ldr	v0, v4, 0
@@ -258,6 +264,10 @@ __pcode_op_addr_local_u16:
 	bsr	__pcode_fetch_u16
 	add	v0, v4, v0
 	bsr	__pcode_push_v0
+	b	__pcode_loop
+__pcode_op_slocal2_s8:
+	bsr	__pcode_fetch_s8
+	str	v0, v4, 2
 	b	__pcode_loop
 
 __pcode_op_lglobal_u16:

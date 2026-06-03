@@ -78,6 +78,8 @@
 #define IK_EQI        50
 #define IK_ADDI_U16   51
 #define IK_ZLOCAL     52
+#define IK_SLOCAL0_S8 53
+#define IK_SLOCAL2_S8 54
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -94,6 +96,7 @@
 #define OP_SUBI_S8          0x0c
 #define OP_EQI_S8           0x0d
 #define OP_ADDI_U16         0x0e
+#define OP_SLOCAL0_S8       0x0f
 #define OP_LLOCAL_0         0x10
 #define OP_LLOCAL_1         0x11
 #define OP_LLOCAL_2         0x12
@@ -108,6 +111,7 @@
 #define OP_SLOCAL_U16       0x1b
 #define OP_ADDR_LOCAL_S8    0x1c
 #define OP_ADDR_LOCAL_U16   0x1d
+#define OP_SLOCAL2_S8       0x1e
 #define OP_LGLOBAL_U16      0x20
 #define OP_SGLOBAL_U16      0x21
 #define OP_ADDR_GLOBAL_U16  0x22
@@ -380,6 +384,8 @@ static int insn_base_size(ip) struct Insn *ip; {
   case IK_ADDI:
   case IK_SUBI:
   case IK_EQI:
+  case IK_SLOCAL0_S8:
+  case IK_SLOCAL2_S8:
     return 2;
   case IK_ADDI_U16:
     return 3;
@@ -545,6 +551,14 @@ static void encode() {
       emit8(OP_EQI_S8);
       emit8(insn[i].a);
       break;
+    case IK_SLOCAL0_S8:
+      emit8(OP_SLOCAL0_S8);
+      emit8(insn[i].a);
+      break;
+    case IK_SLOCAL2_S8:
+      emit8(OP_SLOCAL2_S8);
+      emit8(insn[i].a);
+      break;
     case IK_LLOCAL:
     case IK_SLOCAL:
     case IK_ADDR_LOCAL:
@@ -681,6 +695,8 @@ static int parse_kind(op) char *op; {
   if(str_eq(op, "subi")) return IK_SUBI;
   if(str_eq(op, "eqi")) return IK_EQI;
   if(str_eq(op, "zlocal")) return IK_ZLOCAL;
+  if(str_eq(op, "slocal0_s8")) return IK_SLOCAL0_S8;
+  if(str_eq(op, "slocal2_s8")) return IK_SLOCAL2_S8;
   if(str_eq(op, "lbyte")) return IK_LBYTE;
   if(str_eq(op, "sbyte")) return IK_SBYTE;
   if(str_eq(op, "lword")) return IK_LWORD;
@@ -800,6 +816,16 @@ static int parse_file(path) char *path; {
     if(str_eq(op, "eqi")) {
       if(!next_token(&p, tok)) return fail("eqi without value");
       add_insn(IK_EQI, parse_int(tok), 0, 0);
+      continue;
+    }
+    if(str_eq(op, "slocal0_s8")) {
+      if(!next_token(&p, tok)) return fail("slocal0_s8 without value");
+      add_insn(IK_SLOCAL0_S8, parse_int(tok), 0, 0);
+      continue;
+    }
+    if(str_eq(op, "slocal2_s8")) {
+      if(!next_token(&p, tok)) return fail("slocal2_s8 without value");
+      add_insn(IK_SLOCAL2_S8, parse_int(tok), 0, 0);
       continue;
     }
     if(str_eq(op, "llocal") || str_eq(op, "slocal") || str_eq(op, "addr_local")) {
@@ -1144,6 +1170,8 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_SUBI_S8: b = read_s8(&pc); a = pop(); push(a - b); break;
     case OP_EQI_S8: b = read_s8(&pc); a = pop(); push((a & 0xffff) == (b & 0xffff)); break;
     case OP_ADDI_U16: b = read16(&pc); a = pop(); push(a + b); break;
+    case OP_SLOCAL0_S8: store_local(0, read_s8(&pc)); break;
+    case OP_SLOCAL2_S8: store_local(2, read_s8(&pc)); break;
     case OP_DROP: pop(); break;
     case OP_DUP: a = pop(); push(a); push(a); break;
     case OP_SWAP: a = pop(); b = pop(); push(a); push(b); break;

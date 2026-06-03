@@ -170,8 +170,9 @@ inverts `conditional; jmp; label` pairs, and threads branches through
 intermediate `jmp` instructions when the encoded branch does not grow.  It also
 rewrites `iconst <s8>; add/sub/eq` to compact `ADDI_S8`, `SUBI_S8`, and
 `EQI_S8`, rewrites larger `iconst <u16>; add` pairs to `ADDI_U16`, and
-rewrites `iconst 0; slocal <offset>` pairs to compact `ZLOCAL_*` zero-local
-stores when no label targets the store.
+rewrites common `iconst <s8>; slocal 0/2` pairs to `SLOCAL0_S8`/`SLOCAL2_S8`
+when that is smaller.  It also rewrites `iconst 0; slocal <offset>` pairs to
+compact `ZLOCAL_*` zero-local stores when no label targets the store.
 The object-mode encoder uses
 compact `NCALL0/1/2/3_ADDR_U16` forms for common native calls with 0, 1, 2, or
 3 arguments.

@@ -29,6 +29,7 @@ OP_ADDI_S8 = 0x0B
 OP_SUBI_S8 = 0x0C
 OP_EQI_S8 = 0x0D
 OP_ADDI_U16 = 0x0E
+OP_SLOCAL0_S8 = 0x0F
 OP_LLOCAL_0 = 0x10
 OP_LLOCAL_1 = 0x11
 OP_LLOCAL_2 = 0x12
@@ -43,6 +44,7 @@ OP_LLOCAL_U16 = 0x1A
 OP_SLOCAL_U16 = 0x1B
 OP_ADDR_LOCAL_S8 = 0x1C
 OP_ADDR_LOCAL_U16 = 0x1D
+OP_SLOCAL2_S8 = 0x1E
 OP_LGLOBAL_U16 = 0x20
 OP_SGLOBAL_U16 = 0x21
 OP_ADDR_GLOBAL_U16 = 0x22
@@ -320,6 +322,8 @@ def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None
         return 2
     if op == "addi_u16":
         return 3
+    if op in ("slocal0_s8", "slocal2_s8"):
+        return 2
     if op in ("llocal", "slocal", "zlocal"):
         value = parse_int(insn.args[0])
         if 0 <= value <= 3:
@@ -510,6 +514,16 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
             if not -128 <= value <= 127:
                 raise ValueError(f"eqi operand out of range: {value}")
             out.extend([OP_EQI_S8, value & 0xFF])
+        elif op == "slocal0_s8":
+            value = parse_int(args[0])
+            if not -128 <= value <= 127:
+                raise ValueError(f"slocal0_s8 operand out of range: {value}")
+            out.extend([OP_SLOCAL0_S8, value & 0xFF])
+        elif op == "slocal2_s8":
+            value = parse_int(args[0])
+            if not -128 <= value <= 127:
+                raise ValueError(f"slocal2_s8 operand out of range: {value}")
+            out.extend([OP_SLOCAL2_S8, value & 0xFF])
         elif op in ("llocal", "slocal", "zlocal"):
             value = parse_int(args[0])
             if op == "llocal" and 0 <= value <= 3:
@@ -806,6 +820,7 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
             log.write(f"addi_u16_rewrites={stats['addi_u16_rewrites']}\n")
             log.write(f"subi_s8_rewrites={stats['subi_s8_rewrites']}\n")
             log.write(f"eqi_s8_rewrites={stats['eqi_s8_rewrites']}\n")
+            log.write(f"slocal_const_s8_rewrites={stats['slocal_const_s8_rewrites']}\n")
             log.write(f"zlocal_rewrites={stats['zlocal_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")

@@ -281,6 +281,7 @@ def write_tool_report(fp, result: dict[str, object]) -> None:
         fp.write(f"  optimizer iconst/add to addi_u16 rewrites: {opt_stats['addi_u16_rewrites']}\n")
         fp.write(f"  optimizer iconst/sub to subi_s8 rewrites: {opt_stats['subi_s8_rewrites']}\n")
         fp.write(f"  optimizer iconst/eq to eqi_s8 rewrites: {opt_stats['eqi_s8_rewrites']}\n")
+        fp.write(f"  optimizer iconst/slocal0,2 to slocal*_s8 rewrites: {opt_stats['slocal_const_s8_rewrites']}\n")
         fp.write(f"  optimizer iconst-zero/slocal to zlocal rewrites: {opt_stats['zlocal_rewrites']}\n")
         fp.write(f"  optimizer bytecode before: {opt_stats['bytecode_before']}\n")
         fp.write(f"  optimizer bytecode after: {opt_stats['bytecode_after']}\n")

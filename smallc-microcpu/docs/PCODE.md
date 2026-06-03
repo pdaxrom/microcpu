@@ -55,6 +55,7 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$0c` | `SUBI_S8` | signed byte |
 | `$0d` | `EQI_S8` | signed byte |
 | `$0e` | `ADDI_U16` | low byte, high byte |
+| `$0f` | `SLOCAL0_S8` | signed byte |
 | `$10..$13` | `LLOCAL_0..3` | none |
 | `$14..$17` | `SLOCAL_0..3` | none |
 | `$18` | `LLOCAL_S8` | signed byte offset |
@@ -63,6 +64,7 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$1b` | `SLOCAL_U16` | signed 16-bit offset |
 | `$1c` | `ADDR_LOCAL_S8` | signed byte offset |
 | `$1d` | `ADDR_LOCAL_U16` | signed 16-bit offset |
+| `$1e` | `SLOCAL2_S8` | signed byte |
 | `$20` | `LGLOBAL_U16` | 16-bit data address |
 | `$21` | `SGLOBAL_U16` | 16-bit data address |
 | `$22` | `ADDR_GLOBAL_U16` | 16-bit data address |
@@ -174,6 +176,9 @@ The current pass is deliberately local and safe:
 - rewrites adjacent `iconst <s8>`/`add`, `iconst <s8>`/`sub`, and
   `iconst <s8>`/`eq` pairs to compact `ADDI_S8`, `SUBI_S8`, and `EQI_S8`
   opcodes, and rewrites larger `iconst <u16>`/`add` pairs to `ADDI_U16`;
+- rewrites adjacent `iconst <s8>`/`slocal 0` and `iconst <s8>`/`slocal 2`
+  pairs to `SLOCAL0_S8` and `SLOCAL2_S8` when the constant is not already one
+  of the single-byte `ICONST_M1/0/1/2` forms;
 - rewrites adjacent `iconst 0`/`slocal <offset>` pairs to `ZLOCAL_*` zero-store
   opcodes when no label targets the `slocal`;
 - emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, `CALL2_U16`, and
@@ -327,10 +332,11 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..048`: constants, local/global loads and stores, local/global
+`pcode-tests/001..049`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls including compact `CALL0/1/2/3_U16`, conditional
 branches, arithmetic/logical comparisons, byte/word memory operations,
-`DROP`/`DUP`/`SWAP`, `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`, `ZLOCAL_*`,
+`DROP`/`DUP`/`SWAP`, `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`,
+`SLOCAL0_S8`, `SLOCAL2_S8`, `ZLOCAL_*`,
 `RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
 `NCALL0/1/2/3_ADDR_U16`, and `ICALL_U8`.
 `switch` is lowered by the p-code backend into an explicit compare-and-branch

@@ -375,15 +375,26 @@ def rewrite_immediate_s8(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str,
         "addi_u16_rewrites": 0,
         "subi_s8_rewrites": 0,
         "eqi_s8_rewrites": 0,
+        "slocal_const_s8_rewrites": 0,
     }
     for index in range(0, len(code) - 1):
         first = code[index]
         second = code[index + 1]
-        if first.op != "iconst" or second.op not in op_map:
+        if first.op != "iconst" or (second.op not in op_map and second.op != "slocal"):
             continue
         if labels.get(index + 1):
             continue
         value = pcode.parse_int(first.args[0])
+        if second.op == "slocal":
+            if second.args[0] == "0" and -128 <= value <= 127 and value not in (-1, 0, 1, 2):
+                replacements[code_to_line[index]] = PcaLine("slocal0_s8", [first.args[0]])
+                removals.add(code_to_line[index + 1])
+                counts["slocal_const_s8_rewrites"] += 1
+            elif second.args[0] == "2" and -128 <= value <= 127 and value not in (-1, 0, 1, 2):
+                replacements[code_to_line[index]] = PcaLine("slocal2_s8", [first.args[0]])
+                removals.add(code_to_line[index + 1])
+                counts["slocal_const_s8_rewrites"] += 1
+            continue
         if second.op == "add" and not -128 <= value <= 127:
             replacements[code_to_line[index]] = PcaLine("addi_u16", [first.args[0]])
             removals.add(code_to_line[index + 1])
@@ -446,6 +457,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
     total_addi_u16_rewrites = 0
     total_subi_rewrites = 0
     total_eqi_rewrites = 0
+    total_slocal_const_rewrites = 0
     total_zlocal_rewrites = 0
     passes = 0
     current = list(lines)
@@ -461,6 +473,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         addi_u16_rewrites = imm_rewrites["addi_u16_rewrites"]
         subi_rewrites = imm_rewrites["subi_s8_rewrites"]
         eqi_rewrites = imm_rewrites["eqi_s8_rewrites"]
+        slocal_const_rewrites = imm_rewrites["slocal_const_s8_rewrites"]
         current, zlocal_rewrites = rewrite_zero_local_stores(current)
         current, branch_stats = rewrite_branches(current)
         branch_changes = (
@@ -471,7 +484,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
             + branch_stats["inverted_branch_jumps"]
             + branch_stats["branch_threaded"]
         )
-        if not removed and not rewritten and not addi_rewrites and not addi_u16_rewrites and not subi_rewrites and not eqi_rewrites and not zlocal_rewrites and not branch_changes:
+        if not removed and not rewritten and not addi_rewrites and not addi_u16_rewrites and not subi_rewrites and not eqi_rewrites and not slocal_const_rewrites and not zlocal_rewrites and not branch_changes:
             break
         total_removed += removed
         total_rewritten += rewritten
@@ -480,6 +493,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         total_addi_u16_rewrites += addi_u16_rewrites
         total_subi_rewrites += subi_rewrites
         total_eqi_rewrites += eqi_rewrites
+        total_slocal_const_rewrites += slocal_const_rewrites
         total_zlocal_rewrites += zlocal_rewrites
         total_const_to_jump += branch_stats["const_branch_to_jump"]
         total_const_removed += branch_stats["const_branch_removed"]
@@ -500,6 +514,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         "addi_u16_rewrites": total_addi_u16_rewrites,
         "subi_s8_rewrites": total_subi_rewrites,
         "eqi_s8_rewrites": total_eqi_rewrites,
+        "slocal_const_s8_rewrites": total_slocal_const_rewrites,
         "zlocal_rewrites": total_zlocal_rewrites,
         "const_branch_to_jump": total_const_to_jump,
         "const_branch_removed": total_const_removed,
@@ -526,6 +541,7 @@ def optimize_pca_file(input_path: pathlib.Path, output_path: pathlib.Path) -> di
         "addi_u16_rewrites": opt_stats["addi_u16_rewrites"],
         "subi_s8_rewrites": opt_stats["subi_s8_rewrites"],
         "eqi_s8_rewrites": opt_stats["eqi_s8_rewrites"],
+        "slocal_const_s8_rewrites": opt_stats["slocal_const_s8_rewrites"],
         "zlocal_rewrites": opt_stats["zlocal_rewrites"],
         "const_branch_to_jump": opt_stats["const_branch_to_jump"],
         "const_branch_removed": opt_stats["const_branch_removed"],
