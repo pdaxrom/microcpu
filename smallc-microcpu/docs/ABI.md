@@ -290,9 +290,10 @@ pointers to native `NCALL` entries are not part of the current ABI.
 Native p-code calls use `NCALL` with the normal p-code argument convention.
 Host p-code tests still use compact native-table ids.  The microcpu object path
 uses `NCALL_ADDR_U16`, which stores an argument count byte followed by a
-relocatable 16-bit native function address.  Calls with 0, 1, or 2 arguments
-use the shorter `NCALL0_ADDR_U16`, `NCALL1_ADDR_U16`, or `NCALL2_ADDR_U16`
-forms, which omit the explicit argument-count byte.  For each native call, the
+relocatable 16-bit native function address.  Calls with 0, 1, 2, or 3 arguments
+use the shorter `NCALL0_ADDR_U16`, `NCALL1_ADDR_U16`, `NCALL2_ADDR_U16`, or
+`NCALL3_ADDR_U16` forms, which omit the explicit argument-count byte.  For each
+native call, the
 interpreter pops p-code arguments, rebuilds the ordinary native source-order
 argument stack, calls the native symbol, restores interpreter state, and pushes
 the 16-bit `v0` return value onto the p-code stack.  Native callees may use

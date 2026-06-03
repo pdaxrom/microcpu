@@ -86,6 +86,8 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$5b` | `NCALL0_ADDR_U16` | 16-bit native address |
 | `$5c` | `NCALL1_ADDR_U16` | 16-bit native address |
 | `$5d` | `NCALL2_ADDR_U16` | 16-bit native address |
+| `$5e` | `CALL3_U16` | 16-bit p-code address |
+| `$5f` | `NCALL3_ADDR_U16` | 16-bit native address |
 | `$60` | `ADD` | none |
 | `$61` | `SUB` | none |
 | `$62` | `AND` | none |
@@ -162,11 +164,11 @@ The current pass is deliberately local and safe:
   the rewrite;
 - keeps branch relaxation in the encoder, so removed instructions can make
   more `JMP`/`JZ`/`JNZ` operations use the short S8 forms;
-- emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, and `CALL2_U16`
-  for the common 0, 1, and 2 argument cases;
+- emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, `CALL2_U16`, and
+  `CALL3_U16` for the common 0, 1, 2, and 3 argument cases;
 - emits compact object-mode native-call forms `NCALL0_ADDR_U16`,
-  `NCALL1_ADDR_U16`, and `NCALL2_ADDR_U16` for the common 0, 1, and 2
-  argument native-call cases.
+  `NCALL1_ADDR_U16`, `NCALL2_ADDR_U16`, and `NCALL3_ADDR_U16` for the common
+  0, 1, 2, and 3 argument native-call cases.
 
 The pass does not do global value numbering, general constant folding,
 dead-code elimination, inlining, or global dataflow optimization.  Reports
@@ -249,11 +251,11 @@ p-code tests:
 
 The host interpreter still uses `NCALL_U8` with an in-memory native table.  The
 microcpu object path uses `NCALL_ADDR_U16`, which stores the argument count
-plus a relocatable absolute native function address.  Calls with 0, 1, or 2
-arguments use the shorter `NCALL0_ADDR_U16`, `NCALL1_ADDR_U16`, or
-`NCALL2_ADDR_U16` forms.  This avoids merging native tables across p-code
-objects and lets each module call runtime helpers or optional user native
-objects directly.
+plus a relocatable absolute native function address.  Calls with 0, 1, 2, or 3
+arguments use the shorter `NCALL0_ADDR_U16`, `NCALL1_ADDR_U16`,
+`NCALL2_ADDR_U16`, or `NCALL3_ADDR_U16` forms.  This avoids merging native
+tables across p-code objects and lets each module call runtime helpers or
+optional user native objects directly.
 
 Optional native objects are linked between the runtime and the p-code object:
 
@@ -314,10 +316,10 @@ in native `v0` and branches to `__test_halt`, so `microemu
 
 The microcpu interpreter currently covers the opcodes emitted by
 `pcode-tests/001..044`: constants, local/global loads and stores, local/global
-addressing, p-code direct calls including compact `CALL0/1/2_U16`, conditional
+addressing, p-code direct calls including compact `CALL0/1/2/3_U16`, conditional
 branches, arithmetic/logical comparisons, byte/word memory operations,
 `DROP`/`DUP`/`SWAP`, `RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
-`NCALL0/1/2_ADDR_U16`, and `ICALL_U8`.
+`NCALL0/1/2/3_ADDR_U16`, and `ICALL_U8`.
 `switch` is lowered by the p-code backend into an explicit compare-and-branch
 chain, not a dedicated VM opcode.
 

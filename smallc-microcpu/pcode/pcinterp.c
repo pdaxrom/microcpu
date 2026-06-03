@@ -123,6 +123,7 @@
 #define OP_CALL0_U16        0x58
 #define OP_CALL1_U16        0x59
 #define OP_CALL2_U16        0x5a
+#define OP_CALL3_U16        0x5e
 #define OP_ADD              0x60
 #define OP_SUB              0x61
 #define OP_AND              0x62
@@ -573,8 +574,9 @@ static void encode() {
       }
       break;
     case IK_CALL:
-      if(insn[i].a >= 0 && insn[i].a <= 2) {
-        emit8(OP_CALL0_U16 + insn[i].a);
+      if(insn[i].a >= 0 && insn[i].a <= 3) {
+        if(insn[i].a <= 2) emit8(OP_CALL0_U16 + insn[i].a);
+        else emit8(OP_CALL3_U16);
         emit16(symbol_addr(insn[i].name, SYM_CODE));
       } else {
         emit8(OP_CALL_U16);
@@ -1103,8 +1105,10 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_CALL0_U16:
     case OP_CALL1_U16:
     case OP_CALL2_U16:
+    case OP_CALL3_U16:
       target = read16(&pc);
-      argc = op - OP_CALL0_U16;
+      if(op == OP_CALL3_U16) argc = 3;
+      else argc = op - OP_CALL0_U16;
       if(fp + 1 >= MAX_FRAMES) return fail("call stack overflow");
       ++fp;
       frames[fp].ret_pc = pc;

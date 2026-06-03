@@ -23,6 +23,7 @@ from run_pcode_microemu import (  # noqa: E402
     OP_CALL0_U16,
     OP_CALL1_U16,
     OP_CALL2_U16,
+    OP_CALL3_U16,
     OP_DROP,
     OP_DUP,
     OP_ICONST_0,
@@ -247,6 +248,9 @@ def encode_pca_module(
             else:
                 if 0 <= argc <= 2:
                     out.append([OP_CALL0_U16, OP_CALL1_U16, OP_CALL2_U16][argc])
+                    emit_u16(out, labels[args[0]])
+                elif argc == 3:
+                    out.append(OP_CALL3_U16)
                     emit_u16(out, labels[args[0]])
                 else:
                     out.append(OP_CALL_U16)

@@ -65,6 +65,8 @@ OP_CALL2_U16 = 0x5A
 OP_NCALL0_ADDR_U16 = 0x5B
 OP_NCALL1_ADDR_U16 = 0x5C
 OP_NCALL2_ADDR_U16 = 0x5D
+OP_CALL3_U16 = 0x5E
+OP_NCALL3_ADDR_U16 = 0x5F
 
 SIMPLE_OPS = {
     "lbyte": OP_LBYTE,
@@ -322,15 +324,15 @@ def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None
         return insn.size
     if op == "call":
         argc = parse_int(insn.args[1])
-        return 3 if 0 <= argc <= 2 else 4
+        return 3 if 0 <= argc <= 3 else 4
     if op == "icall":
         return 2
     if op == "ncall":
         argc = parse_int(insn.args[1])
         pcode_targets = pcode_symbols if pcode_symbols is not None else set(labels.keys())
         if insn.args[0] in pcode_targets:
-            return 3 if 0 <= argc <= 2 else 4
-        return 3 if 0 <= argc <= 2 else 4
+            return 3 if 0 <= argc <= 3 else 4
+        return 3 if 0 <= argc <= 3 else 4
     if op in ("ret", "drop", "dup", "swap", "leave") or op in SIMPLE_OPS:
         return 1
     raise ValueError(f"unsupported p-code op for microemu: {op}")
@@ -529,6 +531,11 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
                 if target not in labels:
                     externs[target] = 1
                 emit_word_symbol(out, target)
+            elif argc == 3:
+                out.append(OP_CALL3_U16)
+                if target not in labels:
+                    externs[target] = 1
+                emit_word_symbol(out, target)
             else:
                 out.append(OP_CALL_U16)
                 if target not in labels:
@@ -543,12 +550,14 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
             if native in pcode_targets:
                 if 0 <= argc <= 2:
                     out.append(OP_CALL0_U16 + argc)
+                elif argc == 3:
+                    out.append(OP_CALL3_U16)
                 else:
                     out.append(OP_CALL_U16)
                 if native not in labels:
                     externs[native] = 1
                 emit_word_symbol(out, native)
-                if argc > 2:
+                if argc > 3:
                     out.append(argc & 0xFF)
             else:
                 if native not in native_ids:
@@ -556,6 +565,8 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
                     externs[native] = 1
                 if 0 <= argc <= 2:
                     out.append(OP_NCALL0_ADDR_U16 + argc)
+                elif argc == 3:
+                    out.append(OP_NCALL3_ADDR_U16)
                 else:
                     out.extend([OP_NCALL_ADDR_U16, argc & 0xFF])
                 emit_word_symbol(out, native)

@@ -202,7 +202,7 @@ p-code-hosted compiler.  Current report-only measurements show:
   The p-code optimizer removes about 6.1K temp store/load roundtrips from
   `smallcc`, rewrites a small number of live non-short local temp roundtrips,
   compacts local branch patterns, and uses compact object-mode native-call
-  forms for the common 0, 1, and 2 argument cases.
+  forms for the common 0, 1, 2, and 3 argument cases.
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
@@ -257,12 +257,12 @@ diagnostics, and overlap checks.
 Current execution status:
 
 - `smallcpp`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,708
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,745
   bytes.  The hosted diagnostic identifies the failed allocation as the
   13,000-byte compiler symbol table (`symtab`), requested after earlier
-  `smallcpp` table allocations left only 328 bytes below the hosted heap guard.
+  `smallcpp` table allocations left only 290 bytes below the hosted heap guard.
 - `smallcc`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 63,403
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 63,393
   bytes.  The hosted diagnostic identifies the failed allocation as the
   1,600-byte staging buffer (`stage`), with 868 bytes left below the hosted
   heap guard.
