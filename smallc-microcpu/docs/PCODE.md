@@ -54,6 +54,7 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$0b` | `ADDI_S8` | signed byte |
 | `$0c` | `SUBI_S8` | signed byte |
 | `$0d` | `EQI_S8` | signed byte |
+| `$0e` | `ADDI_U16` | low byte, high byte |
 | `$10..$13` | `LLOCAL_0..3` | none |
 | `$14..$17` | `SLOCAL_0..3` | none |
 | `$18` | `LLOCAL_S8` | signed byte offset |
@@ -169,7 +170,7 @@ The current pass is deliberately local and safe:
   more `JMP`/`JZ`/`JNZ` operations use the short S8 forms;
 - rewrites adjacent `iconst <s8>`/`add`, `iconst <s8>`/`sub`, and
   `iconst <s8>`/`eq` pairs to compact `ADDI_S8`, `SUBI_S8`, and `EQI_S8`
-  opcodes;
+  opcodes, and rewrites larger `iconst <u16>`/`add` pairs to `ADDI_U16`;
 - emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, `CALL2_U16`, and
   `CALL3_U16` for the common 0, 1, 2, and 3 argument cases;
 - emits compact object-mode native-call forms `NCALL0_ADDR_U16`,
@@ -321,10 +322,10 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..046`: constants, local/global loads and stores, local/global
+`pcode-tests/001..047`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls including compact `CALL0/1/2/3_U16`, conditional
 branches, arithmetic/logical comparisons, byte/word memory operations,
-`DROP`/`DUP`/`SWAP`, `ADDI_S8`, `SUBI_S8`, `EQI_S8`, `RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
+`DROP`/`DUP`/`SWAP`, `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`, `RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
 `NCALL0/1/2/3_ADDR_U16`, and `ICALL_U8`.
 `switch` is lowered by the p-code backend into an explicit compare-and-branch
 chain, not a dedicated VM opcode.

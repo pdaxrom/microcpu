@@ -28,6 +28,7 @@ OP_SWAP = 0x0A
 OP_ADDI_S8 = 0x0B
 OP_SUBI_S8 = 0x0C
 OP_EQI_S8 = 0x0D
+OP_ADDI_U16 = 0x0E
 OP_LLOCAL_0 = 0x10
 OP_LLOCAL_1 = 0x11
 OP_LLOCAL_2 = 0x12
@@ -311,6 +312,8 @@ def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None
         return 3
     if op in ("addi", "subi", "eqi"):
         return 2
+    if op == "addi_u16":
+        return 3
     if op in ("llocal", "slocal"):
         value = parse_int(insn.args[0])
         if 0 <= value <= 3:
@@ -487,6 +490,10 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
             if not -128 <= value <= 127:
                 raise ValueError(f"addi operand out of range: {value}")
             out.extend([OP_ADDI_S8, value & 0xFF])
+        elif op == "addi_u16":
+            value = parse_int(args[0])
+            out.append(OP_ADDI_U16)
+            emit_u16(out, value)
         elif op == "subi":
             value = parse_int(args[0])
             if not -128 <= value <= 127:
@@ -778,6 +785,7 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
             log.write(f"branch_threaded={stats['branch_threaded']}\n")
             log.write(f"branch_thread_byte_savings={stats['branch_thread_byte_savings']}\n")
             log.write(f"addi_s8_rewrites={stats['addi_s8_rewrites']}\n")
+            log.write(f"addi_u16_rewrites={stats['addi_u16_rewrites']}\n")
             log.write(f"subi_s8_rewrites={stats['subi_s8_rewrites']}\n")
             log.write(f"eqi_s8_rewrites={stats['eqi_s8_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")

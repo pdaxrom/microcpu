@@ -25,6 +25,7 @@ from run_pcode_microemu import (  # noqa: E402
     OP_CALL2_U16,
     OP_CALL3_U16,
     OP_ADDI_S8,
+    OP_ADDI_U16,
     OP_DROP,
     OP_DUP,
     OP_EQI_S8,
@@ -204,6 +205,10 @@ def encode_pca_module(
             if not -128 <= value <= 127:
                 raise ValueError(f"addi operand out of range: {value}")
             out.extend([OP_ADDI_S8, value & 0xFF])
+        elif op == "addi_u16":
+            value = parse_int(args[0])
+            out.append(OP_ADDI_U16)
+            emit_u16(out, value)
         elif op == "subi":
             value = parse_int(args[0])
             if not -128 <= value <= 127:
@@ -396,6 +401,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "pcode_opt_inverted": 0,
         "pcode_opt_branch_threaded": 0,
         "pcode_opt_addi": 0,
+        "pcode_opt_addiu16": 0,
         "pcode_opt_subi": 0,
         "pcode_opt_eqi": 0,
         "pcode_opt_saved": 0,
@@ -446,6 +452,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     "pcode_opt_inverted": opt_stats["inverted_branch_jumps"],
                     "pcode_opt_branch_threaded": opt_stats["branch_threaded"],
                     "pcode_opt_addi": opt_stats["addi_s8_rewrites"],
+                    "pcode_opt_addiu16": opt_stats["addi_u16_rewrites"],
                     "pcode_opt_subi": opt_stats["subi_s8_rewrites"],
                     "pcode_opt_eqi": opt_stats["eqi_s8_rewrites"],
                     "pcode_opt_saved": opt_stats["bytecode_saved"],
@@ -465,6 +472,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     log.write(f"branch_threaded={opt_stats['branch_threaded']}\n")
                     log.write(f"branch_thread_byte_savings={opt_stats['branch_thread_byte_savings']}\n")
                     log.write(f"addi_s8_rewrites={opt_stats['addi_s8_rewrites']}\n")
+                    log.write(f"addi_u16_rewrites={opt_stats['addi_u16_rewrites']}\n")
                     log.write(f"subi_s8_rewrites={opt_stats['subi_s8_rewrites']}\n")
                     log.write(f"eqi_s8_rewrites={opt_stats['eqi_s8_rewrites']}\n")
                     log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
@@ -566,6 +574,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "opt_inverted": 0,
         "opt_branch_threaded": 0,
         "opt_addi": 0,
+        "opt_addiu16": 0,
         "opt_subi": 0,
         "opt_eqi": 0,
         "opt_saved": 0,
@@ -603,6 +612,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["opt_inverted"] += int(item["pcode_opt_inverted"])
         total["opt_branch_threaded"] += int(item["pcode_opt_branch_threaded"])
         total["opt_addi"] += int(item["pcode_opt_addi"])
+        total["opt_addiu16"] += int(item["pcode_opt_addiu16"])
         total["opt_subi"] += int(item["pcode_opt_subi"])
         total["opt_eqi"] += int(item["pcode_opt_eqi"])
         total["opt_saved"] += int(item["pcode_opt_saved"])
@@ -640,6 +650,7 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
         fp.write(f"  optimizer inverted branch/jump pairs: {result['pcode_opt_inverted']}\n")
         fp.write(f"  optimizer threaded branches: {result['pcode_opt_branch_threaded']}\n")
         fp.write(f"  optimizer iconst/add to addi_s8 rewrites: {result['pcode_opt_addi']}\n")
+        fp.write(f"  optimizer iconst/add to addi_u16 rewrites: {result['pcode_opt_addiu16']}\n")
         fp.write(f"  optimizer iconst/sub to subi_s8 rewrites: {result['pcode_opt_subi']}\n")
         fp.write(f"  optimizer iconst/eq to eqi_s8 rewrites: {result['pcode_opt_eqi']}\n")
         fp.write(f"  optimizer bytecode before: {result['pcode_opt_before']}\n")
@@ -704,6 +715,7 @@ def write_group_report(
     fp.write(f"  optimizer inverted branch/jump pairs: {total['opt_inverted']}\n")
     fp.write(f"  optimizer threaded branches: {total['opt_branch_threaded']}\n")
     fp.write(f"  optimizer iconst/add to addi_s8 rewrites: {total['opt_addi']}\n")
+    fp.write(f"  optimizer iconst/add to addi_u16 rewrites: {total['opt_addiu16']}\n")
     fp.write(f"  optimizer iconst/sub to subi_s8 rewrites: {total['opt_subi']}\n")
     fp.write(f"  optimizer iconst/eq to eqi_s8 rewrites: {total['opt_eqi']}\n")
     fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")

@@ -44,3 +44,4 @@
 044_opt_loop 44
 045_opt_addi 45
 046_opt_subi_eqi 46
+047_opt_addi_u16 500

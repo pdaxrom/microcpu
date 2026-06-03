@@ -206,6 +206,7 @@ def compile_pcode(
             log.write(f"branch_threaded={stats['branch_threaded']}\n")
             log.write(f"branch_thread_byte_savings={stats['branch_thread_byte_savings']}\n")
             log.write(f"addi_s8_rewrites={stats['addi_s8_rewrites']}\n")
+            log.write(f"addi_u16_rewrites={stats['addi_u16_rewrites']}\n")
             log.write(f"subi_s8_rewrites={stats['subi_s8_rewrites']}\n")
             log.write(f"eqi_s8_rewrites={stats['eqi_s8_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")

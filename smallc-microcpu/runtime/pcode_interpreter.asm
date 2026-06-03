@@ -54,6 +54,7 @@ __pcode_loop:
 	pcode_dispatch	$0b, __pcode_op_addi_s8
 	pcode_dispatch	$0c, __pcode_op_subi_s8
 	pcode_dispatch	$0d, __pcode_op_eqi_s8
+	pcode_dispatch	$0e, __pcode_op_addi_u16
 	pcode_dispatch	$10, __pcode_op_llocal_0
 	pcode_dispatch	$11, __pcode_op_llocal_1
 	pcode_dispatch	$12, __pcode_op_llocal_2
@@ -178,6 +179,13 @@ __pcode_op_eqi_s8:
 	bsr	__pcode_pop_v0
 	beq	__pcode_true, v0, v1
 	b	__pcode_false
+__pcode_op_addi_u16:
+	bsr	__pcode_fetch_u16
+	mov	v1, v0
+	bsr	__pcode_pop_v0
+	add	v0, v0, v1
+	bsr	__pcode_push_v0
+	b	__pcode_loop
 
 __pcode_op_llocal_0:
 	ldr	v0, v4, 0

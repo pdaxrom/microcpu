@@ -76,6 +76,7 @@
 #define IK_ADDI       48
 #define IK_SUBI       49
 #define IK_EQI        50
+#define IK_ADDI_U16   51
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -91,6 +92,7 @@
 #define OP_ADDI_S8          0x0b
 #define OP_SUBI_S8          0x0c
 #define OP_EQI_S8           0x0d
+#define OP_ADDI_U16         0x0e
 #define OP_LLOCAL_0         0x10
 #define OP_LLOCAL_1         0x11
 #define OP_LLOCAL_2         0x12
@@ -372,6 +374,8 @@ static int insn_base_size(ip) struct Insn *ip; {
   case IK_SUBI:
   case IK_EQI:
     return 2;
+  case IK_ADDI_U16:
+    return 3;
   case IK_LLOCAL:
   case IK_SLOCAL:
   case IK_ADDR_LOCAL:
@@ -521,6 +525,10 @@ static void encode() {
       emit8(OP_ADDI_S8);
       emit8(insn[i].a);
       break;
+    case IK_ADDI_U16:
+      emit8(OP_ADDI_U16);
+      emit16(insn[i].a);
+      break;
     case IK_SUBI:
       emit8(OP_SUBI_S8);
       emit8(insn[i].a);
@@ -651,6 +659,7 @@ static int parse_kind(op) char *op; {
   if(str_eq(op, "dup")) return IK_DUP;
   if(str_eq(op, "swap")) return IK_SWAP;
   if(str_eq(op, "addi")) return IK_ADDI;
+  if(str_eq(op, "addi_u16")) return IK_ADDI_U16;
   if(str_eq(op, "subi")) return IK_SUBI;
   if(str_eq(op, "eqi")) return IK_EQI;
   if(str_eq(op, "lbyte")) return IK_LBYTE;
@@ -757,6 +766,11 @@ static int parse_file(path) char *path; {
     if(str_eq(op, "addi")) {
       if(!next_token(&p, tok)) return fail("addi without value");
       add_insn(IK_ADDI, parse_int(tok), 0, 0);
+      continue;
+    }
+    if(str_eq(op, "addi_u16")) {
+      if(!next_token(&p, tok)) return fail("addi_u16 without value");
+      add_insn(IK_ADDI_U16, parse_int(tok), 0, 0);
       continue;
     }
     if(str_eq(op, "subi")) {
@@ -1105,6 +1119,7 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_ADDI_S8: b = read_s8(&pc); a = pop(); push(a + b); break;
     case OP_SUBI_S8: b = read_s8(&pc); a = pop(); push(a - b); break;
     case OP_EQI_S8: b = read_s8(&pc); a = pop(); push((a & 0xffff) == (b & 0xffff)); break;
+    case OP_ADDI_U16: b = read16(&pc); a = pop(); push(a + b); break;
     case OP_DROP: pop(); break;
     case OP_DUP: a = pop(); push(a); push(a); break;
     case OP_SWAP: a = pop(); b = pop(); push(a); push(b); break;
