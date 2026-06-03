@@ -55,6 +55,7 @@ OP_ZLOCAL_2 = 0x25
 OP_ZLOCAL_3 = 0x26
 OP_ZLOCAL_S8 = 0x27
 OP_ZLOCAL_U16 = 0x28
+OP_TLOCAL0 = 0x29
 OP_LBYTE = 0x30
 OP_SBYTE = 0x31
 OP_LWORD = 0x32
@@ -327,6 +328,8 @@ def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None
         return 2
     if op == "ladd_local0_2":
         return 1
+    if op == "tlocal0":
+        return 1
     if op in ("llocal", "slocal", "zlocal"):
         value = parse_int(insn.args[0])
         if 0 <= value <= 3:
@@ -529,6 +532,8 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
             out.extend([OP_SLOCAL2_S8, value & 0xFF])
         elif op == "ladd_local0_2":
             out.append(OP_LADD_LOCAL0_2)
+        elif op == "tlocal0":
+            out.append(OP_TLOCAL0)
         elif op in ("llocal", "slocal", "zlocal"):
             value = parse_int(args[0])
             if op == "llocal" and 0 <= value <= 3:
@@ -828,6 +833,7 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
             log.write(f"slocal_const_s8_rewrites={stats['slocal_const_s8_rewrites']}\n")
             log.write(f"zlocal_rewrites={stats['zlocal_rewrites']}\n")
             log.write(f"ladd_local0_2_rewrites={stats['ladd_local0_2_rewrites']}\n")
+            log.write(f"tlocal0_rewrites={stats['tlocal0_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")
             log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")

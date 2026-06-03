@@ -472,6 +472,33 @@ def rewrite_ladd_local0_2(lines: list[PcaLine]) -> tuple[list[PcaLine], int]:
     ], count
 
 
+def rewrite_tlocal(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]:
+    code, _line_to_code, code_to_line, labels, _functions = build_code_maps(lines)
+    replacements: dict[int, PcaLine] = {}
+    removals: set[int] = set()
+    counts = {
+        "tlocal0_rewrites": 0,
+    }
+    for index in range(0, len(code) - 1):
+        first = code[index]
+        second = code[index + 1]
+        if first.op != "slocal" or second.op != "llocal" or first.args != second.args:
+            continue
+        if labels.get(index + 1):
+            continue
+        if first.args[0] == "0":
+            replacements[code_to_line[index]] = PcaLine("tlocal0", [])
+            removals.add(code_to_line[index + 1])
+            counts["tlocal0_rewrites"] += 1
+    if not replacements:
+        return list(lines), counts
+    return [
+        replacements.get(index, line)
+        for index, line in enumerate(lines)
+        if index not in removals
+    ], counts
+
+
 def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]:
     total_removed = 0
     total_rewritten = 0
@@ -490,6 +517,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
     total_slocal_const_rewrites = 0
     total_zlocal_rewrites = 0
     total_ladd_local0_2_rewrites = 0
+    total_tlocal0_rewrites = 0
     passes = 0
     current = list(lines)
     while True:
@@ -497,6 +525,9 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         removed = len(remove_lines) // 2
         if remove_lines:
             current = [line for index, line in enumerate(current) if index not in remove_lines]
+        current, ladd_local0_2_rewrites = rewrite_ladd_local0_2(current)
+        current, tlocal_rewrites = rewrite_tlocal(current)
+        tlocal0_rewrites = tlocal_rewrites["tlocal0_rewrites"]
         current, rewrite_counts, rewrite_saved = rewrite_store_load_roundtrips(current)
         rewritten = sum(rewrite_counts.values())
         current, imm_rewrites = rewrite_immediate_s8(current)
@@ -506,7 +537,6 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         eqi_rewrites = imm_rewrites["eqi_s8_rewrites"]
         slocal_const_rewrites = imm_rewrites["slocal_const_s8_rewrites"]
         current, zlocal_rewrites = rewrite_zero_local_stores(current)
-        current, ladd_local0_2_rewrites = rewrite_ladd_local0_2(current)
         current, branch_stats = rewrite_branches(current)
         branch_changes = (
             branch_stats["const_branch_to_jump"]
@@ -516,9 +546,10 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
             + branch_stats["inverted_branch_jumps"]
             + branch_stats["branch_threaded"]
         )
-        if not removed and not rewritten and not addi_rewrites and not addi_u16_rewrites and not subi_rewrites and not eqi_rewrites and not slocal_const_rewrites and not zlocal_rewrites and not ladd_local0_2_rewrites and not branch_changes:
+        if not removed and not tlocal0_rewrites and not rewritten and not addi_rewrites and not addi_u16_rewrites and not subi_rewrites and not eqi_rewrites and not slocal_const_rewrites and not zlocal_rewrites and not ladd_local0_2_rewrites and not branch_changes:
             break
         total_removed += removed
+        total_tlocal0_rewrites += tlocal0_rewrites
         total_rewritten += rewritten
         total_rewrite_saved += rewrite_saved
         total_addi_rewrites += addi_rewrites
@@ -550,6 +581,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         "slocal_const_s8_rewrites": total_slocal_const_rewrites,
         "zlocal_rewrites": total_zlocal_rewrites,
         "ladd_local0_2_rewrites": total_ladd_local0_2_rewrites,
+        "tlocal0_rewrites": total_tlocal0_rewrites,
         "const_branch_to_jump": total_const_to_jump,
         "const_branch_removed": total_const_removed,
         "jump_to_next_removed": total_jump_next_removed,
@@ -578,6 +610,7 @@ def optimize_pca_file(input_path: pathlib.Path, output_path: pathlib.Path) -> di
         "slocal_const_s8_rewrites": opt_stats["slocal_const_s8_rewrites"],
         "zlocal_rewrites": opt_stats["zlocal_rewrites"],
         "ladd_local0_2_rewrites": opt_stats["ladd_local0_2_rewrites"],
+        "tlocal0_rewrites": opt_stats["tlocal0_rewrites"],
         "const_branch_to_jump": opt_stats["const_branch_to_jump"],
         "const_branch_removed": opt_stats["const_branch_removed"],
         "jump_to_next_removed": opt_stats["jump_to_next_removed"],

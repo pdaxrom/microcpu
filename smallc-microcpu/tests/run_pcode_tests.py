@@ -212,6 +212,7 @@ def compile_pcode(
             log.write(f"slocal_const_s8_rewrites={stats['slocal_const_s8_rewrites']}\n")
             log.write(f"zlocal_rewrites={stats['zlocal_rewrites']}\n")
             log.write(f"ladd_local0_2_rewrites={stats['ladd_local0_2_rewrites']}\n")
+            log.write(f"tlocal0_rewrites={stats['tlocal0_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")
             log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")

@@ -81,6 +81,7 @@ __pcode_loop:
 	pcode_dispatch	$26, __pcode_op_zlocal_3
 	pcode_dispatch	$27, __pcode_op_zlocal_s8
 	pcode_dispatch	$28, __pcode_op_zlocal_u16
+	pcode_dispatch	$29, __pcode_op_tlocal0
 	pcode_dispatch	$30, __pcode_op_lbyte
 	pcode_dispatch	$31, __pcode_op_sbyte
 	pcode_dispatch	$32, __pcode_op_lword
@@ -321,6 +322,11 @@ __pcode_op_zlocal_u16:
 	add	v1, v4, v0
 	clr	v0
 	str	v0, v1, 0
+	b	__pcode_loop
+__pcode_op_tlocal0:
+	sub	v1, v3, 2
+	ldr	v0, v1, 0
+	str	v0, v4, 0
 	b	__pcode_loop
 
 __pcode_op_lbyte:

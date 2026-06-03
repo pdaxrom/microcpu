@@ -174,7 +174,9 @@ rewrites common `iconst <s8>; slocal 0/2` pairs to `SLOCAL0_S8`/`SLOCAL2_S8`
 when that is smaller.  It also rewrites `iconst 0; slocal <offset>` pairs to
 compact `ZLOCAL_*` zero-local stores when no label targets the store.  A
 common `llocal 0; llocal 2; add` lowering pattern is compacted to
-`LADD_LOCAL0_2` when no label targets the removed instructions.
+`LADD_LOCAL0_2` when no label targets the removed instructions.  Live
+`slocal 0; llocal 0` roundtrips are compacted to `TLOCAL0`, which stores the
+top stack value while leaving it available as the expression result.
 The object-mode encoder uses
 compact `NCALL0/1/2/3_ADDR_U16` forms for common native calls with 0, 1, 2, or
 3 arguments.

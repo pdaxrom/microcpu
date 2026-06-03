@@ -81,6 +81,7 @@
 #define IK_SLOCAL0_S8 53
 #define IK_SLOCAL2_S8 54
 #define IK_LADD_LOCAL0_2 55
+#define IK_TLOCAL0    56
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -123,6 +124,7 @@
 #define OP_ZLOCAL_3         0x26
 #define OP_ZLOCAL_S8        0x27
 #define OP_ZLOCAL_U16       0x28
+#define OP_TLOCAL0          0x29
 #define OP_LBYTE            0x30
 #define OP_SBYTE            0x31
 #define OP_LWORD            0x32
@@ -390,6 +392,7 @@ static int insn_base_size(ip) struct Insn *ip; {
   case IK_SLOCAL2_S8:
     return 2;
   case IK_LADD_LOCAL0_2:
+  case IK_TLOCAL0:
     return 1;
   case IK_ADDI_U16:
     return 3;
@@ -566,6 +569,9 @@ static void encode() {
     case IK_LADD_LOCAL0_2:
       emit8(OP_LADD_LOCAL0_2);
       break;
+    case IK_TLOCAL0:
+      emit8(OP_TLOCAL0);
+      break;
     case IK_LLOCAL:
     case IK_SLOCAL:
     case IK_ADDR_LOCAL:
@@ -705,6 +711,7 @@ static int parse_kind(op) char *op; {
   if(str_eq(op, "slocal0_s8")) return IK_SLOCAL0_S8;
   if(str_eq(op, "slocal2_s8")) return IK_SLOCAL2_S8;
   if(str_eq(op, "ladd_local0_2")) return IK_LADD_LOCAL0_2;
+  if(str_eq(op, "tlocal0")) return IK_TLOCAL0;
   if(str_eq(op, "lbyte")) return IK_LBYTE;
   if(str_eq(op, "sbyte")) return IK_SBYTE;
   if(str_eq(op, "lword")) return IK_LWORD;
@@ -838,6 +845,10 @@ static int parse_file(path) char *path; {
     }
     if(str_eq(op, "ladd_local0_2")) {
       add_insn(IK_LADD_LOCAL0_2, 0, 0, 0);
+      continue;
+    }
+    if(str_eq(op, "tlocal0")) {
+      add_insn(IK_TLOCAL0, 0, 0, 0);
       continue;
     }
     if(str_eq(op, "llocal") || str_eq(op, "slocal") || str_eq(op, "addr_local")) {
@@ -1185,6 +1196,7 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_SLOCAL0_S8: store_local(0, read_s8(&pc)); break;
     case OP_SLOCAL2_S8: store_local(2, read_s8(&pc)); break;
     case OP_LADD_LOCAL0_2: push(load_local(0) + load_local(2)); break;
+    case OP_TLOCAL0: a = pop(); store_local(0, a); push(a); break;
     case OP_DROP: pop(); break;
     case OP_DUP: a = pop(); push(a); push(a); break;
     case OP_SWAP: a = pop(); b = pop(); push(a); push(b); break;
