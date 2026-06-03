@@ -55,6 +55,9 @@ from run_pcode_microemu import (  # noqa: E402
     OP_SLOCAL_0,
     OP_SLOCAL_S8,
     OP_SLOCAL_U16,
+    OP_ZLOCAL_0,
+    OP_ZLOCAL_S8,
+    OP_ZLOCAL_U16,
     SIMPLE_OPS,
     WordOperand,
     bytecode_size,
@@ -219,16 +222,28 @@ def encode_pca_module(
             if not -128 <= value <= 127:
                 raise ValueError(f"eqi operand out of range: {value}")
             out.extend([OP_EQI_S8, value & 0xFF])
-        elif op in ("llocal", "slocal"):
+        elif op in ("llocal", "slocal", "zlocal"):
             value = parse_int(args[0])
             if op == "llocal" and 0 <= value <= 3:
                 out.append(OP_LLOCAL_0 + value)
             elif op == "slocal" and 0 <= value <= 3:
                 out.append(OP_SLOCAL_0 + value)
+            elif op == "zlocal" and 0 <= value <= 3:
+                out.append(OP_ZLOCAL_0 + value)
             elif -128 <= value <= 127:
-                out.extend([OP_LLOCAL_S8 if op == "llocal" else OP_SLOCAL_S8, value & 0xFF])
+                if op == "llocal":
+                    out.extend([OP_LLOCAL_S8, value & 0xFF])
+                elif op == "slocal":
+                    out.extend([OP_SLOCAL_S8, value & 0xFF])
+                else:
+                    out.extend([OP_ZLOCAL_S8, value & 0xFF])
             else:
-                out.append(OP_LLOCAL_U16 if op == "llocal" else OP_SLOCAL_U16)
+                if op == "llocal":
+                    out.append(OP_LLOCAL_U16)
+                elif op == "slocal":
+                    out.append(OP_SLOCAL_U16)
+                else:
+                    out.append(OP_ZLOCAL_U16)
                 emit_u16(out, value)
         elif op == "addr_local":
             value = parse_int(args[0])
@@ -404,6 +419,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "pcode_opt_addiu16": 0,
         "pcode_opt_subi": 0,
         "pcode_opt_eqi": 0,
+        "pcode_opt_zlocal": 0,
         "pcode_opt_saved": 0,
         "pcode_opt_before": 0,
         "pcode_opt_after": 0,
@@ -455,6 +471,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     "pcode_opt_addiu16": opt_stats["addi_u16_rewrites"],
                     "pcode_opt_subi": opt_stats["subi_s8_rewrites"],
                     "pcode_opt_eqi": opt_stats["eqi_s8_rewrites"],
+                    "pcode_opt_zlocal": opt_stats["zlocal_rewrites"],
                     "pcode_opt_saved": opt_stats["bytecode_saved"],
                     "pcode_opt_before": opt_stats["bytecode_before"],
                     "pcode_opt_after": opt_stats["bytecode_after"],
@@ -475,6 +492,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     log.write(f"addi_u16_rewrites={opt_stats['addi_u16_rewrites']}\n")
                     log.write(f"subi_s8_rewrites={opt_stats['subi_s8_rewrites']}\n")
                     log.write(f"eqi_s8_rewrites={opt_stats['eqi_s8_rewrites']}\n")
+                    log.write(f"zlocal_rewrites={opt_stats['zlocal_rewrites']}\n")
                     log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
                     log.write(f"bytecode_after={opt_stats['bytecode_after']}\n")
                     log.write(f"bytecode_saved={opt_stats['bytecode_saved']}\n\n")
@@ -577,6 +595,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "opt_addiu16": 0,
         "opt_subi": 0,
         "opt_eqi": 0,
+        "opt_zlocal": 0,
         "opt_saved": 0,
         "peephole_estimated_savings": 0,
         "store_load_pairs": 0,
@@ -615,6 +634,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["opt_addiu16"] += int(item["pcode_opt_addiu16"])
         total["opt_subi"] += int(item["pcode_opt_subi"])
         total["opt_eqi"] += int(item["pcode_opt_eqi"])
+        total["opt_zlocal"] += int(item["pcode_opt_zlocal"])
         total["opt_saved"] += int(item["pcode_opt_saved"])
         total["peephole_estimated_savings"] += int(item["peephole_estimated_savings"])
         total["store_load_pairs"] += int(item["store_load_pairs"])
@@ -653,6 +673,7 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
         fp.write(f"  optimizer iconst/add to addi_u16 rewrites: {result['pcode_opt_addiu16']}\n")
         fp.write(f"  optimizer iconst/sub to subi_s8 rewrites: {result['pcode_opt_subi']}\n")
         fp.write(f"  optimizer iconst/eq to eqi_s8 rewrites: {result['pcode_opt_eqi']}\n")
+        fp.write(f"  optimizer iconst-zero/slocal to zlocal rewrites: {result['pcode_opt_zlocal']}\n")
         fp.write(f"  optimizer bytecode before: {result['pcode_opt_before']}\n")
         fp.write(f"  optimizer bytecode after: {result['pcode_opt_after']}\n")
         fp.write(f"  optimizer bytecode saved: {result['pcode_opt_saved']}\n")
@@ -718,6 +739,7 @@ def write_group_report(
     fp.write(f"  optimizer iconst/add to addi_u16 rewrites: {total['opt_addiu16']}\n")
     fp.write(f"  optimizer iconst/sub to subi_s8 rewrites: {total['opt_subi']}\n")
     fp.write(f"  optimizer iconst/eq to eqi_s8 rewrites: {total['opt_eqi']}\n")
+    fp.write(f"  optimizer iconst-zero/slocal to zlocal rewrites: {total['opt_zlocal']}\n")
     fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")
     fp.write("  peephole candidates after current optimizer:\n")
     fp.write(f"    store/load same temp: {total['store_load_pairs']}\n")

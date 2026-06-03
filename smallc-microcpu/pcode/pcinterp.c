@@ -77,6 +77,7 @@
 #define IK_SUBI       49
 #define IK_EQI        50
 #define IK_ADDI_U16   51
+#define IK_ZLOCAL     52
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -110,6 +111,12 @@
 #define OP_LGLOBAL_U16      0x20
 #define OP_SGLOBAL_U16      0x21
 #define OP_ADDR_GLOBAL_U16  0x22
+#define OP_ZLOCAL_0         0x23
+#define OP_ZLOCAL_1         0x24
+#define OP_ZLOCAL_2         0x25
+#define OP_ZLOCAL_3         0x26
+#define OP_ZLOCAL_S8        0x27
+#define OP_ZLOCAL_U16       0x28
 #define OP_LBYTE            0x30
 #define OP_SBYTE            0x31
 #define OP_LWORD            0x32
@@ -356,7 +363,7 @@ static int int16(v) int v; {
 }
 
 static int local_size(kind, value) int kind, value; {
-  if((kind == IK_LLOCAL || kind == IK_SLOCAL) && value >= 0 && value <= 3)
+  if((kind == IK_LLOCAL || kind == IK_SLOCAL || kind == IK_ZLOCAL) && value >= 0 && value <= 3)
     return 1;
   if(value >= -128 && value <= 127) return 2;
   return 3;
@@ -378,6 +385,7 @@ static int insn_base_size(ip) struct Insn *ip; {
     return 3;
   case IK_LLOCAL:
   case IK_SLOCAL:
+  case IK_ZLOCAL:
   case IK_ADDR_LOCAL:
     return local_size(ip->kind, v);
   case IK_LGLOBAL:
@@ -542,6 +550,16 @@ static void encode() {
     case IK_ADDR_LOCAL:
       encode_local(insn[i].kind, insn[i].a);
       break;
+    case IK_ZLOCAL:
+      if(insn[i].a >= 0 && insn[i].a <= 3) emit8(OP_ZLOCAL_0 + insn[i].a);
+      else if(insn[i].a >= -128 && insn[i].a <= 127) {
+        emit8(OP_ZLOCAL_S8);
+        emit8(insn[i].a);
+      } else {
+        emit8(OP_ZLOCAL_U16);
+        emit16(insn[i].a);
+      }
+      break;
     case IK_LGLOBAL:
       emit8(OP_LGLOBAL_U16);
       emit16(symbol_addr(insn[i].name, SYM_DATA));
@@ -662,6 +680,7 @@ static int parse_kind(op) char *op; {
   if(str_eq(op, "addi_u16")) return IK_ADDI_U16;
   if(str_eq(op, "subi")) return IK_SUBI;
   if(str_eq(op, "eqi")) return IK_EQI;
+  if(str_eq(op, "zlocal")) return IK_ZLOCAL;
   if(str_eq(op, "lbyte")) return IK_LBYTE;
   if(str_eq(op, "sbyte")) return IK_SBYTE;
   if(str_eq(op, "lword")) return IK_LWORD;
@@ -788,6 +807,11 @@ static int parse_file(path) char *path; {
       if(str_eq(op, "llocal")) add_insn(IK_LLOCAL, parse_int(tok), 0, 0);
       else if(str_eq(op, "slocal")) add_insn(IK_SLOCAL, parse_int(tok), 0, 0);
       else add_insn(IK_ADDR_LOCAL, parse_int(tok), 0, 0);
+      continue;
+    }
+    if(str_eq(op, "zlocal")) {
+      if(!next_token(&p, tok)) return fail("zlocal without offset");
+      add_insn(IK_ZLOCAL, parse_int(tok), 0, 0);
       continue;
     }
     if(str_eq(op, "lglobal") || str_eq(op, "sglobal") || str_eq(op, "addr_global")) {
@@ -1131,6 +1155,12 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_SLOCAL_1: store_local(1, pop()); break;
     case OP_SLOCAL_2: store_local(2, pop()); break;
     case OP_SLOCAL_3: store_local(3, pop()); break;
+    case OP_ZLOCAL_0: store_local(0, 0); break;
+    case OP_ZLOCAL_1: store_local(1, 0); break;
+    case OP_ZLOCAL_2: store_local(2, 0); break;
+    case OP_ZLOCAL_3: store_local(3, 0); break;
+    case OP_ZLOCAL_S8: store_local(read_s8(&pc), 0); break;
+    case OP_ZLOCAL_U16: store_local(read_s16(&pc), 0); break;
     case OP_LLOCAL_S8: push(load_local(read_s8(&pc))); break;
     case OP_SLOCAL_S8: store_local(read_s8(&pc), pop()); break;
     case OP_LLOCAL_U16: push(load_local(read_s16(&pc))); break;

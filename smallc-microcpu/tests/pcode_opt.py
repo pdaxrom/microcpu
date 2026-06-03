@@ -404,6 +404,33 @@ def rewrite_immediate_s8(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str,
     ], counts
 
 
+def rewrite_zero_local_stores(lines: list[PcaLine]) -> tuple[list[PcaLine], int]:
+    code, _line_to_code, code_to_line, labels, _functions = build_code_maps(lines)
+    replacements: dict[int, PcaLine] = {}
+    removals: set[int] = set()
+    count = 0
+    for index in range(0, len(code) - 1):
+        first = code[index]
+        second = code[index + 1]
+        if first.op != "iconst" or second.op != "slocal":
+            continue
+        if labels.get(index + 1):
+            continue
+        value = pcode.parse_int(first.args[0])
+        if value != 0:
+            continue
+        replacements[code_to_line[index]] = PcaLine("zlocal", [second.args[0]])
+        removals.add(code_to_line[index + 1])
+        count += 1
+    if not replacements:
+        return list(lines), 0
+    return [
+        replacements.get(index, line)
+        for index, line in enumerate(lines)
+        if index not in removals
+    ], count
+
+
 def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]:
     total_removed = 0
     total_rewritten = 0
@@ -419,6 +446,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
     total_addi_u16_rewrites = 0
     total_subi_rewrites = 0
     total_eqi_rewrites = 0
+    total_zlocal_rewrites = 0
     passes = 0
     current = list(lines)
     while True:
@@ -433,6 +461,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         addi_u16_rewrites = imm_rewrites["addi_u16_rewrites"]
         subi_rewrites = imm_rewrites["subi_s8_rewrites"]
         eqi_rewrites = imm_rewrites["eqi_s8_rewrites"]
+        current, zlocal_rewrites = rewrite_zero_local_stores(current)
         current, branch_stats = rewrite_branches(current)
         branch_changes = (
             branch_stats["const_branch_to_jump"]
@@ -442,7 +471,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
             + branch_stats["inverted_branch_jumps"]
             + branch_stats["branch_threaded"]
         )
-        if not removed and not rewritten and not addi_rewrites and not addi_u16_rewrites and not subi_rewrites and not eqi_rewrites and not branch_changes:
+        if not removed and not rewritten and not addi_rewrites and not addi_u16_rewrites and not subi_rewrites and not eqi_rewrites and not zlocal_rewrites and not branch_changes:
             break
         total_removed += removed
         total_rewritten += rewritten
@@ -451,6 +480,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         total_addi_u16_rewrites += addi_u16_rewrites
         total_subi_rewrites += subi_rewrites
         total_eqi_rewrites += eqi_rewrites
+        total_zlocal_rewrites += zlocal_rewrites
         total_const_to_jump += branch_stats["const_branch_to_jump"]
         total_const_removed += branch_stats["const_branch_removed"]
         total_jump_next_removed += branch_stats["jump_to_next_removed"]
@@ -470,6 +500,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         "addi_u16_rewrites": total_addi_u16_rewrites,
         "subi_s8_rewrites": total_subi_rewrites,
         "eqi_s8_rewrites": total_eqi_rewrites,
+        "zlocal_rewrites": total_zlocal_rewrites,
         "const_branch_to_jump": total_const_to_jump,
         "const_branch_removed": total_const_removed,
         "jump_to_next_removed": total_jump_next_removed,
@@ -495,6 +526,7 @@ def optimize_pca_file(input_path: pathlib.Path, output_path: pathlib.Path) -> di
         "addi_u16_rewrites": opt_stats["addi_u16_rewrites"],
         "subi_s8_rewrites": opt_stats["subi_s8_rewrites"],
         "eqi_s8_rewrites": opt_stats["eqi_s8_rewrites"],
+        "zlocal_rewrites": opt_stats["zlocal_rewrites"],
         "const_branch_to_jump": opt_stats["const_branch_to_jump"],
         "const_branch_removed": opt_stats["const_branch_removed"],
         "jump_to_next_removed": opt_stats["jump_to_next_removed"],
@@ -650,6 +682,9 @@ def analyze_pca(path: pathlib.Path) -> dict[str, object]:
     slocal_short = 0
     slocal_s8 = 0
     slocal_u16 = 0
+    zlocal_short = 0
+    zlocal_s8 = 0
+    zlocal_u16 = 0
     temp_roundtrips = 0
     for index, insn in enumerate(insns):
         if insn.op == "iconst":
@@ -660,23 +695,29 @@ def analyze_pca(path: pathlib.Path) -> dict[str, object]:
                 iconst_s8 += 1
             else:
                 iconst_u16 += 1
-        elif insn.op in ("llocal", "slocal"):
+        elif insn.op in ("llocal", "slocal", "zlocal"):
             value = pcode.parse_int(insn.args[0])
             if 0 <= value <= 3:
                 if insn.op == "llocal":
                     llocal_short += 1
-                else:
+                elif insn.op == "slocal":
                     slocal_short += 1
+                else:
+                    zlocal_short += 1
             elif -128 <= value <= 127:
                 if insn.op == "llocal":
                     llocal_s8 += 1
-                else:
+                elif insn.op == "slocal":
                     slocal_s8 += 1
+                else:
+                    zlocal_s8 += 1
             else:
                 if insn.op == "llocal":
                     llocal_u16 += 1
-                else:
+                elif insn.op == "slocal":
                     slocal_u16 += 1
+                else:
+                    zlocal_u16 += 1
         if index + 1 < len(insns):
             next_insn = insns[index + 1]
             if insn.op == "slocal" and next_insn.op == "llocal" and insn.args == next_insn.args:
@@ -732,6 +773,9 @@ def analyze_pca(path: pathlib.Path) -> dict[str, object]:
         "slocal_short": slocal_short,
         "slocal_s8": slocal_s8,
         "slocal_u16": slocal_u16,
+        "zlocal_short": zlocal_short,
+        "zlocal_s8": zlocal_s8,
+        "zlocal_u16": zlocal_u16,
         "temp_slot_accesses": peephole["temp_slot_accesses"],
         "store_load_pairs": peephole["store_load_pairs"],
         "load_store_pairs": peephole["load_store_pairs"],
@@ -761,7 +805,8 @@ def format_analysis(stats: dict[str, object], indent: str = "  ") -> list[str]:
     )
     lines.append(
         f"{indent}locals: lshort={stats['llocal_short']} ls8={stats['llocal_s8']} lu16={stats['llocal_u16']} "
-        f"sshort={stats['slocal_short']} ss8={stats['slocal_s8']} su16={stats['slocal_u16']}"
+        f"sshort={stats['slocal_short']} ss8={stats['slocal_s8']} su16={stats['slocal_u16']} "
+        f"zshort={stats['zlocal_short']} zs8={stats['zlocal_s8']} zu16={stats['zlocal_u16']}"
     )
     lines.append(f"{indent}temp store/load roundtrips: {stats['temp_roundtrips']}")
     lines.append(f"{indent}peephole candidates:")

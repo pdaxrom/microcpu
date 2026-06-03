@@ -46,6 +46,12 @@ OP_ADDR_LOCAL_U16 = 0x1D
 OP_LGLOBAL_U16 = 0x20
 OP_SGLOBAL_U16 = 0x21
 OP_ADDR_GLOBAL_U16 = 0x22
+OP_ZLOCAL_0 = 0x23
+OP_ZLOCAL_1 = 0x24
+OP_ZLOCAL_2 = 0x25
+OP_ZLOCAL_3 = 0x26
+OP_ZLOCAL_S8 = 0x27
+OP_ZLOCAL_U16 = 0x28
 OP_LBYTE = 0x30
 OP_SBYTE = 0x31
 OP_LWORD = 0x32
@@ -314,7 +320,7 @@ def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None
         return 2
     if op == "addi_u16":
         return 3
-    if op in ("llocal", "slocal"):
+    if op in ("llocal", "slocal", "zlocal"):
         value = parse_int(insn.args[0])
         if 0 <= value <= 3:
             return 1
@@ -504,16 +510,28 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
             if not -128 <= value <= 127:
                 raise ValueError(f"eqi operand out of range: {value}")
             out.extend([OP_EQI_S8, value & 0xFF])
-        elif op in ("llocal", "slocal"):
+        elif op in ("llocal", "slocal", "zlocal"):
             value = parse_int(args[0])
             if op == "llocal" and 0 <= value <= 3:
                 out.append(OP_LLOCAL_0 + value)
             elif op == "slocal" and 0 <= value <= 3:
                 out.append(OP_SLOCAL_0 + value)
+            elif op == "zlocal" and 0 <= value <= 3:
+                out.append(OP_ZLOCAL_0 + value)
             elif -128 <= value <= 127:
-                out.extend([OP_LLOCAL_S8 if op == "llocal" else OP_SLOCAL_S8, value & 0xFF])
+                if op == "llocal":
+                    out.extend([OP_LLOCAL_S8, value & 0xFF])
+                elif op == "slocal":
+                    out.extend([OP_SLOCAL_S8, value & 0xFF])
+                else:
+                    out.extend([OP_ZLOCAL_S8, value & 0xFF])
             else:
-                out.append(OP_LLOCAL_U16 if op == "llocal" else OP_SLOCAL_U16)
+                if op == "llocal":
+                    out.append(OP_LLOCAL_U16)
+                elif op == "slocal":
+                    out.append(OP_SLOCAL_U16)
+                else:
+                    out.append(OP_ZLOCAL_U16)
                 emit_u16(out, value)
         elif op == "addr_local":
             value = parse_int(args[0])
@@ -788,6 +806,7 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
             log.write(f"addi_u16_rewrites={stats['addi_u16_rewrites']}\n")
             log.write(f"subi_s8_rewrites={stats['subi_s8_rewrites']}\n")
             log.write(f"eqi_s8_rewrites={stats['eqi_s8_rewrites']}\n")
+            log.write(f"zlocal_rewrites={stats['zlocal_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")
             log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")

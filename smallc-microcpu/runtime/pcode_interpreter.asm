@@ -72,6 +72,12 @@ __pcode_loop:
 	pcode_dispatch	$20, __pcode_op_lglobal_u16
 	pcode_dispatch	$21, __pcode_op_sglobal_u16
 	pcode_dispatch	$22, __pcode_op_addr_global_u16
+	pcode_dispatch	$23, __pcode_op_zlocal_0
+	pcode_dispatch	$24, __pcode_op_zlocal_1
+	pcode_dispatch	$25, __pcode_op_zlocal_2
+	pcode_dispatch	$26, __pcode_op_zlocal_3
+	pcode_dispatch	$27, __pcode_op_zlocal_s8
+	pcode_dispatch	$28, __pcode_op_zlocal_u16
 	pcode_dispatch	$30, __pcode_op_lbyte
 	pcode_dispatch	$31, __pcode_op_sbyte
 	pcode_dispatch	$32, __pcode_op_lword
@@ -270,6 +276,36 @@ __pcode_op_addr_global_u16:
 	bsr	__pcode_fetch_u16
 	bsr	__pcode_push_v0
 	b	__pcode_loop
+
+__pcode_op_zlocal_0:
+	clr	v0
+	str	v0, v4, 0
+	b	__pcode_loop
+__pcode_op_zlocal_1:
+	clr	v0
+	str	v0, v4, 1
+	b	__pcode_loop
+__pcode_op_zlocal_2:
+	clr	v0
+	str	v0, v4, 2
+	b	__pcode_loop
+__pcode_op_zlocal_3:
+	clr	v0
+	str	v0, v4, 3
+	b	__pcode_loop
+__pcode_op_zlocal_s8:
+	bsr	__pcode_fetch_s8
+	add	v1, v4, v0
+	clr	v0
+	str	v0, v1, 0
+	b	__pcode_loop
+__pcode_op_zlocal_u16:
+	bsr	__pcode_fetch_u16
+	add	v1, v4, v0
+	clr	v0
+	str	v0, v1, 0
+	b	__pcode_loop
+
 __pcode_op_lbyte:
 	bsr	__pcode_pop_v0
 	ldrl	v0, v0, 0

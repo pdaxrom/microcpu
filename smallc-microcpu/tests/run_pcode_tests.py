@@ -209,6 +209,7 @@ def compile_pcode(
             log.write(f"addi_u16_rewrites={stats['addi_u16_rewrites']}\n")
             log.write(f"subi_s8_rewrites={stats['subi_s8_rewrites']}\n")
             log.write(f"eqi_s8_rewrites={stats['eqi_s8_rewrites']}\n")
+            log.write(f"zlocal_rewrites={stats['zlocal_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")
             log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")

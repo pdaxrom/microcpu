@@ -66,6 +66,9 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$20` | `LGLOBAL_U16` | 16-bit data address |
 | `$21` | `SGLOBAL_U16` | 16-bit data address |
 | `$22` | `ADDR_GLOBAL_U16` | 16-bit data address |
+| `$23..$26` | `ZLOCAL_0..3` | none |
+| `$27` | `ZLOCAL_S8` | signed byte offset |
+| `$28` | `ZLOCAL_U16` | signed 16-bit offset |
 | `$30` | `LBYTE` | none |
 | `$31` | `SBYTE` | none |
 | `$32` | `LWORD` | none |
@@ -171,6 +174,8 @@ The current pass is deliberately local and safe:
 - rewrites adjacent `iconst <s8>`/`add`, `iconst <s8>`/`sub`, and
   `iconst <s8>`/`eq` pairs to compact `ADDI_S8`, `SUBI_S8`, and `EQI_S8`
   opcodes, and rewrites larger `iconst <u16>`/`add` pairs to `ADDI_U16`;
+- rewrites adjacent `iconst 0`/`slocal <offset>` pairs to `ZLOCAL_*` zero-store
+  opcodes when no label targets the `slocal`;
 - emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, `CALL2_U16`, and
   `CALL3_U16` for the common 0, 1, 2, and 3 argument cases;
 - emits compact object-mode native-call forms `NCALL0_ADDR_U16`,
@@ -322,10 +327,11 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..047`: constants, local/global loads and stores, local/global
+`pcode-tests/001..048`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls including compact `CALL0/1/2/3_U16`, conditional
 branches, arithmetic/logical comparisons, byte/word memory operations,
-`DROP`/`DUP`/`SWAP`, `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`, `RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
+`DROP`/`DUP`/`SWAP`, `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`, `ZLOCAL_*`,
+`RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
 `NCALL0/1/2/3_ADDR_U16`, and `ICALL_U8`.
 `switch` is lowered by the p-code backend into an explicit compare-and-branch
 chain, not a dedicated VM opcode.
