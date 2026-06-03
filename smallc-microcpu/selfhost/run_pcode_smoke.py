@@ -367,6 +367,12 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "pcode_opt": False,
         "pcode_opt_removed": 0,
         "pcode_opt_rewritten": 0,
+        "pcode_opt_const_to_jump": 0,
+        "pcode_opt_const_removed": 0,
+        "pcode_opt_jump_next": 0,
+        "pcode_opt_cond_next": 0,
+        "pcode_opt_inverted": 0,
+        "pcode_opt_branch_threaded": 0,
         "pcode_opt_saved": 0,
         "pcode_opt_before": 0,
         "pcode_opt_after": 0,
@@ -408,6 +414,12 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     "pcode_opt": True,
                     "pcode_opt_removed": opt_stats["removed_temp_roundtrips"],
                     "pcode_opt_rewritten": opt_stats["rewritten_store_load_roundtrips"],
+                    "pcode_opt_const_to_jump": opt_stats["const_branch_to_jump"],
+                    "pcode_opt_const_removed": opt_stats["const_branch_removed"],
+                    "pcode_opt_jump_next": opt_stats["jump_to_next_removed"],
+                    "pcode_opt_cond_next": opt_stats["cond_to_next_replaced"],
+                    "pcode_opt_inverted": opt_stats["inverted_branch_jumps"],
+                    "pcode_opt_branch_threaded": opt_stats["branch_threaded"],
                     "pcode_opt_saved": opt_stats["bytecode_saved"],
                     "pcode_opt_before": opt_stats["bytecode_before"],
                     "pcode_opt_after": opt_stats["bytecode_after"],
@@ -417,6 +429,13 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     log.write(f"removed_temp_roundtrips={opt_stats['removed_temp_roundtrips']}\n")
                     log.write(f"rewritten_store_load_roundtrips={opt_stats['rewritten_store_load_roundtrips']}\n")
                     log.write(f"rewrite_byte_savings={opt_stats['rewrite_byte_savings']}\n")
+                    log.write(f"const_branch_to_jump={opt_stats['const_branch_to_jump']}\n")
+                    log.write(f"const_branch_removed={opt_stats['const_branch_removed']}\n")
+                    log.write(f"jump_to_next_removed={opt_stats['jump_to_next_removed']}\n")
+                    log.write(f"cond_to_next_replaced={opt_stats['cond_to_next_replaced']}\n")
+                    log.write(f"inverted_branch_jumps={opt_stats['inverted_branch_jumps']}\n")
+                    log.write(f"branch_threaded={opt_stats['branch_threaded']}\n")
+                    log.write(f"branch_thread_byte_savings={opt_stats['branch_thread_byte_savings']}\n")
                     log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
                     log.write(f"bytecode_after={opt_stats['bytecode_after']}\n")
                     log.write(f"bytecode_saved={opt_stats['bytecode_saved']}\n\n")
@@ -509,6 +528,12 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "failed": 0,
         "opt_removed": 0,
         "opt_rewritten": 0,
+        "opt_const_to_jump": 0,
+        "opt_const_removed": 0,
+        "opt_jump_next": 0,
+        "opt_cond_next": 0,
+        "opt_inverted": 0,
+        "opt_branch_threaded": 0,
         "opt_saved": 0,
         "peephole_estimated_savings": 0,
         "store_load_pairs": 0,
@@ -537,6 +562,12 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["globals"] += int(item["globals"])
         total["opt_removed"] += int(item["pcode_opt_removed"])
         total["opt_rewritten"] += int(item["pcode_opt_rewritten"])
+        total["opt_const_to_jump"] += int(item["pcode_opt_const_to_jump"])
+        total["opt_const_removed"] += int(item["pcode_opt_const_removed"])
+        total["opt_jump_next"] += int(item["pcode_opt_jump_next"])
+        total["opt_cond_next"] += int(item["pcode_opt_cond_next"])
+        total["opt_inverted"] += int(item["pcode_opt_inverted"])
+        total["opt_branch_threaded"] += int(item["pcode_opt_branch_threaded"])
         total["opt_saved"] += int(item["pcode_opt_saved"])
         total["peephole_estimated_savings"] += int(item["peephole_estimated_savings"])
         total["store_load_pairs"] += int(item["store_load_pairs"])
@@ -565,6 +596,12 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
         fp.write("  p-code optimizer: enabled\n")
         fp.write(f"  optimizer removed temp store/load pairs: {result['pcode_opt_removed']}\n")
         fp.write(f"  optimizer rewrote live temp store/load pairs: {result['pcode_opt_rewritten']}\n")
+        fp.write(f"  optimizer constant branches to jumps: {result['pcode_opt_const_to_jump']}\n")
+        fp.write(f"  optimizer constant branches removed: {result['pcode_opt_const_removed']}\n")
+        fp.write(f"  optimizer jumps to next removed: {result['pcode_opt_jump_next']}\n")
+        fp.write(f"  optimizer conditional branches to next replaced: {result['pcode_opt_cond_next']}\n")
+        fp.write(f"  optimizer inverted branch/jump pairs: {result['pcode_opt_inverted']}\n")
+        fp.write(f"  optimizer threaded branches: {result['pcode_opt_branch_threaded']}\n")
         fp.write(f"  optimizer bytecode before: {result['pcode_opt_before']}\n")
         fp.write(f"  optimizer bytecode after: {result['pcode_opt_after']}\n")
         fp.write(f"  optimizer bytecode saved: {result['pcode_opt_saved']}\n")
@@ -620,6 +657,12 @@ def write_group_report(
     fp.write(f"  p-code bytecode bytes: {total['bytecode']}\n")
     fp.write(f"  optimizer removed temp store/load pairs: {total['opt_removed']}\n")
     fp.write(f"  optimizer rewrote live temp store/load pairs: {total['opt_rewritten']}\n")
+    fp.write(f"  optimizer constant branches to jumps: {total['opt_const_to_jump']}\n")
+    fp.write(f"  optimizer constant branches removed: {total['opt_const_removed']}\n")
+    fp.write(f"  optimizer jumps to next removed: {total['opt_jump_next']}\n")
+    fp.write(f"  optimizer conditional branches to next replaced: {total['opt_cond_next']}\n")
+    fp.write(f"  optimizer inverted branch/jump pairs: {total['opt_inverted']}\n")
+    fp.write(f"  optimizer threaded branches: {total['opt_branch_threaded']}\n")
     fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")
     fp.write("  peephole candidates after current optimizer:\n")
     fp.write(f"    store/load same temp: {total['store_load_pairs']}\n")

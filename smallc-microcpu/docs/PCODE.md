@@ -149,6 +149,12 @@ The current pass is deliberately local and safe:
 - rewrites live `slocal t`/`llocal t` roundtrips to `dup`/`slocal t` only
   when this preserves the later temp value, no label targets the load, and the
   encoded local load would be larger than `DUP`;
+- folds constant conditional branches, removes unconditional jumps to the next
+  instruction, replaces conditional branches to the next instruction with
+  `DROP`, and rewrites `JZ/JNZ next; JMP target; next:` into the opposite
+  conditional branch to `target`;
+- threads branches through intermediate `JMP` instructions only when the
+  retargeted branch does not require a larger encoded branch form;
 - keeps branch labels, function entries, and data labels as hard boundaries for
   the rewrite;
 - keeps branch relaxation in the encoder, so removed instructions can make
@@ -156,13 +162,12 @@ The current pass is deliberately local and safe:
 - emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, and `CALL2_U16`
   for the common 0, 1, and 2 argument cases.
 
-The pass does not do global value numbering, constant folding, dead-code
-elimination, inlining, or branch threading.  Reports include opcode
-histograms, common opcode pairs, largest p-code functions, short/long branch
-counts, and optimizer byte savings.  The self-host size reports also include
-diagnostic-only peephole candidates after the current pass: same-temp
-store/load and load/store pairs, how many same-temp store/load pairs the
-current liveness-limited pass can still remove, constant conditional branches,
+The pass does not do global value numbering, general constant folding,
+dead-code elimination, inlining, or global dataflow optimization.  Reports
+include opcode histograms, common opcode pairs, largest p-code functions,
+short/long branch counts, and optimizer byte savings.  The self-host size
+reports also include remaining peephole candidates after the current pass:
+same-temp store/load and load/store pairs, constant conditional branches,
 `JMP` to the next instruction, branch-to-branch sites, rough local byte-saving
 estimates, and the hottest local/temp slots by load/store count.
 

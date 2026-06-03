@@ -164,6 +164,178 @@ def local_access_size(temp: str) -> int:
     return 3
 
 
+def compute_code_layout(lines: list[PcaLine]) -> tuple[
+    list[PcaLine],
+    list[int],
+    dict[int, list[str]],
+    dict[str, int],
+    dict[str, int],
+    list[int],
+    list[int],
+]:
+    code, _line_to_code, code_to_line, labels, _functions = build_code_maps(lines)
+    label_to_index = {label: index for index, names in labels.items() for label in names}
+    insns = [pcode.Insn(line.op, line.args) for line in code]
+    for insn in insns:
+        insn.size = 2 if insn.op in BRANCH_OPS else pcode.insn_size(insn, label_to_index)
+    for _iteration in range(8):
+        pc = 0
+        for insn in insns:
+            insn.addr = pc
+            pc += insn.size
+        label_addr = {
+            name: insns[index].addr if index < len(insns) else pc
+            for name, index in label_to_index.items()
+        }
+        changed = False
+        for insn in insns:
+            if insn.op not in BRANCH_OPS:
+                continue
+            target = label_addr[insn.args[0]]
+            rel = target - (insn.addr + 2)
+            new_size = 2 if -128 <= rel <= 127 else 3
+            if new_size != insn.size:
+                insn.size = new_size
+                changed = True
+        if not changed:
+            break
+    pc = 0
+    addrs: list[int] = []
+    sizes: list[int] = []
+    for insn in insns:
+        addrs.append(pc)
+        sizes.append(insn.size)
+        pc += insn.size
+    label_addr = {
+        name: addrs[index] if index < len(addrs) else pc
+        for name, index in label_to_index.items()
+    }
+    return code, code_to_line, labels, label_to_index, label_addr, addrs, sizes
+
+
+def branch_size_from_addr(op: str, addr: int, target_addr: int) -> int:
+    if op not in BRANCH_OPS:
+        return 0
+    rel = target_addr - (addr + 2)
+    return 2 if -128 <= rel <= 127 else 3
+
+
+def threaded_branch_target(
+    label: str,
+    code: list[PcaLine],
+    label_to_index: dict[str, int],
+) -> str:
+    seen: set[str] = set()
+    current = label
+    while current not in seen:
+        seen.add(current)
+        index = label_to_index.get(current)
+        if index is None or index >= len(code):
+            break
+        line = code[index]
+        if line.op != "jmp":
+            break
+        next_label = line.args[0]
+        if next_label == current:
+            break
+        current = next_label
+    return current
+
+
+def rewrite_branches(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]:
+    code, code_to_line, labels, label_to_index, label_addr, addrs, sizes = compute_code_layout(lines)
+    replacements: dict[int, PcaLine] = {}
+    removals: set[int] = set()
+    touched: set[int] = set()
+    stats = {
+        "const_branch_to_jump": 0,
+        "const_branch_removed": 0,
+        "jump_to_next_removed": 0,
+        "cond_to_next_replaced": 0,
+        "inverted_branch_jumps": 0,
+        "branch_threaded": 0,
+        "branch_thread_byte_savings": 0,
+    }
+
+    for index in range(0, len(code) - 1):
+        first = code[index]
+        second = code[index + 1]
+        if first.op != "iconst" or second.op not in ("jz", "jnz"):
+            continue
+        if labels.get(index + 1):
+            continue
+        value = pcode.parse_int(first.args[0])
+        always_taken = (second.op == "jz" and value == 0) or (second.op == "jnz" and value != 0)
+        always_not_taken = (second.op == "jz" and value != 0) or (second.op == "jnz" and value == 0)
+        if always_taken:
+            replacements[code_to_line[index]] = PcaLine("jmp", [second.args[0]])
+            removals.add(code_to_line[index + 1])
+            touched.add(index)
+            touched.add(index + 1)
+            stats["const_branch_to_jump"] += 1
+        elif always_not_taken:
+            removals.add(code_to_line[index])
+            removals.add(code_to_line[index + 1])
+            touched.add(index)
+            touched.add(index + 1)
+            stats["const_branch_removed"] += 1
+
+    for index in range(0, len(code) - 1):
+        first = code[index]
+        second = code[index + 1]
+        if index in touched or index + 1 in touched:
+            continue
+        if first.op not in ("jz", "jnz") or second.op != "jmp":
+            continue
+        if labels.get(index + 1):
+            continue
+        target_index = label_to_index.get(first.args[0])
+        if target_index != index + 2:
+            continue
+        new_op = "jnz" if first.op == "jz" else "jz"
+        replacements[code_to_line[index]] = PcaLine(new_op, [second.args[0]])
+        removals.add(code_to_line[index + 1])
+        touched.add(index)
+        touched.add(index + 1)
+        stats["inverted_branch_jumps"] += 1
+
+    for index, line in enumerate(code):
+        if index in touched or line.op not in BRANCH_OPS:
+            continue
+        target_index = label_to_index.get(line.args[0])
+        if target_index is None:
+            continue
+        if target_index == index + 1:
+            if line.op == "jmp":
+                removals.add(code_to_line[index])
+                touched.add(index)
+                stats["jump_to_next_removed"] += 1
+            else:
+                replacements[code_to_line[index]] = PcaLine("drop", [])
+                touched.add(index)
+                stats["cond_to_next_replaced"] += 1
+            continue
+
+        next_label = threaded_branch_target(line.args[0], code, label_to_index)
+        if next_label == line.args[0] or next_label not in label_addr:
+            continue
+        new_size = branch_size_from_addr(line.op, addrs[index], label_addr[next_label])
+        if new_size > sizes[index]:
+            continue
+        replacements[code_to_line[index]] = PcaLine(line.op, [next_label])
+        touched.add(index)
+        stats["branch_threaded"] += 1
+        stats["branch_thread_byte_savings"] += sizes[index] - new_size
+
+    if not replacements and not removals:
+        return list(lines), stats
+    return [
+        replacements.get(index, line)
+        for index, line in enumerate(lines)
+        if index not in removals
+    ], stats
+
+
 def rewrite_store_load_roundtrips(lines: list[PcaLine]) -> tuple[list[PcaLine], Counter[str], int]:
     code, _line_to_code, code_to_line, labels, _functions = build_code_maps(lines)
     rewrites: dict[int, PcaLine] = {}
@@ -193,6 +365,13 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
     total_removed = 0
     total_rewritten = 0
     total_rewrite_saved = 0
+    total_const_to_jump = 0
+    total_const_removed = 0
+    total_jump_next_removed = 0
+    total_cond_next_replaced = 0
+    total_inverted_branch_jumps = 0
+    total_branch_threaded = 0
+    total_branch_thread_saved = 0
     passes = 0
     current = list(lines)
     while True:
@@ -202,11 +381,27 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
             current = [line for index, line in enumerate(current) if index not in remove_lines]
         current, rewrite_counts, rewrite_saved = rewrite_store_load_roundtrips(current)
         rewritten = sum(rewrite_counts.values())
-        if not removed and not rewritten:
+        current, branch_stats = rewrite_branches(current)
+        branch_changes = (
+            branch_stats["const_branch_to_jump"]
+            + branch_stats["const_branch_removed"]
+            + branch_stats["jump_to_next_removed"]
+            + branch_stats["cond_to_next_replaced"]
+            + branch_stats["inverted_branch_jumps"]
+            + branch_stats["branch_threaded"]
+        )
+        if not removed and not rewritten and not branch_changes:
             break
         total_removed += removed
         total_rewritten += rewritten
         total_rewrite_saved += rewrite_saved
+        total_const_to_jump += branch_stats["const_branch_to_jump"]
+        total_const_removed += branch_stats["const_branch_removed"]
+        total_jump_next_removed += branch_stats["jump_to_next_removed"]
+        total_cond_next_replaced += branch_stats["cond_to_next_replaced"]
+        total_inverted_branch_jumps += branch_stats["inverted_branch_jumps"]
+        total_branch_threaded += branch_stats["branch_threaded"]
+        total_branch_thread_saved += branch_stats["branch_thread_byte_savings"]
         passes += 1
         if passes > 16:
             break
@@ -215,6 +410,13 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         "removed_temp_roundtrips": total_removed,
         "rewritten_store_load_roundtrips": total_rewritten,
         "rewrite_byte_savings": total_rewrite_saved,
+        "const_branch_to_jump": total_const_to_jump,
+        "const_branch_removed": total_const_removed,
+        "jump_to_next_removed": total_jump_next_removed,
+        "cond_to_next_replaced": total_cond_next_replaced,
+        "inverted_branch_jumps": total_inverted_branch_jumps,
+        "branch_threaded": total_branch_threaded,
+        "branch_thread_byte_savings": total_branch_thread_saved,
     }
 
 
@@ -229,6 +431,13 @@ def optimize_pca_file(input_path: pathlib.Path, output_path: pathlib.Path) -> di
         "removed_temp_roundtrips": opt_stats["removed_temp_roundtrips"],
         "rewritten_store_load_roundtrips": opt_stats["rewritten_store_load_roundtrips"],
         "rewrite_byte_savings": opt_stats["rewrite_byte_savings"],
+        "const_branch_to_jump": opt_stats["const_branch_to_jump"],
+        "const_branch_removed": opt_stats["const_branch_removed"],
+        "jump_to_next_removed": opt_stats["jump_to_next_removed"],
+        "cond_to_next_replaced": opt_stats["cond_to_next_replaced"],
+        "inverted_branch_jumps": opt_stats["inverted_branch_jumps"],
+        "branch_threaded": opt_stats["branch_threaded"],
+        "branch_thread_byte_savings": opt_stats["branch_thread_byte_savings"],
         "bytecode_before": int(before["bytecode_bytes"]),
         "bytecode_after": int(after["bytecode_bytes"]),
         "bytecode_saved": int(before["bytecode_bytes"]) - int(after["bytecode_bytes"]),
