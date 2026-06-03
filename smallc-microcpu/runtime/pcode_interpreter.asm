@@ -84,6 +84,9 @@ __pcode_loop:
 	pcode_dispatch	$58, __pcode_op_call0_u16
 	pcode_dispatch	$59, __pcode_op_call1_u16
 	pcode_dispatch	$5a, __pcode_op_call2_u16
+	pcode_dispatch	$5b, __pcode_op_ncall0_addr_u16
+	pcode_dispatch	$5c, __pcode_op_ncall1_addr_u16
+	pcode_dispatch	$5d, __pcode_op_ncall2_addr_u16
 	pcode_dispatch	$60, __pcode_op_add
 	pcode_dispatch	$61, __pcode_op_sub
 	pcode_dispatch	$62, __pcode_op_and
@@ -400,6 +403,26 @@ __pcode_op_ncall_addr_u16:
 	bsr	__pcode_fetch_u8
 	set	v1, __pcode_ncall_argc
 	str	v0, v1, 0
+	b	__pcode_ncall_addr_fetch_target
+
+__pcode_op_ncall0_addr_u16:
+	set	v1, __pcode_ncall_argc
+	set	v0, 0
+	str	v0, v1, 0
+	b	__pcode_ncall_addr_fetch_target
+
+__pcode_op_ncall1_addr_u16:
+	set	v1, __pcode_ncall_argc
+	set	v0, 1
+	str	v0, v1, 0
+	b	__pcode_ncall_addr_fetch_target
+
+__pcode_op_ncall2_addr_u16:
+	set	v1, __pcode_ncall_argc
+	set	v0, 2
+	str	v0, v1, 0
+
+__pcode_ncall_addr_fetch_target:
 	bsr	__pcode_fetch_u16
 	set	v1, __pcode_ncall_target
 	str	v0, v1, 0

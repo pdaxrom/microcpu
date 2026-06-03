@@ -198,11 +198,11 @@ p-code-hosted compiler.  Current report-only measurements show:
 - `smallcpp`: all modules generate p-code.  Estimated p-code image is about
   48.1 KB versus 87.1 KB summed native object size, roughly 39.0 KB smaller.
 - `smallcc`: all modules now generate p-code.  Estimated p-code image is about
-  65.5 KB versus 187.3 KB summed native object size, roughly 121.8 KB smaller.
+  64.8 KB versus 187.3 KB summed native object size, roughly 122.5 KB smaller.
   The p-code optimizer removes about 6.1K temp store/load roundtrips from
   `smallcc`, rewrites a small number of live non-short local temp roundtrips,
-  compacts local branch patterns, and saves about 12.5 KB of bytecode before
-  link-time object layout.
+  compacts local branch patterns, and uses compact object-mode native-call
+  forms for the common 0, 1, and 2 argument cases.
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
@@ -257,14 +257,14 @@ diagnostics, and overlap checks.
 Current execution status:
 
 - `smallcpp`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,703
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,708
   bytes.  The hosted diagnostic identifies the failed allocation as the
   13,000-byte compiler symbol table (`symtab`), requested after earlier
-  `smallcpp` table allocations left only 332 bytes below the hosted heap guard.
+  `smallcpp` table allocations left only 328 bytes below the hosted heap guard.
 - `smallcc`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 63,409
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 63,403
   bytes.  The hosted diagnostic identifies the failed allocation as the
-  1,600-byte staging buffer (`stage`), with 862 bytes left below the hosted
+  1,600-byte staging buffer (`stage`), with 868 bytes left below the hosted
   heap guard.
 
 `V0=0xca10` is the hosted runtime's explicit heap-exhaustion marker.  The

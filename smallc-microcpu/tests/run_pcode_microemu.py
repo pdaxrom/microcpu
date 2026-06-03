@@ -62,6 +62,9 @@ OP_ICALL_U8 = 0x57
 OP_CALL0_U16 = 0x58
 OP_CALL1_U16 = 0x59
 OP_CALL2_U16 = 0x5A
+OP_NCALL0_ADDR_U16 = 0x5B
+OP_NCALL1_ADDR_U16 = 0x5C
+OP_NCALL2_ADDR_U16 = 0x5D
 
 SIMPLE_OPS = {
     "lbyte": OP_LBYTE,
@@ -327,7 +330,7 @@ def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None
         pcode_targets = pcode_symbols if pcode_symbols is not None else set(labels.keys())
         if insn.args[0] in pcode_targets:
             return 3 if 0 <= argc <= 2 else 4
-        return 4
+        return 3 if 0 <= argc <= 2 else 4
     if op in ("ret", "drop", "dup", "swap", "leave") or op in SIMPLE_OPS:
         return 1
     raise ValueError(f"unsupported p-code op for microemu: {op}")
@@ -551,7 +554,10 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
                 if native not in native_ids:
                     native_ids[native] = len(native_ids)
                     externs[native] = 1
-                out.extend([OP_NCALL_ADDR_U16, argc & 0xFF])
+                if 0 <= argc <= 2:
+                    out.append(OP_NCALL0_ADDR_U16 + argc)
+                else:
+                    out.extend([OP_NCALL_ADDR_U16, argc & 0xFF])
                 emit_word_symbol(out, native)
         elif op == "ret":
             out.append(OP_RET)
