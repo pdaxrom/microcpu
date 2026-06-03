@@ -176,7 +176,8 @@ compact `ZLOCAL_*` zero-local stores when no label targets the store.  A
 common `llocal 0; llocal 2; add` lowering pattern is compacted to
 `LADD_LOCAL0_2` when no label targets the removed instructions.  Live
 `slocal 0; llocal 0` roundtrips are compacted to `TLOCAL0`, which stores the
-top stack value while leaving it available as the expression result.
+top stack value while leaving it available as the expression result.  Common
+`llocal 0; ret` returns are compacted to `RET_LOCAL0`.
 The object-mode encoder uses
 compact `NCALL0/1/2/3_ADDR_U16` forms for common native calls with 0, 1, 2, or
 3 arguments.

@@ -275,7 +275,8 @@ compaction pass keeps the same ABI and currently performs only local safe
 bytecode rewrites plus compact opcode selection, including immediate
 `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`, temp store-immediate
 `SLOCAL0_S8`/`SLOCAL2_S8`, zero-local `ZLOCAL_*` forms, tee-local
-`TLOCAL0`, and `LADD_LOCAL0_2` for the common local temporary add pattern.
+`TLOCAL0`, `RET_LOCAL0`, and `LADD_LOCAL0_2` for the common local temporary
+add pattern.
 
 P-code direct calls use the same source-order argument convention as the native
 ABI.  The caller pushes argument values in source order; the interpreter maps

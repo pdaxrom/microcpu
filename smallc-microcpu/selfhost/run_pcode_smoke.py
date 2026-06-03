@@ -49,6 +49,7 @@ from run_pcode_microemu import (  # noqa: E402
     OP_LLOCAL_U16,
     OP_NCALL_U8,
     OP_LEAVE,
+    OP_RET_LOCAL0,
     OP_RET,
     OP_SLOCAL0_S8,
     OP_SLOCAL2_S8,
@@ -240,6 +241,8 @@ def encode_pca_module(
             out.append(OP_LADD_LOCAL0_2)
         elif op == "tlocal0":
             out.append(OP_TLOCAL0)
+        elif op == "ret_local0":
+            out.append(OP_RET_LOCAL0)
         elif op in ("llocal", "slocal", "zlocal"):
             value = parse_int(args[0])
             if op == "llocal" and 0 <= value <= 3:
@@ -441,6 +444,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "pcode_opt_zlocal": 0,
         "pcode_opt_ladd_local0_2": 0,
         "pcode_opt_tlocal0": 0,
+        "pcode_opt_ret_local0": 0,
         "pcode_opt_saved": 0,
         "pcode_opt_before": 0,
         "pcode_opt_after": 0,
@@ -496,6 +500,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     "pcode_opt_zlocal": opt_stats["zlocal_rewrites"],
                     "pcode_opt_ladd_local0_2": opt_stats["ladd_local0_2_rewrites"],
                     "pcode_opt_tlocal0": opt_stats["tlocal0_rewrites"],
+                    "pcode_opt_ret_local0": opt_stats["ret_local0_rewrites"],
                     "pcode_opt_saved": opt_stats["bytecode_saved"],
                     "pcode_opt_before": opt_stats["bytecode_before"],
                     "pcode_opt_after": opt_stats["bytecode_after"],
@@ -520,6 +525,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     log.write(f"zlocal_rewrites={opt_stats['zlocal_rewrites']}\n")
                     log.write(f"ladd_local0_2_rewrites={opt_stats['ladd_local0_2_rewrites']}\n")
                     log.write(f"tlocal0_rewrites={opt_stats['tlocal0_rewrites']}\n")
+                    log.write(f"ret_local0_rewrites={opt_stats['ret_local0_rewrites']}\n")
                     log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
                     log.write(f"bytecode_after={opt_stats['bytecode_after']}\n")
                     log.write(f"bytecode_saved={opt_stats['bytecode_saved']}\n\n")
@@ -626,6 +632,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "opt_zlocal": 0,
         "opt_ladd_local0_2": 0,
         "opt_tlocal0": 0,
+        "opt_ret_local0": 0,
         "opt_saved": 0,
         "peephole_estimated_savings": 0,
         "store_load_pairs": 0,
@@ -668,6 +675,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["opt_zlocal"] += int(item["pcode_opt_zlocal"])
         total["opt_ladd_local0_2"] += int(item["pcode_opt_ladd_local0_2"])
         total["opt_tlocal0"] += int(item["pcode_opt_tlocal0"])
+        total["opt_ret_local0"] += int(item["pcode_opt_ret_local0"])
         total["opt_saved"] += int(item["pcode_opt_saved"])
         total["peephole_estimated_savings"] += int(item["peephole_estimated_savings"])
         total["store_load_pairs"] += int(item["store_load_pairs"])
@@ -710,6 +718,7 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
         fp.write(f"  optimizer iconst-zero/slocal to zlocal rewrites: {result['pcode_opt_zlocal']}\n")
         fp.write(f"  optimizer llocal0/llocal2/add rewrites: {result['pcode_opt_ladd_local0_2']}\n")
         fp.write(f"  optimizer slocal0/llocal0 to tlocal0 rewrites: {result['pcode_opt_tlocal0']}\n")
+        fp.write(f"  optimizer llocal0/ret to ret_local0 rewrites: {result['pcode_opt_ret_local0']}\n")
         fp.write(f"  optimizer bytecode before: {result['pcode_opt_before']}\n")
         fp.write(f"  optimizer bytecode after: {result['pcode_opt_after']}\n")
         fp.write(f"  optimizer bytecode saved: {result['pcode_opt_saved']}\n")
@@ -779,6 +788,7 @@ def write_group_report(
     fp.write(f"  optimizer iconst-zero/slocal to zlocal rewrites: {total['opt_zlocal']}\n")
     fp.write(f"  optimizer llocal0/llocal2/add rewrites: {total['opt_ladd_local0_2']}\n")
     fp.write(f"  optimizer slocal0/llocal0 to tlocal0 rewrites: {total['opt_tlocal0']}\n")
+    fp.write(f"  optimizer llocal0/ret to ret_local0 rewrites: {total['opt_ret_local0']}\n")
     fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")
     fp.write("  peephole candidates after current optimizer:\n")
     fp.write(f"    store/load same temp: {total['store_load_pairs']}\n")

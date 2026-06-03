@@ -82,6 +82,7 @@
 #define IK_SLOCAL2_S8 54
 #define IK_LADD_LOCAL0_2 55
 #define IK_TLOCAL0    56
+#define IK_RET_LOCAL0 57
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -135,6 +136,7 @@
 #define OP_JZ_S16           0x43
 #define OP_JNZ_S8           0x44
 #define OP_JNZ_S16          0x45
+#define OP_RET_LOCAL0       0x46
 #define OP_CALL_U16         0x50
 #define OP_RET              0x51
 #define OP_ENTER_U8         0x52
@@ -393,6 +395,7 @@ static int insn_base_size(ip) struct Insn *ip; {
     return 2;
   case IK_LADD_LOCAL0_2:
   case IK_TLOCAL0:
+  case IK_RET_LOCAL0:
     return 1;
   case IK_ADDI_U16:
     return 3;
@@ -572,6 +575,9 @@ static void encode() {
     case IK_TLOCAL0:
       emit8(OP_TLOCAL0);
       break;
+    case IK_RET_LOCAL0:
+      emit8(OP_RET_LOCAL0);
+      break;
     case IK_LLOCAL:
     case IK_SLOCAL:
     case IK_ADDR_LOCAL:
@@ -712,6 +718,7 @@ static int parse_kind(op) char *op; {
   if(str_eq(op, "slocal2_s8")) return IK_SLOCAL2_S8;
   if(str_eq(op, "ladd_local0_2")) return IK_LADD_LOCAL0_2;
   if(str_eq(op, "tlocal0")) return IK_TLOCAL0;
+  if(str_eq(op, "ret_local0")) return IK_RET_LOCAL0;
   if(str_eq(op, "lbyte")) return IK_LBYTE;
   if(str_eq(op, "sbyte")) return IK_SBYTE;
   if(str_eq(op, "lword")) return IK_LWORD;
@@ -849,6 +856,10 @@ static int parse_file(path) char *path; {
     }
     if(str_eq(op, "tlocal0")) {
       add_insn(IK_TLOCAL0, 0, 0, 0);
+      continue;
+    }
+    if(str_eq(op, "ret_local0")) {
+      add_insn(IK_RET_LOCAL0, 0, 0, 0);
       continue;
     }
     if(str_eq(op, "llocal") || str_eq(op, "slocal") || str_eq(op, "addr_local")) {
@@ -1278,8 +1289,12 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
       argc = read8(&pc);
       push(native_call(id, argc));
       break;
+    case OP_RET_LOCAL0:
+      a = load_local(0);
+      goto pcode_ret;
     case OP_RET:
       a = sp ? pop() : 0;
+pcode_ret:
       if(fp == 0) {
         *ret_out = a & 0xffff;
         *steps_out = steps;

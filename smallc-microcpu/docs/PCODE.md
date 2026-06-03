@@ -83,6 +83,7 @@ calls, pre/post increment and decrement, and casts used by the current tests.
 | `$43` | `JZ_S16` | signed 16-bit relative offset |
 | `$44` | `JNZ_S8` | signed byte relative offset |
 | `$45` | `JNZ_S16` | signed 16-bit relative offset |
+| `$46` | `RET_LOCAL0` | none |
 | `$50` | `CALL_U16` | 16-bit p-code address, argc byte |
 | `$51` | `RET` | none |
 | `$52` | `ENTER_U8` | frame byte count |
@@ -167,6 +168,7 @@ The current pass is deliberately local and safe:
   encoded local load would be larger than `DUP`;
 - rewrites adjacent live `slocal 0`/`llocal 0` roundtrips to `TLOCAL0`, which
   stores the top stack value while leaving it on the stack;
+- rewrites adjacent `llocal 0`/`ret` to `RET_LOCAL0`;
 - folds constant conditional branches, removes unconditional jumps to the next
   instruction, replaces conditional branches to the next instruction with
   `DROP`, and rewrites `JZ/JNZ next; JMP target; next:` into the opposite
@@ -338,12 +340,12 @@ in native `v0` and branches to `__test_halt`, so `microemu
 --stop-on-self-branch` can verify the final register value.
 
 The microcpu interpreter currently covers the opcodes emitted by
-`pcode-tests/001..051`: constants, local/global loads and stores, local/global
+`pcode-tests/001..052`: constants, local/global loads and stores, local/global
 addressing, p-code direct calls including compact `CALL0/1/2/3_U16`, conditional
 branches, arithmetic/logical comparisons, byte/word memory operations,
 `DROP`/`DUP`/`SWAP`, `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, `EQI_S8`,
 `SLOCAL0_S8`, `SLOCAL2_S8`, `ZLOCAL_*`, `TLOCAL0`, `LADD_LOCAL0_2`,
-`RET`, `NCALL_U8`, `NCALL_ADDR_U16`,
+`RET`, `RET_LOCAL0`, `NCALL_U8`, `NCALL_ADDR_U16`,
 `NCALL0/1/2/3_ADDR_U16`, and `ICALL_U8`.
 `switch` is lowered by the p-code backend into an explicit compare-and-branch
 chain, not a dedicated VM opcode.

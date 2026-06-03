@@ -285,6 +285,7 @@ def write_tool_report(fp, result: dict[str, object]) -> None:
         fp.write(f"  optimizer iconst-zero/slocal to zlocal rewrites: {opt_stats['zlocal_rewrites']}\n")
         fp.write(f"  optimizer llocal0/llocal2/add rewrites: {opt_stats['ladd_local0_2_rewrites']}\n")
         fp.write(f"  optimizer slocal0/llocal0 to tlocal0 rewrites: {opt_stats['tlocal0_rewrites']}\n")
+        fp.write(f"  optimizer llocal0/ret to ret_local0 rewrites: {opt_stats['ret_local0_rewrites']}\n")
         fp.write(f"  optimizer bytecode before: {opt_stats['bytecode_before']}\n")
         fp.write(f"  optimizer bytecode after: {opt_stats['bytecode_after']}\n")
         fp.write(f"  optimizer bytecode saved: {opt_stats['bytecode_saved']}\n")

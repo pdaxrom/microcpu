@@ -167,7 +167,7 @@ An experimental p-code backend now exists as a size-reduction path.  It lowers
 the existing internal register-oriented pseudo-code into an external 8-bit
 stack-VM bytecode and has both host and microcpu interpreter coverage for a
 broader subset.  `test-pcode-host` and `test-pcode-microemu` currently pass
-`pcode-tests/001..051`, including comparisons, short-circuit logical
+`pcode-tests/001..052`, including comparisons, short-circuit logical
 operators, bitwise/shift operations, local/global arrays, basic pointers,
 string indexing, enum/typedef basics, simple struct access, `switch`, static
 and void functions, pointer-to-pointer loads, casts, pre/post increment and
@@ -198,7 +198,7 @@ p-code-hosted compiler.  Current report-only measurements show:
 - `smallcpp`: all modules generate p-code.  Estimated p-code image is about
   47.9 KB versus 87.1 KB summed native object size, roughly 39.2 KB smaller.
 - `smallcc`: all modules now generate p-code.  Estimated p-code image is about
-  62.8 KB versus 187.3 KB summed native object size, roughly 124.4 KB smaller.
+  62.8 KB versus 187.3 KB summed native object size, roughly 124.5 KB smaller.
   The p-code optimizer removes about 5.8K temp store/load roundtrips from
   `smallcc`, rewrites a small number of live non-short local temp roundtrips,
   compacts local branch patterns, rewrites immediate `add`, `sub`, and `eq`
@@ -206,8 +206,9 @@ p-code-hosted compiler.  Current report-only measurements show:
   539 temp-slot constant stores to `SLOCAL0_S8`/`SLOCAL2_S8`, rewrites about
   242 zero local stores to `ZLOCAL_*`, rewrites the common `llocal 0`/
   `llocal 2`/`add` pattern to `LADD_LOCAL0_2`, rewrites live `slocal 0`/
-  `llocal 0` roundtrips to `TLOCAL0`, and uses compact object-mode
-  native-call forms for the common 0, 1, 2, and 3 argument cases.
+  `llocal 0` roundtrips to `TLOCAL0`, rewrites common `llocal 0`/`ret`
+  returns to `RET_LOCAL0`, and uses compact object-mode native-call forms for
+  the common 0, 1, 2, and 3 argument cases.
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
@@ -262,14 +263,14 @@ diagnostics, and overlap checks.
 Current execution status:
 
 - `smallcpp`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,358
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 46,337
   bytes.  The hosted diagnostic identifies the failed allocation as the
   13,000-byte compiler symbol table (`symtab`), requested after earlier
-  `smallcpp` table allocations left 678 bytes below the hosted heap guard.
+  `smallcpp` table allocations left 698 bytes below the hosted heap guard.
 - `smallcc`: links and starts on `hc1200-cpu`; it prints the banner through
-  UART, then halts with `V0=0xca10`.  The current direct-linked image is 61,304
+  UART, then halts with `V0=0xca10`.  The current direct-linked image is 61,233
   bytes.  The hosted diagnostic identifies the failed allocation as the
-  8,192-byte literal pool (`litq`), with 1,308 bytes left below the hosted heap
+  8,192-byte literal pool (`litq`), with 1,378 bytes left below the hosted heap
   guard.
 
 `V0=0xca10` is the hosted runtime's explicit heap-exhaustion marker.  The

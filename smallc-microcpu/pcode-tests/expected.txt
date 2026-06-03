@@ -49,3 +49,4 @@
 049_opt_slocal_const 49
 050_opt_ladd_local0_2 50
 051_opt_tlocal0 51
+052_opt_ret_local0 52

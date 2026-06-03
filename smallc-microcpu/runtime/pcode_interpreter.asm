@@ -92,6 +92,7 @@ __pcode_loop:
 	pcode_dispatch	$43, __pcode_op_jz_s16
 	pcode_dispatch	$44, __pcode_op_jnz_s8
 	pcode_dispatch	$45, __pcode_op_jnz_s16
+	pcode_dispatch	$46, __pcode_op_ret_local0
 	pcode_dispatch	$50, __pcode_op_call_u16
 	pcode_dispatch	$51, __pcode_op_ret
 	pcode_dispatch	$54, __pcode_op_ncall_u8
@@ -604,6 +605,7 @@ __pcode_ncall_return:
 
 __pcode_op_ret:
 	bsr	__pcode_pop_v0
+__pcode_ret_v0:
 	set	v1, __pcode_depth
 	ldr	v1, v1, 0
 	beq	__pcode_done, v1, 0
@@ -616,6 +618,9 @@ __pcode_op_ret:
 	pop	v4
 	bsr	__pcode_push_v0
 	jmp	__pcode_loop
+__pcode_op_ret_local0:
+	ldr	v0, v4, 0
+	jmp	__pcode_ret_v0
 
 __pcode_op_add:
 	bsr	__pcode_pop2
