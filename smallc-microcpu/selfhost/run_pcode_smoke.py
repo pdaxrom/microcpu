@@ -377,6 +377,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         "pcode_opt_cond_next": 0,
         "pcode_opt_inverted": 0,
         "pcode_opt_branch_threaded": 0,
+        "pcode_opt_addi": 0,
         "pcode_opt_saved": 0,
         "pcode_opt_before": 0,
         "pcode_opt_after": 0,
@@ -424,6 +425,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     "pcode_opt_cond_next": opt_stats["cond_to_next_replaced"],
                     "pcode_opt_inverted": opt_stats["inverted_branch_jumps"],
                     "pcode_opt_branch_threaded": opt_stats["branch_threaded"],
+                    "pcode_opt_addi": opt_stats["addi_s8_rewrites"],
                     "pcode_opt_saved": opt_stats["bytecode_saved"],
                     "pcode_opt_before": opt_stats["bytecode_before"],
                     "pcode_opt_after": opt_stats["bytecode_after"],
@@ -440,6 +442,7 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
                     log.write(f"inverted_branch_jumps={opt_stats['inverted_branch_jumps']}\n")
                     log.write(f"branch_threaded={opt_stats['branch_threaded']}\n")
                     log.write(f"branch_thread_byte_savings={opt_stats['branch_thread_byte_savings']}\n")
+                    log.write(f"addi_s8_rewrites={opt_stats['addi_s8_rewrites']}\n")
                     log.write(f"bytecode_before={opt_stats['bytecode_before']}\n")
                     log.write(f"bytecode_after={opt_stats['bytecode_after']}\n")
                     log.write(f"bytecode_saved={opt_stats['bytecode_saved']}\n\n")
@@ -538,6 +541,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         "opt_cond_next": 0,
         "opt_inverted": 0,
         "opt_branch_threaded": 0,
+        "opt_addi": 0,
         "opt_saved": 0,
         "peephole_estimated_savings": 0,
         "store_load_pairs": 0,
@@ -572,6 +576,7 @@ def sum_for_group(results: dict[str, dict[str, object]], sources: list[pathlib.P
         total["opt_cond_next"] += int(item["pcode_opt_cond_next"])
         total["opt_inverted"] += int(item["pcode_opt_inverted"])
         total["opt_branch_threaded"] += int(item["pcode_opt_branch_threaded"])
+        total["opt_addi"] += int(item["pcode_opt_addi"])
         total["opt_saved"] += int(item["pcode_opt_saved"])
         total["peephole_estimated_savings"] += int(item["peephole_estimated_savings"])
         total["store_load_pairs"] += int(item["store_load_pairs"])
@@ -606,6 +611,7 @@ def write_module_report(fp, result: dict[str, object], interp_size: int, runtime
         fp.write(f"  optimizer conditional branches to next replaced: {result['pcode_opt_cond_next']}\n")
         fp.write(f"  optimizer inverted branch/jump pairs: {result['pcode_opt_inverted']}\n")
         fp.write(f"  optimizer threaded branches: {result['pcode_opt_branch_threaded']}\n")
+        fp.write(f"  optimizer iconst/add to addi_s8 rewrites: {result['pcode_opt_addi']}\n")
         fp.write(f"  optimizer bytecode before: {result['pcode_opt_before']}\n")
         fp.write(f"  optimizer bytecode after: {result['pcode_opt_after']}\n")
         fp.write(f"  optimizer bytecode saved: {result['pcode_opt_saved']}\n")
@@ -667,6 +673,7 @@ def write_group_report(
     fp.write(f"  optimizer conditional branches to next replaced: {total['opt_cond_next']}\n")
     fp.write(f"  optimizer inverted branch/jump pairs: {total['opt_inverted']}\n")
     fp.write(f"  optimizer threaded branches: {total['opt_branch_threaded']}\n")
+    fp.write(f"  optimizer iconst/add to addi_s8 rewrites: {total['opt_addi']}\n")
     fp.write(f"  optimizer bytecode saved: {total['opt_saved']}\n")
     fp.write("  peephole candidates after current optimizer:\n")
     fp.write(f"    store/load same temp: {total['store_load_pairs']}\n")
@@ -746,7 +753,7 @@ def write_report(
             else:
                 fp.write(f"- {name}: native comparison is unavailable.\n")
         fp.write("- This is a size smoke only; it does not link or run a p-code-hosted compiler image.\n")
-        fp.write("- Remaining blockers are cross-module p-code linking semantics, target-hosted file I/O/argv support, and final image layout.\n")
+        fp.write("- Remaining blockers are target-hosted file I/O/argv support, runtime RAM footprint, and final image layout.\n")
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:

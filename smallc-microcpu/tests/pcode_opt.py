@@ -361,6 +361,31 @@ def rewrite_store_load_roundtrips(lines: list[PcaLine]) -> tuple[list[PcaLine], 
     return [rewrites.get(index, line) for index, line in enumerate(lines)], counts, saved
 
 
+def rewrite_addi_s8(lines: list[PcaLine]) -> tuple[list[PcaLine], int]:
+    code, _line_to_code, code_to_line, labels, _functions = build_code_maps(lines)
+    replacements: dict[int, PcaLine] = {}
+    removals: set[int] = set()
+    for index in range(0, len(code) - 1):
+        first = code[index]
+        second = code[index + 1]
+        if first.op != "iconst" or second.op != "add":
+            continue
+        if labels.get(index + 1):
+            continue
+        value = pcode.parse_int(first.args[0])
+        if not -128 <= value <= 127:
+            continue
+        replacements[code_to_line[index]] = PcaLine("addi", [first.args[0]])
+        removals.add(code_to_line[index + 1])
+    if not replacements:
+        return list(lines), 0
+    return [
+        replacements.get(index, line)
+        for index, line in enumerate(lines)
+        if index not in removals
+    ], len(replacements)
+
+
 def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]:
     total_removed = 0
     total_rewritten = 0
@@ -372,6 +397,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
     total_inverted_branch_jumps = 0
     total_branch_threaded = 0
     total_branch_thread_saved = 0
+    total_addi_rewrites = 0
     passes = 0
     current = list(lines)
     while True:
@@ -381,6 +407,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
             current = [line for index, line in enumerate(current) if index not in remove_lines]
         current, rewrite_counts, rewrite_saved = rewrite_store_load_roundtrips(current)
         rewritten = sum(rewrite_counts.values())
+        current, addi_rewrites = rewrite_addi_s8(current)
         current, branch_stats = rewrite_branches(current)
         branch_changes = (
             branch_stats["const_branch_to_jump"]
@@ -390,11 +417,12 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
             + branch_stats["inverted_branch_jumps"]
             + branch_stats["branch_threaded"]
         )
-        if not removed and not rewritten and not branch_changes:
+        if not removed and not rewritten and not addi_rewrites and not branch_changes:
             break
         total_removed += removed
         total_rewritten += rewritten
         total_rewrite_saved += rewrite_saved
+        total_addi_rewrites += addi_rewrites
         total_const_to_jump += branch_stats["const_branch_to_jump"]
         total_const_removed += branch_stats["const_branch_removed"]
         total_jump_next_removed += branch_stats["jump_to_next_removed"]
@@ -410,6 +438,7 @@ def optimize_lines(lines: list[PcaLine]) -> tuple[list[PcaLine], dict[str, int]]
         "removed_temp_roundtrips": total_removed,
         "rewritten_store_load_roundtrips": total_rewritten,
         "rewrite_byte_savings": total_rewrite_saved,
+        "addi_s8_rewrites": total_addi_rewrites,
         "const_branch_to_jump": total_const_to_jump,
         "const_branch_removed": total_const_removed,
         "jump_to_next_removed": total_jump_next_removed,
@@ -431,6 +460,7 @@ def optimize_pca_file(input_path: pathlib.Path, output_path: pathlib.Path) -> di
         "removed_temp_roundtrips": opt_stats["removed_temp_roundtrips"],
         "rewritten_store_load_roundtrips": opt_stats["rewritten_store_load_roundtrips"],
         "rewrite_byte_savings": opt_stats["rewrite_byte_savings"],
+        "addi_s8_rewrites": opt_stats["addi_s8_rewrites"],
         "const_branch_to_jump": opt_stats["const_branch_to_jump"],
         "const_branch_removed": opt_stats["const_branch_removed"],
         "jump_to_next_removed": opt_stats["jump_to_next_removed"],

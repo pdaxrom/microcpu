@@ -73,6 +73,7 @@
 #define IK_HALT       45
 #define IK_ADDR_FUNC  46
 #define IK_ICALL      47
+#define IK_ADDI       48
 
 #define OP_NOP              0x00
 #define OP_HALT             0x01
@@ -85,6 +86,7 @@
 #define OP_DROP             0x08
 #define OP_DUP              0x09
 #define OP_SWAP             0x0a
+#define OP_ADDI_S8          0x0b
 #define OP_LLOCAL_0         0x10
 #define OP_LLOCAL_1         0x11
 #define OP_LLOCAL_2         0x12
@@ -362,6 +364,8 @@ static int insn_base_size(ip) struct Insn *ip; {
     if(v == -1 || v == 0 || v == 1 || v == 2) return 1;
     if(v >= -128 && v <= 127) return 2;
     return 3;
+  case IK_ADDI:
+    return 2;
   case IK_LLOCAL:
   case IK_SLOCAL:
   case IK_ADDR_LOCAL:
@@ -507,6 +511,10 @@ static void encode() {
         emit16(insn[i].a);
       }
       break;
+    case IK_ADDI:
+      emit8(OP_ADDI_S8);
+      emit8(insn[i].a);
+      break;
     case IK_LLOCAL:
     case IK_SLOCAL:
     case IK_ADDR_LOCAL:
@@ -628,6 +636,7 @@ static int parse_kind(op) char *op; {
   if(str_eq(op, "drop")) return IK_DROP;
   if(str_eq(op, "dup")) return IK_DUP;
   if(str_eq(op, "swap")) return IK_SWAP;
+  if(str_eq(op, "addi")) return IK_ADDI;
   if(str_eq(op, "lbyte")) return IK_LBYTE;
   if(str_eq(op, "sbyte")) return IK_SBYTE;
   if(str_eq(op, "lword")) return IK_LWORD;
@@ -727,6 +736,11 @@ static int parse_file(path) char *path; {
     if(str_eq(op, "iconst")) {
       if(!next_token(&p, tok)) return fail("iconst without value");
       add_insn(IK_ICONST, parse_int(tok), 0, 0);
+      continue;
+    }
+    if(str_eq(op, "addi")) {
+      if(!next_token(&p, tok)) return fail("addi without value");
+      add_insn(IK_ADDI, parse_int(tok), 0, 0);
       continue;
     }
     if(str_eq(op, "llocal") || str_eq(op, "slocal") || str_eq(op, "addr_local")) {
@@ -1062,6 +1076,7 @@ static int run_vm(max_steps, ret_out, steps_out) int max_steps, *ret_out, *steps
     case OP_ICONST_2: push(2); break;
     case OP_ICONST_S8: push(read_s8(&pc)); break;
     case OP_ICONST_U16: push(read16(&pc)); break;
+    case OP_ADDI_S8: b = read_s8(&pc); a = pop(); push(a + b); break;
     case OP_DROP: pop(); break;
     case OP_DUP: a = pop(); push(a); push(a); break;
     case OP_SWAP: a = pop(); b = pop(); push(a); push(b); break;

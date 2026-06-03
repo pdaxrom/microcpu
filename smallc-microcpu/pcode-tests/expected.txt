@@ -42,3 +42,4 @@
 042_opt_store_load 42
 043_opt_branch_next 43
 044_opt_loop 44
+045_opt_addi 45

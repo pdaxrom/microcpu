@@ -25,6 +25,7 @@ OP_ICONST_U16 = 0x07
 OP_DROP = 0x08
 OP_DUP = 0x09
 OP_SWAP = 0x0A
+OP_ADDI_S8 = 0x0B
 OP_LLOCAL_0 = 0x10
 OP_LLOCAL_1 = 0x11
 OP_LLOCAL_2 = 0x12
@@ -306,6 +307,8 @@ def insn_size(insn: Insn, labels: dict[str, int], pcode_symbols: set[str] | None
         if -128 <= value <= 127:
             return 2
         return 3
+    if op == "addi":
+        return 2
     if op in ("llocal", "slocal"):
         value = parse_int(insn.args[0])
         if 0 <= value <= 3:
@@ -477,6 +480,11 @@ def encode_pca_object(path: pathlib.Path, pcode_symbols: set[str] | None = None)
             else:
                 out.append(OP_ICONST_U16)
                 emit_u16(out, value)
+        elif op == "addi":
+            value = parse_int(args[0])
+            if not -128 <= value <= 127:
+                raise ValueError(f"addi operand out of range: {value}")
+            out.extend([OP_ADDI_S8, value & 0xFF])
         elif op in ("llocal", "slocal"):
             value = parse_int(args[0])
             if op == "llocal" and 0 <= value <= 3:
@@ -757,6 +765,7 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
             log.write(f"inverted_branch_jumps={stats['inverted_branch_jumps']}\n")
             log.write(f"branch_threaded={stats['branch_threaded']}\n")
             log.write(f"branch_thread_byte_savings={stats['branch_thread_byte_savings']}\n")
+            log.write(f"addi_s8_rewrites={stats['addi_s8_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")
             log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")

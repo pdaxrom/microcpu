@@ -205,6 +205,7 @@ def compile_pcode(
             log.write(f"inverted_branch_jumps={stats['inverted_branch_jumps']}\n")
             log.write(f"branch_threaded={stats['branch_threaded']}\n")
             log.write(f"branch_thread_byte_savings={stats['branch_thread_byte_savings']}\n")
+            log.write(f"addi_s8_rewrites={stats['addi_s8_rewrites']}\n")
             log.write(f"bytecode_before={stats['bytecode_before']}\n")
             log.write(f"bytecode_after={stats['bytecode_after']}\n")
             log.write(f"bytecode_saved={stats['bytecode_saved']}\n\n")

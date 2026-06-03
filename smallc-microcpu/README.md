@@ -167,9 +167,10 @@ optimizer removes proven-dead temp roundtrips and rewrites live non-short
 same-temp store/load roundtrips to `dup`/`slocal` when that is smaller.  It
 also folds simple constant branches, removes branches to the next instruction,
 inverts `conditional; jmp; label` pairs, and threads branches through
-intermediate `jmp` instructions when the encoded branch does not grow.  The
-object-mode encoder also uses compact `NCALL0/1/2/3_ADDR_U16` forms for common
-native calls with 0, 1, 2, or 3 arguments.
+intermediate `jmp` instructions when the encoded branch does not grow.  It also
+rewrites `iconst <s8>; add` to compact `ADDI_S8`.  The object-mode encoder uses
+compact `NCALL0/1/2/3_ADDR_U16` forms for common native calls with 0, 1, 2, or
+3 arguments.
 
 To measure whether p-code helps the self-hosting size problem without trying
 to run a target-hosted compiler yet:

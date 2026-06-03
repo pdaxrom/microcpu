@@ -49,6 +49,7 @@ __pcode_loop:
 	pcode_dispatch	$08, __pcode_op_drop
 	pcode_dispatch	$09, __pcode_op_dup
 	pcode_dispatch	$0a, __pcode_op_swap
+	pcode_dispatch	$0b, __pcode_op_addi_s8
 	pcode_dispatch	$10, __pcode_op_llocal_0
 	pcode_dispatch	$11, __pcode_op_llocal_1
 	pcode_dispatch	$12, __pcode_op_llocal_2
@@ -150,6 +151,14 @@ __pcode_op_swap:
 	pop	v0
 	bsr	__pcode_push_v0
 	mov	v0, v1
+	bsr	__pcode_push_v0
+	b	__pcode_loop
+
+__pcode_op_addi_s8:
+	bsr	__pcode_fetch_s8
+	mov	v1, v0
+	bsr	__pcode_pop_v0
+	add	v0, v0, v1
 	bsr	__pcode_push_v0
 	b	__pcode_loop
 
