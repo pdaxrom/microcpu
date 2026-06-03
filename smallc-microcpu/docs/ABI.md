@@ -272,7 +272,8 @@ temporary/local slots.  The backend maps the internal primary and secondary
 register values to reserved frame temporary slots, then materializes those
 slots onto the VM stack when emitting stack operations.  The optional p-code
 compaction pass keeps the same ABI and currently performs only local safe
-bytecode rewrites plus compact opcode selection.
+bytecode rewrites plus compact opcode selection, including immediate
+`ADDI_S8`, `SUBI_S8`, and `EQI_S8` forms.
 
 P-code direct calls use the same source-order argument convention as the native
 ABI.  The caller pushes argument values in source order; the interpreter maps

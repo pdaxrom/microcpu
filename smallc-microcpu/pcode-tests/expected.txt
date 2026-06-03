@@ -43,3 +43,4 @@
 043_opt_branch_next 43
 044_opt_loop 44
 045_opt_addi 45
+046_opt_subi_eqi 46

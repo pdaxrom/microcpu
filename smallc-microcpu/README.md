@@ -168,7 +168,8 @@ same-temp store/load roundtrips to `dup`/`slocal` when that is smaller.  It
 also folds simple constant branches, removes branches to the next instruction,
 inverts `conditional; jmp; label` pairs, and threads branches through
 intermediate `jmp` instructions when the encoded branch does not grow.  It also
-rewrites `iconst <s8>; add` to compact `ADDI_S8`.  The object-mode encoder uses
+rewrites `iconst <s8>; add/sub/eq` to compact `ADDI_S8`, `SUBI_S8`, and
+`EQI_S8`.  The object-mode encoder uses
 compact `NCALL0/1/2/3_ADDR_U16` forms for common native calls with 0, 1, 2, or
 3 arguments.
 

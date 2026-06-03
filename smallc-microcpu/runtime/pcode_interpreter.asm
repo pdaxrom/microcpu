@@ -39,7 +39,9 @@ __pcode_startup:
 	b	__pcode_loop
 
 __pcode_loop:
-	bsr	__pcode_fetch_u8
+	ldrl	v0, v2, 0
+	seth	v0, 0
+	add	v2, v2, 1
 	pcode_dispatch	$02, __pcode_op_iconst_m1
 	pcode_dispatch	$03, __pcode_op_iconst_0
 	pcode_dispatch	$04, __pcode_op_iconst_1
@@ -50,6 +52,8 @@ __pcode_loop:
 	pcode_dispatch	$09, __pcode_op_dup
 	pcode_dispatch	$0a, __pcode_op_swap
 	pcode_dispatch	$0b, __pcode_op_addi_s8
+	pcode_dispatch	$0c, __pcode_op_subi_s8
+	pcode_dispatch	$0d, __pcode_op_eqi_s8
 	pcode_dispatch	$10, __pcode_op_llocal_0
 	pcode_dispatch	$11, __pcode_op_llocal_1
 	pcode_dispatch	$12, __pcode_op_llocal_2
@@ -161,6 +165,19 @@ __pcode_op_addi_s8:
 	add	v0, v0, v1
 	bsr	__pcode_push_v0
 	b	__pcode_loop
+__pcode_op_subi_s8:
+	bsr	__pcode_fetch_s8
+	mov	v1, v0
+	bsr	__pcode_pop_v0
+	sub	v0, v0, v1
+	bsr	__pcode_push_v0
+	b	__pcode_loop
+__pcode_op_eqi_s8:
+	bsr	__pcode_fetch_s8
+	mov	v1, v0
+	bsr	__pcode_pop_v0
+	beq	__pcode_true, v0, v1
+	b	__pcode_false
 
 __pcode_op_llocal_0:
 	ldr	v0, v4, 0
@@ -400,7 +417,7 @@ __pcode_call_args_done:
 	set	v1, __pcode_call_target
 	ldr	v0, v1, 0
 	mov	v2, v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 
 __pcode_op_ncall_u8:
 	bsr	__pcode_fetch_u8
@@ -516,7 +533,7 @@ __pcode_ncall_return:
 	set	v1, __pcode_ncall_retval
 	ldr	v0, v1, 0
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 
 __pcode_op_ret:
 	bsr	__pcode_pop_v0
@@ -531,54 +548,54 @@ __pcode_op_ret:
 	pop	v2
 	pop	v4
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 
 __pcode_op_add:
 	bsr	__pcode_pop2
 	add	v0, v0, v1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_sub:
 	bsr	__pcode_pop2
 	sub	v0, v0, v1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_and:
 	bsr	__pcode_pop2
 	and	v0, v0, v1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_or:
 	bsr	__pcode_pop2
 	or	v0, v0, v1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_xor:
 	bsr	__pcode_pop2
 	xor	v0, v0, v1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_shl:
 	bsr	__pcode_pop2
 	shl	v0, v0, v1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_shr:
 	bsr	__pcode_pop2
 	shr	v0, v0, v1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_neg:
 	bsr	__pcode_pop_v0
 	inv	v0, v0
 	add	v0, v0, 1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_bnot:
 	bsr	__pcode_pop_v0
 	inv	v0, v0
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_op_lnot:
 	bsr	__pcode_pop_v0
 	beq	__pcode_true, v0, 0
@@ -611,11 +628,11 @@ __pcode_op_ge:
 __pcode_true:
 	set	v0, 1
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 __pcode_false:
 	clr	v0
 	bsr	__pcode_push_v0
-	b	__pcode_loop
+	jmp	__pcode_loop
 
 __pcode_fetch_u8:
 	ldrl	v0, v2, 0
