@@ -811,7 +811,10 @@ def compile_pcode(name: str, source: pathlib.Path, args: argparse.Namespace, log
     proc = run_cmd(log_path, "preprocess", argv)
     if proc.returncode != 0:
         return False, i_path, pca_path
-    argv = [str(args.cc_only), "--backend", "pcode", "-o", str(pca_path), str(i_path)]
+    argv = [str(args.cc_only), "--backend", "pcode"]
+    if getattr(args, "pcode_opt", False):
+        argv.append("--pcode-opt")
+    argv.extend(["-o", str(pca_path), str(i_path)])
     proc = run_cmd(log_path, "compile-pcode", argv)
     if proc.returncode == 0 and getattr(args, "pcode_opt", False):
         import pcode_opt

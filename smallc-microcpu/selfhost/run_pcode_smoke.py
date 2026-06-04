@@ -469,7 +469,10 @@ def compile_one(source: pathlib.Path, args: argparse.Namespace) -> dict[str, obj
         result["reason"] = "preprocess failed"
         return result
 
-    argv = [str(args.cc_only), "--backend", "pcode", "-o", str(pca_path), str(i_path)]
+    argv = [str(args.cc_only), "--backend", "pcode"]
+    if args.pcode_opt:
+        argv.append("--pcode-opt")
+    argv.extend(["-o", str(pca_path), str(i_path)])
     proc = run_cmd(log_path, "compile-pcode", argv, args.timeout_seconds)
     if proc.returncode != 0 or ERROR_RE.search(proc.stderr) or UNSUPPORTED_PCODE_RE.search(proc.stderr):
         reason, opcode, near = first_error(proc.stderr)

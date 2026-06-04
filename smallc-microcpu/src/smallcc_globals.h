@@ -47,6 +47,7 @@ extern int
   include_open_count,
   objectmode,
   backend,
+  pcode_optimize,
   pubclass,
   decltype2,
   functype,

@@ -7,7 +7,7 @@
 #include "cc.h"
 #include "host_compat.h"
 
-extern int output, pcode_argc, litptr, litlab;
+extern int output, pcode_argc, litptr, litlab, pcode_optimize;
 extern int pubclass;
 extern char *symtab, *cptr, *litq, ssname[NAMESIZE];
 
@@ -15,6 +15,8 @@ extern char *symtab, *cptr, *litq, ssname[NAMESIZE];
 #define PCTMP1 2
 
 int pcode_switch_mode, pcode_switch_label, pcode_switch_have_label;
+
+int pcode_store_tmp();
 
 int pcode_label(n) int n; {
   outstr("L");
@@ -35,6 +37,47 @@ int pcode_emit_local_op(op, value) char *op; int value; {
   fputc(' ', output);
   outdec(value);
   newline();
+  }
+
+int pcode_is_s8(value) int value; {
+  if(value >= -128 && value <= 127) return YES;
+  return NO;
+  }
+
+int pcode_is_short_iconst(value) int value; {
+  if(value == -1 || value == 0 || value == 1 || value == 2) return YES;
+  return NO;
+  }
+
+int pcode_emit_const_store_tmp(which, value) int which, value; {
+  int offset;
+  if(which == 0) offset = PCTMP0;
+  else           offset = PCTMP1;
+  if(pcode_optimize) {
+    if(value == 0) {
+      pcode_emit_local_op("zlocal", offset);
+      return 0;
+      }
+    if(pcode_is_s8(value) && pcode_is_short_iconst(value) == NO) {
+      if(offset == PCTMP0) {
+        outstr("slocal0_s8 ");
+        outdec(value);
+        newline();
+        return 0;
+        }
+      if(offset == PCTMP1) {
+        outstr("slocal2_s8 ");
+        outdec(value);
+        newline();
+        return 0;
+        }
+      }
+    }
+  outstr("iconst ");
+  outdec(value);
+  newline();
+  pcode_store_tmp(which);
+  return 0;
   }
 
 int pcode_load_tmp(which) int which; {
@@ -215,16 +258,10 @@ int pcode_outcode(pcode, value) int pcode, value; {
       return 0;
 
     case GETw1n:
-      outstr("iconst ");
-      outdec(value);
-      newline();
-      pcode_store_tmp(0);
+      pcode_emit_const_store_tmp(0, value);
       return 0;
     case GETw2n:
-      outstr("iconst ");
-      outdec(value);
-      newline();
-      pcode_store_tmp(1);
+      pcode_emit_const_store_tmp(1, value);
       return 0;
 
     case GETw1m:

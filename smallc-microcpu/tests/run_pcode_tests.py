@@ -187,7 +187,10 @@ def compile_pcode(
     proc = run_cmd(log_path, "preprocess", argv)
     if proc.returncode != 0:
         return False, i_path, pca_path
-    argv = [str(args.cc_only), "--backend", "pcode", "-o", str(pca_path), str(i_path)]
+    argv = [str(args.cc_only), "--backend", "pcode"]
+    if args.pcode_opt:
+        argv.append("--pcode-opt")
+    argv.extend(["-o", str(pca_path), str(i_path)])
     proc = run_cmd(log_path, "compile-pcode", argv)
     if proc.returncode == 0 and args.pcode_opt:
         raw_path = args.build_dir / f"{name}.raw.pca"

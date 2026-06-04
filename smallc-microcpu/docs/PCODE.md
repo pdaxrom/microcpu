@@ -158,7 +158,27 @@ make -C smallc-microcpu test-pcode-microemu PCODE_OPT=0
 make -C smallc-microcpu selfhost-pcode-link-smoke PCODE_OPT=0
 ```
 
-The current pass is deliberately local and safe:
+Compaction is split into two layers:
+
+- `smallcc --pcode-opt` contains a Small-C-compatible C peephole window in the
+  p-code backend.  This is the subset a future target-hosted `smallcc` can run
+  without Python.
+- The host-side Python post-pass remains as an external optimizer and report
+  generator for liveness and branch rewrites that are not yet ported into the
+  compiler.
+
+The compiler-resident C subset is deliberately adjacent-only and safe:
+
+- emits `SLOCAL0_S8` and `SLOCAL2_S8` directly for constant stores to the
+  p-code temporary slots when the constant fits in signed 8 bits and is not
+  already one of the single-byte `ICONST_M1/0/1/2` forms;
+- emits `ZLOCAL_*` directly for zero stores to the p-code temporary slots
+  reached by the constant-to-temp lowering path;
+- avoids liveness-sensitive rewrites before the Python post-pass, because
+  removing explicit `llocal`/`ret` or temp load/store operations too early can
+  hide information that the host-side liveness pass still needs.
+
+The Python post-pass currently adds:
 
 - removes dead `slocal 0`/`llocal 0` and `slocal 2`/`llocal 2` temp
   roundtrips when a simple p-code liveness check proves the temp is not read
@@ -182,13 +202,10 @@ The current pass is deliberately local and safe:
 - rewrites adjacent `iconst <s8>`/`add`, `iconst <s8>`/`sub`, and
   `iconst <s8>`/`eq` pairs to compact `ADDI_S8`, `SUBI_S8`, and `EQI_S8`
   opcodes, and rewrites larger `iconst <u16>`/`add` pairs to `ADDI_U16`;
-- rewrites adjacent `iconst <s8>`/`slocal 0` and `iconst <s8>`/`slocal 2`
-  pairs to `SLOCAL0_S8` and `SLOCAL2_S8` when the constant is not already one
-  of the single-byte `ICONST_M1/0/1/2` forms;
-- rewrites adjacent `iconst 0`/`slocal <offset>` pairs to `ZLOCAL_*` zero-store
-  opcodes when no label targets the `slocal`;
 - rewrites adjacent `llocal 0`/`llocal 2`/`add` triples to `LADD_LOCAL0_2`
   when no label targets the removed instructions;
+- rewrites adjacent live `slocal 0`/`llocal 0` roundtrips to `TLOCAL0`;
+- rewrites adjacent `llocal 0`/`ret` to `RET_LOCAL0`;
 - emits compact direct-call forms `CALL0_U16`, `CALL1_U16`, `CALL2_U16`, and
   `CALL3_U16` for the common 0, 1, 2, and 3 argument cases;
 - emits compact object-mode native-call forms `NCALL0_ADDR_U16`,

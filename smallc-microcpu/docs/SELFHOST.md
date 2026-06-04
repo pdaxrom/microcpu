@@ -196,19 +196,16 @@ It writes `build/selfhost-pcode/size-report.txt` and does not link or run a
 p-code-hosted compiler.  Current report-only measurements show:
 
 - `smallcpp`: all modules generate p-code.  Estimated p-code image is about
-  47.9 KB versus 87.1 KB summed native object size, roughly 39.2 KB smaller.
+  45.9 KB versus 87.1 KB summed native object size, roughly 38.8 KB smaller.
 - `smallcc`: all modules now generate p-code.  Estimated p-code image is about
-  62.8 KB versus 187.3 KB summed native object size, roughly 124.5 KB smaller.
-  The p-code optimizer removes about 5.8K temp store/load roundtrips from
-  `smallcc`, rewrites a small number of live non-short local temp roundtrips,
-  compacts local branch patterns, rewrites immediate `add`, `sub`, and `eq`
-  pairs to `ADDI_S8`, `ADDI_U16`, `SUBI_S8`, and `EQI_S8`, rewrites about
-  539 temp-slot constant stores to `SLOCAL0_S8`/`SLOCAL2_S8`, rewrites about
-  242 zero local stores to `ZLOCAL_*`, rewrites the common `llocal 0`/
-  `llocal 2`/`add` pattern to `LADD_LOCAL0_2`, rewrites live `slocal 0`/
-  `llocal 0` roundtrips to `TLOCAL0`, rewrites common `llocal 0`/`ret`
-  returns to `RET_LOCAL0`, and uses compact object-mode native-call forms for
-  the common 0, 1, 2, and 3 argument cases.
+  62.2 KB versus 189.2 KB summed native object size, roughly 124.5 KB smaller.
+  The p-code optimizer is now partly compiler-resident: `smallcc --pcode-opt`
+  emits the adjacent safe compact forms for constant stores to temp locals and
+  zero stores.  The host-side Python pass still removes liveness-proven temp
+  roundtrips, emits `LADD_LOCAL0_2`, `TLOCAL0`, and `RET_LOCAL0`, compacts
+  local branch patterns, and provides detailed size diagnostics.
+  Object-mode encoding also uses compact native-call forms for the common 0,
+  1, 2, and 3 argument cases.
   The previous `CALL1` blocker in `smallcc_expr.c` is resolved by `ICALL_U8`
   support for p-code function pointers.
 
@@ -232,11 +229,11 @@ interpreter plus generated link-only hosted stubs.  The `.pca` merger remains
 only as a debug/compatibility tool.  Current status:
 
 - `smallcpp`: direct p-code object link smoke passes.  The linked image is
-  about 45.5 KB with `PCODE_OPT=1`, using dummy hosted stubs for file I/O and
+  about 45.9 KB with `PCODE_OPT=1`, using dummy hosted stubs for file I/O and
   standard streams.
 - `smallcc`: direct p-code object link smoke passes with `PCODE_OPT=1`.  The
   p-code payload is linked as multiple p-code objects; the final smoke image is
-  about 60.4 KB, below the 64K binary limit.
+  about 62.2 KB, below the 64K binary limit.
 
 This suggests p-code is a promising size path, but the remaining work is not
 just bytecode density.  The next blockers are native function-pointer

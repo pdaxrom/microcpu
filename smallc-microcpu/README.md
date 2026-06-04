@@ -86,6 +86,7 @@ emit an external stack-VM p-code form instead:
 
 ```sh
 smallcc --backend pcode build/source.i -o build/source.pca
+smallcc --backend pcode --pcode-opt build/source.i -o build/source.pca
 ```
 
 This first implementation is intentionally a lowering layer from the existing
@@ -163,21 +164,13 @@ Self-host p-code reports also include measurement-only peephole candidates such
 as same-temp store/load pairs, constant branch opportunities, branch-to-branch
 sites, and hottest local/temp slots.  These diagnostics do not change emitted
 bytecode; they are there to guide the next optimizer pass.  The current p-code
-optimizer removes proven-dead temp roundtrips and rewrites live non-short
-same-temp store/load roundtrips to `dup`/`slocal` when that is smaller.  It
-also folds simple constant branches, removes branches to the next instruction,
-inverts `conditional; jmp; label` pairs, and threads branches through
-intermediate `jmp` instructions when the encoded branch does not grow.  It also
-rewrites `iconst <s8>; add/sub/eq` to compact `ADDI_S8`, `SUBI_S8`, and
-`EQI_S8`, rewrites larger `iconst <u16>; add` pairs to `ADDI_U16`, and
-rewrites common `iconst <s8>; slocal 0/2` pairs to `SLOCAL0_S8`/`SLOCAL2_S8`
-when that is smaller.  It also rewrites `iconst 0; slocal <offset>` pairs to
-compact `ZLOCAL_*` zero-local stores when no label targets the store.  A
-common `llocal 0; llocal 2; add` lowering pattern is compacted to
-`LADD_LOCAL0_2` when no label targets the removed instructions.  Live
-`slocal 0; llocal 0` roundtrips are compacted to `TLOCAL0`, which stores the
-top stack value while leaving it available as the expression result.  Common
-`llocal 0; ret` returns are compacted to `RET_LOCAL0`.
+optimizer now has a Small-C-compatible C subset inside `smallcc --pcode-opt`
+and an external Python post-pass used by host-side runners.  The C subset
+handles adjacent safe rewrites for constant stores to temp locals
+(`SLOCAL0_S8`, `SLOCAL2_S8`, and `ZLOCAL_*`), so a target-hosted `smallcc`
+can emit those compact forms without Python.  The Python post-pass still
+handles the liveness-proven temp roundtrips, `LADD_LOCAL0_2`, `TLOCAL0`,
+`RET_LOCAL0`, immediate arithmetic folds, and branch compaction rules.
 The object-mode encoder uses
 compact `NCALL0/1/2/3_ADDR_U16` forms for common native calls with 0, 1, 2, or
 3 arguments.

@@ -6,7 +6,8 @@
 #include "host_compat.h"
 
 extern int
-  argcs, *argvs, input, output, objectmode, backend, listfp, nxtlab;
+  argcs, *argvs, input, output, objectmode, backend, pcode_optimize,
+  listfp, nxtlab;
 
 extern char
   *line, *pline;
@@ -37,6 +38,7 @@ int smallcc_ask() {
   input = EOF;
   objectmode = NO;
   backend = BACKEND_MICROCPU;
+  pcode_optimize = NO;
   line = pline;
   while(getarg(++i, line, LINESIZE, argcs, argvs) != EOF) {
     if(skipnext) {
@@ -77,6 +79,20 @@ int smallcc_ask() {
         objectmode = YES;
         continue;
         }
+      if(line[1] == '-'
+      && line[2] == 'p'
+      && line[3] == 'c'
+      && line[4] == 'o'
+      && line[5] == 'd'
+      && line[6] == 'e'
+      && line[7] == '-'
+      && line[8] == 'o'
+      && line[9] == 'p'
+      && line[10] == 't'
+      && line[11] <= ' ') {
+        pcode_optimize = YES;
+        continue;
+        }
       if(line[1] == 'o' && line[2] <= ' ') {
         if(getarg(++i, line, LINESIZE, argcs, argvs) == EOF) {
           fputs("missing output file after -o\n", stderr);
@@ -95,7 +111,7 @@ int smallcc_ask() {
         continue;
         }
       if(toupper(line[1]) == 'I' || toupper(line[1]) == 'D') continue;
-      fputs("usage: smallcc [--backend microcpu|pcode] [--object] [-o file] file.i\n", stderr);
+      fputs("usage: smallcc [--backend microcpu|pcode] [--pcode-opt] [--object] [-o file] file.i\n", stderr);
       abort(ERRCODE);
       }
     if(input == EOF) input = smallcc_open(line);

@@ -54,6 +54,7 @@ int
   include_open_count, /* number of include files opened */
   objectmode, /* emit object-file compatible assembly */
   backend, /* selected output backend */
+  pcode_optimize, /* enable p-code backend local compaction */
   pubclass, /* storage class of symbol currently being emitted */
   decltype2, /* full type from the most recent declarator */
   functype,  /* return type of next function */
