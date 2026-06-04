@@ -1,6 +1,0 @@
-001_extern_function 219
-002_extern_global 220
-003_static_isolation 221
-004_long_extern_names 206
-005_long_global_names 207
-006_long_same_prefix_names 208
