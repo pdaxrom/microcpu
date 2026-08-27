@@ -135,6 +135,10 @@ decode_single_operand
 	beq move_to_processor_status, v3, v2	; 1064SS: MTPS (0064NN is MARK)
 	setl v2, $37
 	beq sign_extend_operand, v3, v2	; 0067DD: SXT
+	setl v2, $3a
+	beq test_and_set_relay, v3, v2	; 0072DD: TSTSET
+	inc v2
+	beq write_lock_relay, v3, v2	; 0073DD: WRTLCK
 	b reserved_instruction
 
 decode_zero
@@ -699,6 +703,12 @@ arithmetic_shift_combined_relay
 
 divide_relay
 	b divide
+
+test_and_set_relay
+	b test_and_set_operand
+
+write_lock_relay
+	b write_lock_operand
 
 ; Keep the common control-flow handlers near the center of the image.  The
 ; microengine branch encoding has a +/-2047-byte range, so this placement stays
@@ -1305,7 +1315,7 @@ move_from_processor_status
 	b move_destination
 
 move_to_processor_status
-	bge reserved_instruction, v1, 0	; MARK remains unsupported
+	bge mark_instruction, v1, 0	; 0064NN: MARK; negative IR is MTPS
 	mov v2, v1
 	set sp, $3f
 	and v2, v2, sp
@@ -1326,6 +1336,20 @@ move_to_processor_status_apply
 	and v4, v4, sp
 	or v4, v4, v3
 	gset v4, 8
+	b fetch_far
+
+mark_instruction
+	set sp, 63
+	and v2, v1, sp
+	shl v2, v2, 1
+	add sp, v0, v2		; SP = post-fetch PC + 2*NN
+	gset sp, 6
+	gget v0, 5
+	gset v0, 7		; PC = old R5
+	ldr v3, sp, 0
+	add sp, sp, 2
+	gset sp, 6
+	gset v3, 5		; R5 = pop()
 	b fetch_far
 
 move_flags
@@ -1670,5 +1694,47 @@ divide_merge_flags
 	set v2, $fff0
 	and v1, v1, v2
 	or v1, v1, v0
+	gset v1, 8
+	b fetch_far
+
+test_and_set_operand
+	shl v2, v1, 10
+	shr v2, v2, 10
+	bsr ea_resolve
+	beq reserved_instruction, v2, 0	; DCJ11 rejects register-direct TSTSET
+	ldr v3, v4, 0
+	gset v3, 0		; R0 receives the unmodified memory word
+	or sp, v3, 1
+	str sp, v4, 0		; memory bit zero is set
+	and v0, v3, 1		; old bit zero becomes C
+	b lock_operand_nz
+
+write_lock_operand
+	shl v2, v1, 10
+	shr v2, v2, 10
+	bsr ea_resolve
+	beq reserved_instruction, v2, 0	; DCJ11 rejects register-direct WRTLCK
+	gget v3, 0		; sample R0 after destination EA side effects
+	str v3, v4, 0
+	gget v0, 8
+	and v0, v0, 1		; WRTLCK preserves carry
+
+lock_operand_nz
+	blt lock_operand_negative, v3, 0
+	beq lock_operand_zero, v3, 0
+	b lock_operand_merge_flags
+
+lock_operand_negative
+	or v0, v0, 8
+	b lock_operand_merge_flags
+
+lock_operand_zero
+	or v0, v0, 4
+
+lock_operand_merge_flags
+	gget v1, 8
+	set v2, $fff0		; replace NZVC while retaining upper PSW
+	and v1, v1, v2
+	or v1, v1, v0		; V remains clear
 	gset v1, 8
 	b fetch_far

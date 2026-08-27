@@ -655,12 +655,26 @@ module tb_j11_execute;
 			$finish_and_return(1);
 		end
 
-		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, DIV, ASH, ASHC, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
+		$readmemh("build/guest_mark_lock.hex", fram.memory);
+		reset_engine();
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345) begin
+			$display("FAIL: J-11 MARK/TSTSET/WRTLCK pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o r5=%06o lock=%06o write=%06o traps=%06o psw=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[1], dut.jctx[2], dut.jctx[5],
+				{fram.memory[17'o001001], fram.memory[17'o001000]},
+				{fram.memory[17'o001003], fram.memory[17'o001002]},
+				{fram.memory[17'o001005], fram.memory[17'o001004]},
+				debug_guest_psw, debug_cause);
+			$finish_and_return(1);
+		end
+
+		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, MARK, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, DIV, ASH, ASHC, TSTSET, WRTLCK, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
 		$finish_and_return(0);
 	end
 
 	initial begin
-		#12000000;
+		#20000000;
 		$display("FAIL: J-11 execute timeout pc=%04x ir=%04x cause=%04x upc=%04x",
 			debug_guest_pc, debug_guest_ir, debug_cause, debug_upc);
 		$finish_and_return(1);

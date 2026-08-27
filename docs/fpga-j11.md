@@ -155,7 +155,8 @@ The current hardware microprogram fetches guest words through the FRAM bus,
 stores each opcode in the guest IR context word, and advances guest PC. Its
 resident decoder implements `NOP`, `SWAB`, `SXT`, `MOV/MOVB`, `CMP/CMPB`,
 `BIT/BITB`,
-`BIC/BICB`, `BIS/BISB`, `XOR`, `MUL`, `DIV`, `ASH`, `ASHC`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
+`BIC/BICB`, `BIS/BISB`, `XOR`, `MUL`, `DIV`, `ASH`, `ASHC`, `TSTSET`,
+`WRTLCK`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
 `DEC/DECB`, `NEG/NEGB`, `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`,
 `ASR/ASRB`, `ASL/ASLB`, `TST/TSTB`, `MFPS`, `MTPS`, all
 sixteen PDP-11 branch
@@ -189,7 +190,7 @@ and retains the two-byte step for SP, PC, and deferred modes. `MOV`, `MOVB`,
 `NEG`, `NEGB`,
 `ADC`, `ADCB`, `SBC`, `SBCB`, `ROR`, `RORB`, `ROL`, `ROLB`, `ASR`, `ASRB`,
 `ASL`, `ASLB`, `TST`, `TSTB`, `CMP`, `CMPB`, `BIT`, `BITB`, `BIC`, `BICB`,
-`BIS`, `BISB`, `XOR`, `ADD`, `SUB`, `MFPS`, and `MTPS` all use this shared
+`BIS`, `BISB`, `XOR`, `ADD`, `SUB`, `TSTSET`, `WRTLCK`, `MFPS`, and `MTPS` all use this shared
 resolver.
 `MOVB` performs the PDP-11 sign extension on register destinations, while
 `CLRB`, `COMB`, `INCB`, `DECB`, `NEGB`, `ADCB`, `SBCB`, `BICB`, and `BISB`
@@ -226,6 +227,10 @@ sampling and the DCJ11 odd-register overwrite behavior.
 `DIV` uses a 32-step restoring divide over the same 16-bit ALU. It implements
 signed quotient and remainder rules, divide-by-zero and signed-word overflow,
 pre-EA dividend sampling, and the DCJ11 odd-register result convention.
+`MARK` implements the PDP-11 stack-frame teardown sequence. `TSTSET` and
+`WRTLCK` implement the DCJ11 memory-only lock operations; the present
+single-master guest bus keeps each microcoded read/modify/write instruction
+uninterrupted at guest instruction boundaries.
 
 `JMP` and `JSR` also use `ea_resolve`, including indexed and deferred modes.
 Register-direct mode 0 is rejected before applying any side effects: `JMP`
