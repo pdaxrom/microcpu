@@ -625,7 +625,17 @@ module tb_j11_execute;
 			$finish_and_return(1);
 		end
 
-		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
+		$readmemh("build/guest_ash.hex", fram.memory);
+		reset_engine();
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345) begin
+			$display("FAIL: J-11 ASH pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[1], debug_guest_psw, debug_cause);
+			$finish_and_return(1);
+		end
+
+		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, ASH, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
 		$finish_and_return(0);
 	end
 

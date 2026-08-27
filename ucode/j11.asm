@@ -86,6 +86,8 @@ decode
 	beq jump_subroutine, v3, 4	; 004RDD: JSR
 	set sp, $38
 	beq multiply, v3, sp		; 070RSS: MUL
+	add sp, sp, 2
+	beq arithmetic_shift_relay, v3, sp	; 072RSS: ASH
 	set sp, $3f
 	beq subtract_one_branch, v3, sp	; 077RNN: SOB
 	sub sp, sp, 3
@@ -684,6 +686,9 @@ clear_flags
 
 fetch_far
 	b fetch			; relay for tail handlers beyond direct branch range
+
+arithmetic_shift_relay
+	b arithmetic_shift		; second leg for the tail EIS handler
 
 ; Keep the common control-flow handlers near the center of the image.  The
 ; microengine branch encoding has a +/-2047-byte range, so this placement stays
@@ -1330,4 +1335,88 @@ move_zero
 move_negative
 	or v4, v4, 8
 	gset v4, 8
+	b fetch_far
+
+arithmetic_shift
+	; Snapshot R before resolving the count EA, as required for EIS source
+	; aliases such as ASH (R)+,R.
+	mov v2, v1
+	shr v2, v2, 6
+	and v2, v2, 7
+	gset v2, 12		; shifted register number
+	ggetr v3, v2
+	gset v3, 13		; pre-EA shifted value
+
+	mov v2, v1
+	set sp, $3f
+	and v2, v2, sp
+	bsr ea_resolve
+	beq arithmetic_shift_count_register, v2, 0
+	ldr v4, v4, 0
+	b arithmetic_shift_count_ready
+
+arithmetic_shift_count_register
+	ggetr v4, v4
+
+arithmetic_shift_count_ready
+	set sp, 63
+	and v4, v4, sp		; six-bit signed shift count
+	gget v3, 13
+	clr v0			; accumulated overflow predicate
+	clr v2			; outgoing carry, including count zero
+	beq arithmetic_shift_flags, v4, 0
+	set sp, 32
+	bgeu arithmetic_shift_right_count, v4, sp
+	mov lr, v4
+
+arithmetic_shift_left_loop
+	mov sp, v3
+	shr sp, sp, 15		; outgoing sign bit is this step's carry
+	shl v3, v3, 1
+	mov v2, v3
+	shr v2, v2, 15
+	xor v2, v2, sp		; any sign transition means overflow
+	or v0, v0, v2
+	mov v2, sp
+	dec lr
+	bne arithmetic_shift_left_loop, lr, 0
+	b arithmetic_shift_flags
+
+arithmetic_shift_right_count
+	set lr, 64
+	sub lr, lr, v4		; 040..077 encode arithmetic right 32..1
+
+arithmetic_shift_right_loop
+	and v2, v3, 1
+	mov sp, v3
+	shr sp, sp, 15
+	shr v3, v3, 1
+	shl sp, sp, 15
+	or v3, v3, sp
+	dec lr
+	bne arithmetic_shift_right_loop, lr, 0
+
+arithmetic_shift_flags
+	shl v0, v0, 1		; accumulated overflow becomes PSW V
+	blt arithmetic_shift_negative, v3, 0
+	beq arithmetic_shift_zero, v3, 0
+	b arithmetic_shift_carry
+
+arithmetic_shift_negative
+	or v0, v0, 8
+	b arithmetic_shift_carry
+
+arithmetic_shift_zero
+	or v0, v0, 4
+
+arithmetic_shift_carry
+	and v2, v2, 1
+	or v0, v0, v2
+	gget v2, 12
+	gsetr v3, v2
+	gget v1, 8
+	set v2, $fff0
+	and v1, v1, v2
+	or v1, v1, v0
+	gset v1, 8
 	b fetch_far
