@@ -5,6 +5,11 @@ This branch develops a J-11-compatible CPU as firmware running on a small
 the Verilog instruction decoder: PDP-11 opcodes, effective addresses, flags,
 traps, and interrupts will be implemented by replaceable microcode.
 
+This boundary includes processor-owned I/O registers and the guest timer CSR:
+their address decoding, masks, and side effects belong in assembly, not in a
+J-11-specific Verilog state machine. The existing microengine is the execution
+mechanism, not a second implementation of J-11 architectural behavior.
+
 ## Version 1 scope
 
 - 16-bit PDP-11 address space
@@ -105,6 +110,55 @@ The first guest device is a DL11-compatible console:
 DONE and IE use the standard bits 7 and 6. RX and TX request vectors `060` and
 `064` respectively, both at BR4. The existing physical 115200-baud UART is used
 underneath.
+
+### Planned microcoded processor I/O (not implemented yet)
+
+The reference is `k1801vm1/core/core.c`, built with `ENABLE_MMU=0` and its
+default disabled `DCJ_REG_RSVD_ENABLED` option. The following is the intended
+software-visible map, not a statement that these accesses currently work:
+
+| Octal address | Register | Reference behavior |
+|---:|---|---|
+| `177744` | MEMERR | Read state; any write clears |
+| `177746` | CCR | Read/write storage; no physical cache in this target |
+| `177750` | MAINT | Read-only configuration |
+| `177752` | HITMISS | Read-only; no cache activity |
+| `177766` | CPUERR | Read mask `000374`; any write clears |
+| `177772` | PIRQ | Request bits 15..9, encoded highest priority; vector `240` |
+| `177774` | STKLIM | Word-aligned limit; kernel stack checking |
+| `177776` | PSW | Explicit writes preserve T; mode changes switch SP banks |
+
+MMR0/1/2 at `177572/177574/177576`, MMR3 at `172516` (alias `177516`), and
+the supervisor/kernel/user PAR/PDR ranges remain read-zero/write-ignore stubs
+as in the no-MMU C configuration. The optional reserved-register addresses
+are not enabled merely because a test backend happens to accept them.
+
+The next implementation step is common microcoded word/byte access helpers.
+They must cover deferred pointers and stack accesses as well as final operand
+loads/stores; decoding only MOV/MOVB would leave other instructions incorrect.
+Helper calls must preserve live RISC registers and return addresses. Where
+an ALU result is followed by a guest write, save its flags before the helper
+rather than sampling flags left by the I/O decoder.
+
+### Timer reference and remaining work
+
+The reference device is in `k1801vm1/lsi11/dev_kw11.c`, not `core/core.c`.
+The J-11 target will use the KDJ11-B LTC interface: CSR `177546`, interrupt
+vector `100`, priority BR6, LCM bit 7, LCIE bit 6. The source is DEC
+[KDJ11-B CPU Module User's Guide, section 1.9 / Table 1-23, printed page 1-45](https://www.bitsavers.org/pdf/dec/pdp11/1173/EK-KDJ1B-UG_KDJ11-B_Nov86.pdf).
+
+There is a material mismatch with the current C device: the manual specifies
+that INIT sets LCM and clears LCIE; a clock edge sets LCM; interrupt acknowledge
+or writing zero clears LCM. It does not specify a read-to-clear CSR. The C
+device currently clears LCM and the request on a low-byte read, but its IRQ
+acknowledgement clears only the request. Timer tests must state this difference
+and use the documented J-11-board behavior, not blindly reuse the C result.
+
+Guest timer registers, enables and interrupt processing are microcode work.
+Deterministic simulated ticks are suitable for testing but counting guest
+instructions is not a wall-clock frequency, particularly with variable SPI
+FRAM latency and WAIT. A physical time source/interface is a separate pending
+decision; no timer or CPU-register Verilog has been added for this follow-up.
 
 The controller uses the command sequence already used by the bootloader:
 
