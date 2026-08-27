@@ -570,6 +570,77 @@ clear_flags
 fetch_far
 	b fetch			; relay for tail handlers beyond direct branch range
 
+; Keep the common control-flow handlers near the center of the image.  The
+; microengine branch encoding has a +/-2047-byte range, so this placement stays
+; reachable from both the fixed ABI entries and the growing instruction tail.
+trace_entry
+	clr v2
+	gset v2, 14
+	gset v2, 10
+	gget v0, 7
+	set sp, $0c		; PDP-11 trace/BPT vector 014
+	b trap_entry
+
+reserved_instruction
+	set v2, 2
+	gset v2, 10		; cause 2: reserved instruction
+	set sp, 8		; PDP-11 reserved-instruction vector 010
+	b trap_entry
+
+; Enter a PDP-11 vector.  sp holds the vector address and v0 is the PC after
+; the trapping instruction.  The stack frame has old PC at (SP) and old PSW at
+; 2(SP), ready for RTI or RTT.
+trap_entry
+	gget v4, 6
+	gget v3, 8
+	sub v4, v4, 2
+	str v3, v4, 0
+	sub v4, v4, 2
+	str v0, v4, 0
+	gset v4, 6
+	ldr v0, sp, 0
+	gset v0, 7
+	ldr v3, sp, 2
+	gset v3, 8
+	b fetch
+
+return_interrupt
+	set lr, $10		; RTI traces immediately when the restored T bit is set
+	b return_common
+
+return_from_trace
+	clr lr			; RTT suppresses its own trace boundary
+
+return_common
+	gget v4, 6
+	ldr v0, v4, 0
+	add v4, v4, 2
+	ldr v3, v4, 0
+	add v4, v4, 2
+	gset v4, 6
+	gset v0, 7
+	gset v3, 8
+	and v3, v3, lr
+	gset v3, 14
+	clr v2
+	gset v2, 10
+	b fetch
+
+interrupt_entry
+	mov sp, v2
+	set v3, $ff
+	and sp, sp, v3		; pending word low byte is the PDP-11 vector
+	clr v3
+	gset v3, 11
+	b trap_entry
+
+halt
+	set v2, 3
+	gset v2, 10		; cause 3: HALT until console mode exists
+
+stopped
+	b stopped
+
 complement_operand
 	mov v2, v1
 	set sp, $3f
@@ -1125,7 +1196,7 @@ move_to_processor_status_apply
 	and v4, v4, sp
 	or v4, v4, v3
 	gset v4, 8
-	b fetch
+	b fetch_far
 
 move_flags
 	gget v4, 8
@@ -1134,81 +1205,14 @@ move_flags
 	beq move_zero, v3, 0
 	blt move_negative, v3, 0
 	gset v4, 8
-	b fetch
+	b fetch_far
 
 move_zero
 	or v4, v4, 4
 	gset v4, 8
-	b fetch
+	b fetch_far
 
 move_negative
 	or v4, v4, 8
 	gset v4, 8
-	b fetch
-
-trace_entry
-	clr v2
-	gset v2, 14
-	gset v2, 10
-	gget v0, 7
-	set sp, $0c		; PDP-11 trace/BPT vector 014
-	b trap_entry
-
-reserved_instruction
-	set v2, 2
-	gset v2, 10		; cause 2: reserved instruction
-	set sp, 8		; PDP-11 reserved-instruction vector 010
-	b trap_entry
-
-; Enter a PDP-11 vector.  sp holds the vector address and v0 is the PC after
-; the trapping instruction.  The stack frame has old PC at (SP) and old PSW at
-; 2(SP), ready for RTI or RTT.
-trap_entry
-	gget v4, 6
-	gget v3, 8
-	sub v4, v4, 2
-	str v3, v4, 0
-	sub v4, v4, 2
-	str v0, v4, 0
-	gset v4, 6
-	ldr v0, sp, 0
-	gset v0, 7
-	ldr v3, sp, 2
-	gset v3, 8
-	b fetch
-
-return_interrupt
-	set lr, $10		; RTI traces immediately when the restored T bit is set
-	b return_common
-
-return_from_trace
-	clr lr			; RTT suppresses its own trace boundary
-
-return_common
-	gget v4, 6
-	ldr v0, v4, 0
-	add v4, v4, 2
-	ldr v3, v4, 0
-	add v4, v4, 2
-	gset v4, 6
-	gset v0, 7
-	gset v3, 8
-	and v3, v3, lr
-	gset v3, 14
-	clr v2
-	gset v2, 10
 	b fetch_far
-interrupt_entry
-	mov sp, v2
-	set v3, $ff
-	and sp, sp, v3		; pending word low byte is the PDP-11 vector
-	clr v3
-	gset v3, 11
-	b trap_entry
-
-halt
-	set v2, 3
-	gset v2, 10		; cause 3: HALT until console mode exists
-
-stopped
-	b stopped
