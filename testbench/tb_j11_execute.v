@@ -722,7 +722,17 @@ module tb_j11_execute;
 			$finish_and_return(1);
 		end
 
-		$display("PASS: microasm11 guests execute traps, privileged PSW modes, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, MARK, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, DIV, ASH, ASHC, TSTSET, WRTLCK, MFPI/MFPD/MTPI/MTPD, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
+		$readmemh("build/guest_sp_banks.hex", fram.memory);
+		reset_engine();
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345 || dut.jctx[6] !== 16'o010000 ||
+				dut.jctx[17] !== 16'o012010 || dut.jctx[19] !== 16'o014010) begin
+			$display("FAIL: J-11 SP banks pc=%06o r0=%06o sp=%06o ssp=%06o usp=%06o",
+				debug_guest_pc, debug_guest_r0, dut.jctx[6], dut.jctx[17], dut.jctx[19]);
+			$finish_and_return(1);
+		end
+
+		$display("PASS: microasm11 guests execute traps, banked SP, privileged PSW modes, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, MARK, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, DIV, ASH, ASHC, TSTSET, WRTLCK, MFPI/MFPD/MTPI/MTPD, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
 		$finish_and_return(0);
 	end
 

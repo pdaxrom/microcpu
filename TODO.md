@@ -3,13 +3,13 @@
 ## J-11 V1: active plan (no MMU)
 
 This is the agreed instruction milestone, not the complete J-11 architecture.
-Work through the V1 acceptance checklist below. Do not start deferred features
-automatically when it is complete.
+The original V1 instruction milestone below is complete. The user-authorized
+follow-up is recorded separately; do not infer authorization for other features.
 
 ### Constraints
 
 - Base board: `boards/hc1200-microcomp`; 128 KiB SPI FRAM backs guest memory.
-- No MMU or split I/D, one register set and one active SP.
+- No MMU or split I/D, one register set. The follow-up now adds banked SPs.
 - Implement instructions in `ucode/j11.asm`; no guest-RAM instruction emulator.
 - Write guest tests in assembly and build them with `microasm11`.
 - Run tests on the Mac; do not run Diamond until requested.
@@ -56,20 +56,36 @@ Microcode remains 3280 bytes (1640 of 2048 words; 408 words free).
 match byte for byte. No production RTL/microcode changes or Diamond runs were
 needed for this acceptance step. Deferred work below remains deferred.
 
-### Deferred: not part of V1 acceptance
+### Active follow-up (requested after V1 acceptance)
 
-- [ ] Banked stack pointers: KSP/SSP/USP, mode-switch save/restore and
-  previous-mode SP access. Do this later; no bank switching has been added.
+- [x] Reuse `k1801vm1/tests/core_tests.c` for **J-11 only**, built with
+  `ENABLE_MMU=0`, including EIS. Replay applicable fixtures on Verilog and
+  reassemble guest instructions with `microasm11`; distinguish C and RTL results.
+  Initial selected coverage: 187 snapshots, 29 EIS cases; not the entire suite.
+- [x] Banked stack pointers: KSP/SSP/USP, trap/RTI/RTT mode-switch save/restore,
+  and previous-mode SP access, with the corresponding core and assembly tests.
+  `j11-core-banks-test`: 187/187 RTL snapshots pass, including 29 EIS cases.
+  `sp_banks.asm` passes through SPI FRAM; uROM is now 1694/2048 words.
+- [ ] J-11 processor-owned I/O registers: inventory the C-core map, implement
+  defined reads/writes and side effects, and port register tests. This is
+  separate from board UART/timer devices; MMU remains disabled.
+- [ ] FIS (`FADD`, `FSUB`, `FMUL`, `FDIV`): add all four instructions with
+  rounding/error tests if they fit the remaining current uROM after SP/I/O work.
+  Do not confuse FIS with FP11 or silently enlarge the FIS budget.
+- [ ] Full local regression and source-only commits for verified steps.
+
+### Deferred: not part of the active follow-up
+
 - [ ] Full `MFPI`, `MTPI`, `MFPD`, `MTPD` previous-mode/space semantics.
   A simplified unified-space implementation already exists (`3b2b03f`);
-  extending it is deferred.
+  banked-SP access is now active, but MMU/split-space semantics remain deferred.
 - [ ] `CSM` and the associated processor-mode/MMR3 behavior.
 - [ ] MMU and split I/D spaces.
-- [ ] FIS and FP11: excluded from this version, regardless of the real J-11's
-  floating-point capabilities. No FP11 instructions have been implemented.
+- [ ] FP11: not requested; no FP11 instructions have been implemented.
+- [ ] Alternate R0..R5 register sets (distinct from the now-requested SP banks).
 - [ ] CIS.
-- [ ] SPI sequential-read buffering and differential testing against the C
-  core: future candidates, not replacements for the agreed instruction plan.
+- [ ] SPI sequential-read buffering and broader randomized differential tests:
+  future candidates beyond the requested existing core tests.
 - [ ] Diamond synthesis/place-and-route and physical-board verification:
   wait for a separate request.
 

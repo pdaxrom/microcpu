@@ -10,15 +10,15 @@ traps, and interrupts will be implemented by replaceable microcode.
 - 16-bit PDP-11 address space
 - no MMU or split I/D space
 - one J-11 register set
+- banked kernel/supervisor/user stack pointers (follow-up to the V1 milestone)
 - guest RAM backed by the board's 128 KiB SPI FRAM
 - integer instruction set first
-- FIS, FP11, CIS, and memory management deferred
+- FP11, CIS, and memory management deferred; FIS conditional on remaining uROM
 
 The agreed priority instruction checklist and active acceptance work are in
-[`TODO.md`](../TODO.md#j-11-v1-active-plan-no-mmu). That plan governs V1:
-banked stack pointers and floating point are not current implementation tasks.
-Existing simplified previous-space and PSW-mode support does not change this
-boundary.
+[`TODO.md`](../TODO.md#j-11-v1-active-plan-no-mmu). The user-authorized follow-up
+adds existing C-core fixture replay, SP banks, processor-owned I/O registers,
+and FIS only if it fits. MMU and FP11 remain outside the active scope.
 
 ## Data paths
 
@@ -55,7 +55,8 @@ context RAM. Immediate and register-indexed accesses both use a five-bit index:
 | 12..13 | reserved microcode scratch/state |
 | 14 | pre-instruction T-bit snapshot used by TRACE/RTI/RTT |
 | 15 | write-only microcode control; bit 0 pulses guest peripheral RESET |
-| 16..31 | extended microcode state; reset to zero, no special-port aliases |
+| 16, 17, 19 | inactive KSP, SSP, USP; active SP lives in R6 |
+| 18, 20..31 | remaining extended microcode state, reset to zero |
 
 `GGET` and `GSET` are microengine-only aliases for the old `SWS` and `SWU`
 opcode groups. They move values between RISC registers and the guest context.
@@ -195,8 +196,10 @@ current mode into the previous-mode field. A non-kernel `HALT` enters vector
 `004`; a kernel `HALT` stops the engine. Outside kernel mode, `RTI` and `RTT`
 treat `PSW[15:11]` as set-only and preserve the old interrupt priority. The
 reserved current-mode encoding 2 follows the DCJ11 rule and is treated as
-kernel. This no-MMU implementation still has one physical SP, so mode changes
-do not yet select banked stack pointers.
+kernel. Mode changes save the outgoing SP and select KSP/SSP/USP. Trap frames
+are pushed on KSP; RTI/RTT pop the current frame before switching to the
+restored mode's stack. Reset clears inactive banks, which guest code can
+initialize through previous-mode SP writes.
 
 The common `ea_resolve` micro-subroutine implements all PDP-11 addressing modes
 0 through 7. It consumes extension words, applies register side effects once,
@@ -251,6 +254,8 @@ Without an MMU or split I/D, `MFPI/MFPD/MTPI/MTPD` deliberately use the same
 unified guest address space and single register set. Their EA-before-stack
 ordering, push/pop behavior, SP/PC aliases, and condition codes remain
 architectural, leaving only mode-space selection for a future MMU version.
+Register-direct SP accesses select the previous-mode bank, with PM=2 selecting
+USP as a J-11 MxPI special case. This differs from CM=2, which selects KSP.
 
 `JMP` and `JSR` also use `ea_resolve`, including indexed and deferred modes.
 Register-direct mode 0 is rejected before applying any side effects: `JMP`

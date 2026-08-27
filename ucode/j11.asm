@@ -138,7 +138,7 @@ decode_single_operand
 	inc v2
 	beq move_to_previous_relay, v3, v2	; 0066DD/1066DD: MTPI/MTPD
 	setl v2, $37
-	beq sign_extend_operand, v3, v2	; 0067DD: SXT
+	beq sign_extend_relay, v3, v2	; 0067DD: SXT
 	setl v2, $3a
 	beq test_and_set_relay, v3, v2	; 0072DD: TSTSET
 	inc v2
@@ -731,6 +731,9 @@ move_from_previous_relay
 move_to_previous_relay
 	b move_to_previous
 
+sign_extend_relay
+	b sign_extend_operand
+
 move_to_processor_status
 	b move_to_processor_status_tail
 
@@ -764,6 +767,13 @@ trap_entry
 	clr lr			; DCJ11 treats reserved mode 2 as kernel
 
 trap_entry_mode_ready
+	beq trap_entry_stack_ready, lr, 0
+	set v2, 16
+	add v2, v2, lr
+	gsetr v4, v2		; save outgoing SSP/USP before using KSP
+	gget v4, 16
+
+trap_entry_stack_ready
 	shl lr, lr, 12
 	sub v4, v4, 2
 	str v3, v4, 0
@@ -815,6 +825,28 @@ return_common
 	or v3, v3, v1
 
 return_common_apply
+	; Pop using the outgoing stack, then switch banks using the effective PSW.
+	; Context 16/17/19 hold inactive KSP/SSP/USP; active R6 is authoritative.
+	gget v1, 8
+	shr v1, v1, 14
+	bne return_old_mode_ready, v1, 2
+	clr v1
+
+return_old_mode_ready
+	shr v2, v3, 14
+	bne return_new_mode_ready, v2, 2
+	clr v2
+
+return_new_mode_ready
+	beq return_stack_ready, v1, v2
+	set sp, 16
+	add v1, v1, sp
+	gsetr v4, v1
+	add v2, v2, sp
+	ggetr v4, v2
+	gset v4, 6
+
+return_stack_ready
 	gset v0, 7
 	gset v3, 8
 	and v3, v3, lr
@@ -1833,6 +1865,10 @@ move_from_previous
 	b move_from_previous_push
 
 move_from_previous_register
+	bne move_from_previous_read_register, v4, 6
+	bsr previous_sp_index
+
+move_from_previous_read_register
 	ggetr v3, v4
 
 move_from_previous_push
@@ -1858,5 +1894,33 @@ move_to_previous
 	b move_flags
 
 move_to_previous_register
+	bne move_to_previous_write_register, v4, 6
+	bsr previous_sp_index
+
+move_to_previous_write_register
 	gsetr v3, v4
 	b move_flags
+
+; Map an MxPI register-direct SP to its previous-mode bank. CM=2 uses KSP,
+; but J-11's special PM=2 interpretation for MxPI selects USP.
+previous_sp_index
+	gget v2, 8
+	shr sp, v2, 14
+	bne previous_sp_current_ready, sp, 2
+	clr sp
+
+previous_sp_current_ready
+	shr v2, v2, 12
+	and v2, v2, 3
+	bne previous_sp_mode_ready, v2, 2
+	set v2, 3
+
+previous_sp_mode_ready
+	beq previous_sp_same_mode, v2, sp
+	set sp, 16
+	add v4, v2, sp
+	mov pc, lr
+
+previous_sp_same_mode
+	set v4, 6
+	mov pc, lr

@@ -5,6 +5,8 @@ OD       ?= od
 ASM      = ../asm/microasm
 MICROASM11_DIR ?= ../../../PROJECTS/k1801vm1/microasm11
 ASM11    ?= $(MICROASM11_DIR)/microasm11
+CORE_DIR ?= ../../../PROJECTS/k1801vm1
+PYTHON   ?= python3
 VSRC     = ../rtl/cpu.v tb.v
 PROGRAMS = $(wildcard programs/*.asm)
 TESTS    = $(patsubst programs/%.asm,%,$(PROGRAMS))
@@ -136,7 +138,7 @@ j11-engine-test: build/tb_j11_microengine.vvp build/j11_microengine_smoke.words
 	$(VVP) build/tb_j11_microengine.vvp
 
 build/j11_ucode.bin: $(J11_UCODE_ASM) ../asm/include/pseudo.inc $(ASM) | build
-	$(ASM) -binary $< $@ > build/j11_ucode.asm.log 2>&1 || { cat build/j11_ucode.asm.log; exit 1; }
+	$(ASM) -binary --list build/j11_ucode.lst $< $@ > build/j11_ucode.asm.log 2>&1 || { cat build/j11_ucode.asm.log; exit 1; }
 	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UROM_WORDS))) || { echo "J-11 microcode is $$size bytes; limit is $$((2 * $(J11_UROM_WORDS)))"; exit 1; }
 
 build/j11_ucode.words: build/j11_ucode.bin
@@ -154,6 +156,19 @@ $(J11_GUEST_HEXES): build/guest_%.hex: build/guest_%.bin
 j11-board-ucode:
 	$(MAKE) -C ../boards j11-ucode
 
+.PHONY: j11-core-test j11-core-banks-test
+build/core_reference_export: core_reference.c $(CORE_DIR)/tests/core_tests.c $(CORE_DIR)/core/core.c $(CORE_DIR)/core/core.h $(CORE_DIR)/core/disas.c $(CORE_DIR)/core/hardware.c $(CORE_DIR)/core/pdp11_fp.c | build
+	$(CC) -Wall -Wpedantic -g -DENABLE_MMU=0 -I$(CORE_DIR) core_reference.c $(CORE_DIR)/core/core.c $(CORE_DIR)/core/disas.c $(CORE_DIR)/core/hardware.c -o $@
+
+build/tb_j11_core_reference.vvp: tb_j11_core_reference.v ../rtl/j11_microengine.v | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_core_reference -o $@ $^
+
+j11-core-test: build/core_reference_export build/tb_j11_core_reference.vvp build/j11_ucode.words check-microasm11
+	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP)
+
+j11-core-banks-test: build/core_reference_export build/tb_j11_core_reference.vvp build/j11_ucode.words check-microasm11
+	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP) --banks
+
 build/tb_j11_fetch.vvp: $(J11_FETCH_VSRC) | build
 	$(IVERILOG) -g2012 -Wall -s tb_j11_fetch -o $@ $(J11_FETCH_VSRC)
 
@@ -164,7 +179,7 @@ build/tb_j11_execute.vvp: $(J11_EXECUTE_VSRC) | build
 	$(IVERILOG) -g2012 -Wall -s tb_j11_execute -o $@ $(J11_EXECUTE_VSRC)
 
 j11-execute-test: build/tb_j11_execute.vvp build/j11_ucode.words build/guest_basic.hex build/guest_reserved.hex build/guest_bus_error.hex build/guest_interrupt.hex build/guest_irq_priority.hex build/guest_branches.hex build/guest_mov_register.hex build/guest_mov_zero.hex build/guest_mov_immediate.hex build/guest_mov_deferred.hex build/guest_mov_modes.hex build/guest_movb_modes.hex build/guest_clear_test.hex build/guest_double_ops.hex build/guest_ea_timing.hex build/guest_bic_bis.hex build/guest_control_flow.hex build/guest_control_traps.hex build/guest_sob.hex build/guest_software_traps.hex build/guest_com.hex build/guest_inc_dec.hex build/guest_neg_adc_sbc.hex build/guest_shift_rotate.hex build/guest_swab.hex build/guest_sxt.hex build/guest_xor.hex build/guest_psw.hex build/guest_system.hex build/guest_reset_rtt.hex build/guest_mul.hex build/guest_ash.hex build/guest_ashc.hex build/guest_div.hex build/guest_mark_lock.hex build/guest_previous_space.hex build/guest_privileged.hex \
-	build/guest_mark_edges.hex build/guest_lock_edges.hex build/guest_trace_return.hex
+	build/guest_mark_edges.hex build/guest_lock_edges.hex build/guest_trace_return.hex build/guest_sp_banks.hex
 	$(VVP) build/tb_j11_execute.vvp
 
 build/tb_j11_guest_bus.vvp: $(J11_BUS_VSRC) | build
