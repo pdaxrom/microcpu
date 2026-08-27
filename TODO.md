@@ -11,10 +11,12 @@ follow-up is recorded separately; do not infer authorization for other features.
 - Base board: `boards/hc1200-microcomp`; 128 KiB SPI FRAM backs guest memory.
 - No MMU or split I/D, one register set. The follow-up now adds banked SPs.
 - Implement instructions in `ucode/j11.asm`; no guest-RAM instruction emulator.
-- Keep J-11-specific register decoding, masks, PSW/CPUERR/PIRQ/STKLIM effects,
+- Keep J-11-specific register decoding, masks, PSW/CPUERR/PIRQ effects,
   and guest timer semantics in assembly microcode too. Do not add a J-11 MMIO
   state machine, register masks, or PSW side effects to `j11_microengine.v`.
-  Any new physical time source/interface needs a separate hardware decision;
+  The user approved a raw UART/time-counter interface on 2026-08-27, without
+  guest DL11/LTC address decoding or guest interrupt generation in the adapter.
+  Native UART/time event notifications are also explicitly approved;
   an instruction-count clock is a simulation timebase, not a real 50/60 Hz clock.
 - Write guest tests in assembly and build them with `microasm11`.
 - Run tests on the Mac; do not run Diamond until requested.
@@ -75,29 +77,40 @@ needed for this acceptance step. Deferred work below remains deferred.
   defined reads/writes and side effects, and port register tests. This is
   separate from board UART/timer devices; MMU remains disabled.
   - [x] Inventory `core/core.c`: MEMERR, CCR, MAINT, HITMISS, CPUERR, PIRQ,
-    STKLIM and PSW; disabled-MMU MMR/PAR/PDR stubs; optional reserved registers.
-  - [x] Remove the uncommitted RTL MMIO experiment. Production Verilog remains
-    identical to `3369b8f`; the register implementation is still pending.
-  - [ ] Add shared microcoded word/byte access helpers, including indirect EA,
+    PSW; disabled-MMU MMR/PAR/PDR stubs; optional reserved registers.
+    The C-only programmable STKLIM is not part of the DCJ11 target: implement
+    the documented fixed kernel stack limit `0400`, with yellow/red traps.
+  - [x] Remove the uncommitted RTL CPU-MMIO experiment. `cpu.v` and
+    `j11_microengine.v` remain unchanged; CPU registers are still pending.
+  - [x] Add shared microcoded word/byte access helpers, including indirect EA,
     stack, and instruction-fetch paths. Preserve live microengine registers and
     explicitly save arithmetic flags before helper calls where necessary.
   - [ ] Implement register reads/writes and side effects in those helpers;
     test byte lanes, read-only/write-clear behavior, explicit PSW writes and
-    stack-bank switching, PIRQ arbitration, and CPUERR/STKLIM traps.
+    stack-bank switching, PIRQ arbitration, and CPUERR/fixed-limit stack traps.
   - [ ] Replay corresponding J-11 C-core fixtures and add `microasm11` guest
     programs. Do not mark register support complete from C-only test results.
-- [ ] LTC/KW11-L-compatible timer: `177546`, vector `100`, BR6. Implement guest
+- [x] DL11 console in microcode: `177560..177566`, IE/DONE, RX/TX request
+  latches, byte lanes, RE/RBUF acknowledgement, BREAK/maintenance loopback.
+  Raw UART/time notifications skip hardware polling on event-free boundaries.
+  Assembly tests cover ODT-style polling and real serial bytes; ODT itself,
+  modem/error status and programmable baud-rate extensions remain future work.
+  Current framing: 115200, 8N1 (Verilog `BAUD` parameter).
+- [x] LTC/KW11-L-compatible timer: `177546`, vector `100`, BR6. Implement guest
   CSR and interrupt semantics in microcode and test INIT, byte accesses,
   acknowledgement, masked priority, repeated ticks, and WAIT wakeup.
   - [x] Locate the C device in `k1801vm1/lsi11/dev_kw11.c` and inspect DEC
     KDJ11-B User's Guide section 1.9 / Table 1-23 (printed page 1-45).
-  - [ ] Resolve/document the reference difference: KDJ11-B LCM clears on
+  - [x] Resolve/document the reference difference: KDJ11-B LCM clears on
     interrupt acknowledge or writing zero, whereas the current C model clears
     it on CSR-low-byte read and leaves it set on interrupt acknowledge.
     Use documented KDJ11-B behavior for the J-11 target; do not silently modify
     the reference C device or pretend these two models already agree.
-  - [ ] Provide deterministic tick tests; document the physical timebase still
-    needed for wall-clock timing, without adding timer-specific Verilog here.
+  - [x] Provide deterministic tick tests, including wrap and repeated WAIT
+    wakeups. The approved raw time counter advances independently of bus stalls
+    and WAIT, nominally 60 Hz at 26.6 MHz. It has no guest timer CSR or IRQ vector.
+  - [x] Verify equal-IPL masking, BR6 over BR4, RX over TX, request ACK versus
+    DONE, IE re-arm, RESET flags/state, private-address isolation and odd words.
 - [ ] FIS (`FADD`, `FSUB`, `FMUL`, `FDIV`): add all four instructions with
   rounding/error tests if they fit the remaining current uROM after SP/I/O work.
   Do not confuse FIS with FP11 or silently enlarge the FIS budget.
@@ -107,6 +120,14 @@ Architecture correction verified on 2026-08-27: after removing the uncommitted
 RTL MMIO attempt, `make -C testbench j11-test j11-core-banks-test` passes all
 seven J-11 suites and 187/187 reference snapshots (29 EIS). This verifies the
 existing baseline only; CPU I/O and timer follow-up items remain open.
+
+UART/LTC follow-up verified on 2026-08-27: `make -C testbench j11-test
+j11-core-banks-test` passes all eight J-11 simulation suites and 187/187
+reference snapshots (29 EIS). The common memory dispatcher and devices occupy
+2529/2560 uROM words. Generated board/testbench images match; no generated files
+are committed. Diamond was not run: hardware fit/timing must be measured later.
+CPU-owned I/O registers and fixed-`0400` yellow/red stack protection remain
+the next unimplemented step, before deciding whether FIS fits.
 
 ### Deferred: not part of the active follow-up
 

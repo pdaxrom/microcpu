@@ -1,9 +1,10 @@
 `timescale 1ns/1ps
 
 module j11_hc1200_microcomp #(
-	parameter integer UROM_WORDS = 2048,
+	parameter integer UROM_WORDS = 2560,
 	parameter UCODE_FILE = "j11_ucode.mem",
-	parameter integer FRAM_CLK_DIV = 2
+	parameter integer FRAM_CLK_DIV = 2,
+	parameter integer TICK_DIVISOR = 443333
 ) (
 	input  wire       res,
 	input  wire       rx,
@@ -68,7 +69,8 @@ module j11_hc1200_microcomp #(
 	 * hardware guest-memory controller.
 	 */
 	j11_hc1200_guest_bus #(
-		.FRAM_CLK_DIV(FRAM_CLK_DIV)
+		.FRAM_CLK_DIV(FRAM_CLK_DIV),
+		.TICK_DIVISOR(TICK_DIVISOR)
 	) guest_bus (
 		.clk(clk),
 		.rst(reset),

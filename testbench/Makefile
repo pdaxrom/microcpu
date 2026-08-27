@@ -21,11 +21,13 @@ J11_ENGINE_VSRC = ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v spi_fram_
 J11_FETCH_VSRC = ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v spi_fram_model.v tb_j11_fetch.v
 J11_EXECUTE_VSRC = ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v spi_fram_model.v tb_j11_execute.v
 J11_BUS_VSRC = ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v spi_fram_model.v tb_j11_guest_bus.v
+J11_PERIPHERAL_VSRC = ../rtl/j11_microengine.v $(filter-out tb_j11_guest_bus.v,$(J11_BUS_VSRC)) tb_j11_peripherals.v
 J11_BOARD_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v ../boards/hc1200-microcomp/j11_microcomp.v spi_fram_model.v board/tb_board_j11_microcomp.v
 J11_BOARD_EXECUTE_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v ../boards/hc1200-microcomp/j11_microcomp.v spi_fram_model.v board/tb_board_j11_execute.v
 J11_ENGINE_ASM = ucode/j11_microengine_smoke.asm
 J11_UCODE_ASM = ../ucode/j11.asm
-J11_UROM_WORDS = 2048
+include ../ucode/config.mk
+IVERILOG += -DJ11_UROM_WORDS=$(J11_UROM_WORDS)
 J11_GUEST_PROGRAMS = $(wildcard j11_programs/*.asm)
 J11_GUEST_HEXES = $(patsubst j11_programs/%.asm,build/guest_%.hex,$(J11_GUEST_PROGRAMS))
 
@@ -117,7 +119,14 @@ board-mcu-bootload-rx: build/board_mcu_bootload.vvp build/bootldr-mcu-board.hex 
 board-microcomp-memmap: build/board_microcomp.vvp build/microcomp_memmap.hex
 	$(VVP) build/board_microcomp.vvp +SRAM_HEX=build/microcomp_memmap.hex
 
-j11-test: j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-board-test j11-board-execute-test j11-board-ucode
+j11-test: j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-board-test j11-board-execute-test j11-board-ucode
+
+.PHONY: j11-peripherals-test
+build/tb_j11_peripherals.vvp: $(J11_PERIPHERAL_VSRC) ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_peripherals -o $@ $(J11_PERIPHERAL_VSRC)
+
+j11-peripherals-test: build/tb_j11_peripherals.vvp build/j11_ucode.words build/guest_peripherals.hex build/guest_peripherals_wait_masked.hex
+	$(VVP) build/tb_j11_peripherals.vvp
 
 build/tb_spi_fram_guest_ram.vvp: $(J11_FRAM_VSRC) | build
 	$(IVERILOG) -g2012 -Wall -s tb_spi_fram_guest_ram -o $@ $(J11_FRAM_VSRC)
@@ -137,7 +146,7 @@ build/tb_j11_microengine.vvp: $(J11_ENGINE_VSRC) | build
 j11-engine-test: build/tb_j11_microengine.vvp build/j11_microengine_smoke.words
 	$(VVP) build/tb_j11_microengine.vvp
 
-build/j11_ucode.bin: $(J11_UCODE_ASM) ../asm/include/pseudo.inc $(ASM) | build
+build/j11_ucode.bin: $(J11_UCODE_ASM) $(wildcard ../ucode/j11_*.asm ../ucode/j11_*.inc) ../ucode/config.mk ../asm/include/pseudo.inc $(ASM) | build
 	$(ASM) -binary --list build/j11_ucode.lst $< $@ > build/j11_ucode.asm.log 2>&1 || { cat build/j11_ucode.asm.log; exit 1; }
 	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UROM_WORDS))) || { echo "J-11 microcode is $$size bytes; limit is $$((2 * $(J11_UROM_WORDS)))"; exit 1; }
 
@@ -160,8 +169,8 @@ j11-board-ucode:
 build/core_reference_export: core_reference.c $(CORE_DIR)/tests/core_tests.c $(CORE_DIR)/core/core.c $(CORE_DIR)/core/core.h $(CORE_DIR)/core/disas.c $(CORE_DIR)/core/hardware.c $(CORE_DIR)/core/pdp11_fp.c | build
 	$(CC) -Wall -Wpedantic -g -DENABLE_MMU=0 -I$(CORE_DIR) core_reference.c $(CORE_DIR)/core/core.c $(CORE_DIR)/core/disas.c $(CORE_DIR)/core/hardware.c -o $@
 
-build/tb_j11_core_reference.vvp: tb_j11_core_reference.v ../rtl/j11_microengine.v | build
-	$(IVERILOG) -g2012 -Wall -s tb_j11_core_reference -o $@ $^
+build/tb_j11_core_reference.vvp: tb_j11_core_reference.v ../rtl/j11_microengine.v ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_core_reference -o $@ $(filter %.v,$^)
 
 j11-core-test: build/core_reference_export build/tb_j11_core_reference.vvp build/j11_ucode.words check-microasm11
 	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP)
@@ -169,13 +178,13 @@ j11-core-test: build/core_reference_export build/tb_j11_core_reference.vvp build
 j11-core-banks-test: build/core_reference_export build/tb_j11_core_reference.vvp build/j11_ucode.words check-microasm11
 	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP) --banks
 
-build/tb_j11_fetch.vvp: $(J11_FETCH_VSRC) | build
+build/tb_j11_fetch.vvp: $(J11_FETCH_VSRC) ../ucode/config.mk | build
 	$(IVERILOG) -g2012 -Wall -s tb_j11_fetch -o $@ $(J11_FETCH_VSRC)
 
 j11-fetch-test: build/tb_j11_fetch.vvp build/j11_ucode.words build/guest_fetch.hex
 	$(VVP) build/tb_j11_fetch.vvp
 
-build/tb_j11_execute.vvp: $(J11_EXECUTE_VSRC) | build
+build/tb_j11_execute.vvp: $(J11_EXECUTE_VSRC) ../ucode/config.mk | build
 	$(IVERILOG) -g2012 -Wall -s tb_j11_execute -o $@ $(J11_EXECUTE_VSRC)
 
 j11-execute-test: build/tb_j11_execute.vvp build/j11_ucode.words build/guest_basic.hex build/guest_reserved.hex build/guest_bus_error.hex build/guest_interrupt.hex build/guest_irq_priority.hex build/guest_branches.hex build/guest_mov_register.hex build/guest_mov_zero.hex build/guest_mov_immediate.hex build/guest_mov_deferred.hex build/guest_mov_modes.hex build/guest_movb_modes.hex build/guest_clear_test.hex build/guest_double_ops.hex build/guest_ea_timing.hex build/guest_bic_bis.hex build/guest_control_flow.hex build/guest_control_traps.hex build/guest_sob.hex build/guest_software_traps.hex build/guest_com.hex build/guest_inc_dec.hex build/guest_neg_adc_sbc.hex build/guest_shift_rotate.hex build/guest_swab.hex build/guest_sxt.hex build/guest_xor.hex build/guest_psw.hex build/guest_system.hex build/guest_reset_rtt.hex build/guest_mul.hex build/guest_ash.hex build/guest_ashc.hex build/guest_div.hex build/guest_mark_lock.hex build/guest_previous_space.hex build/guest_privileged.hex \

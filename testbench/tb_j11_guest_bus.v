@@ -24,9 +24,10 @@ module tb_j11_guest_bus;
 	wire spi_mosi;
 	wire spi_miso;
 	integer old_transactions;
+	reg [15:0] old_ticks;
 
 	j11_hc1200_guest_bus #(
-		.FRAM_CLK_DIV(1)
+		.FRAM_CLK_DIV(1), .TICK_DIVISOR(128)
 	) dut (
 		.clk(clk),
 		.rst(rst),
@@ -127,43 +128,47 @@ module tb_j11_guest_bus;
 		repeat (4) @(negedge clk);
 		rst = 0;
 
+		old_ticks = dut.ticks;
 		bus_write(0, 0, 16'h2000, 16'h55aa, 0);
 		bus_read(0, 0, 16'h2000, 16'h55aa, 0);
+		if (dut.ticks == old_ticks) $fatal(1, "Time stopped during SPI transfers");
 
 		old_transactions = fram.transaction_count;
-		bus_read(0, 0, 16'hff74, 16'h0080, 0);
-		if (fram.transaction_count != old_transactions) begin
-			$display("FAIL: DL11 access leaked into FRAM");
-			$finish_and_return(1);
-		end
+		// Guest device registers must not exist in this raw hardware adapter.
+		bus_read(0, 0, 16'hff74, 0, 1);
+		bus_write(0, 0, 16'hff66, 16'h00c0, 1);
+		bus_read(0, 0, 16'hf000, 16'h0002, 0);
+		bus_read(0, 1, 16'hf001, 0, 0);
+		bus_read(0, 0, 16'hf001, 0, 1);
+		if (fram.transaction_count != old_transactions)
+			$fatal(1, "Native/unmapped I/O leaked into FRAM");
 
-		bus_write(0, 1, 16'hff74, 16'h0040, 0);
-		if (!irq || irq_level !== 3'd4 || irq_vector !== 8'o64) begin
-			$display("FAIL: DL11 TX ready interrupt irq=%0d level=%0d vector=%03o",
-				irq, irq_level, irq_vector);
-			$finish_and_return(1);
-		end
+		bus_write(0, 0, 16'hf006, 4, 0); // physical loopback
+		bus_write(0, 1, 16'hf007, 0, 0); // high byte ignored
+		bus_read(0, 0, 16'hf006, 4, 0);
+		bus_write(0, 1, 16'hf002, 16'ha5, 0);
+		if (uart_tx !== 0) $fatal(1, "Native DATA did not start TX");
+		while (!dut.uart_rx_ready || !dut.uart_tx_ready) @(negedge clk);
+		if (!irq || irq_level !== 0 || irq_vector !== 0)
+			$fatal(1, "Native notification must not encode a guest IRQ");
+		bus_read(0, 0, 16'hf000, 3, 0);
+		bus_read(0, 1, 16'hf003, 0, 0); // must not consume RX
+		bus_read(0, 0, 16'hf002, 16'ha5, 0);
+		bus_read(0, 0, 16'hf000, 2, 0);
+
+		bus_write(0, 0, 16'hf006, 2, 0); // BREAK
+		if (uart_tx !== 0) $fatal(1, "Native TX space control");
+		old_ticks = dut.ticks;
+		repeat (1030) @(negedge clk);
+		if (dut.ticks == old_ticks) $fatal(1, "Time stopped without bus requests");
+		old_ticks = dut.ticks;
 		guest_reset = 1;
 		@(negedge clk);
 		guest_reset = 0;
 		@(negedge clk);
-		if (irq || dut.rx_ie !== 0 || dut.tx_ie !== 0) begin
-			$display("FAIL: guest RESET did not clear DL11 interrupt enables");
-			$finish_and_return(1);
-		end
-		bus_write(0, 1, 16'hff74, 16'h0040, 0);
-
-		bus_write(0, 1, 16'hff76, 16'h0041, 0);
-		if (uart_tx !== 0 || irq) begin
-			$display("FAIL: DL11 TBUF did not start UART transmission");
-			$finish_and_return(1);
-		end
-		while (!irq) @(negedge clk);
-		if (irq_vector !== 8'o64) begin
-			$display("FAIL: DL11 TX completion vector=%03o", irq_vector);
-			$finish_and_return(1);
-		end
-		bus_write(0, 1, 16'hff74, 16'h0000, 0);
+		if (dut.ticks < old_ticks || uart_tx !== 1)
+			$fatal(1, "Guest RESET must reset UART, not elapsed time");
+		bus_read(0, 0, 16'hf006, 0, 0);
 
 		old_transactions = fram.transaction_count;
 		bus_read(0, 0, 16'he000, 16'h0000, 1);
@@ -176,7 +181,7 @@ module tb_j11_guest_bus;
 		bus_write(1, 1, 16'he000, 16'h00a5, 0);
 		bus_read(1, 1, 16'he000, 16'h00a5, 0);
 
-		$display("PASS: HC1200 guest bus FRAM overlay and DL11 console");
+		$display("PASS: HC1200 raw FRAM/UART/time services and native events");
 		$finish_and_return(0);
 	end
 

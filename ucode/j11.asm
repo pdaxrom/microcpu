@@ -1,9 +1,10 @@
 	include ../asm/include/pseudo.inc
+	include j11_memory.inc
 
 	org $0000
 
 reset_entry
-	b fetch
+	b reset_initialize
 
 ; Fixed microengine ABI entry: rtl/j11_microengine.v redirects failed guest
 ; transactions to byte address 0002.  Trap mechanics remain in microcode.
@@ -16,19 +17,24 @@ bus_error_entry
 	b trap_entry
 
 wait_instruction
-	gget v2, 14
-	bne trace_entry, v2, 0
-	gget v2, 11
-	bge wait_instruction, v2, 0
+	set v1, 1
+	b fetch_events
+
+reset_initialize
+	far_call peripherals_reset
 
 fetch
+	clr v1
+fetch_events
 	gget v2, 14		; TRACE has priority over device interrupts
 	bne trace_entry, v2, 0
 	gget v0, 7		; v0 <- guest PC
-	gget v2, 11		; take a latched device interrupt at an instruction boundary
+	far_call peripherals_poll
 	blt interrupt_priority, v2, 0
+fetch_no_interrupt
+	bne wait_instruction, v1, 0
 fetch_instruction
-	ldr v1, v0, 0		; v1 <- guest word at PC
+	readw v1, v0, 0		; v1 <- guest word at PC
 	gset v1, 9		; guest IR <- fetched word
 	add v0, v0, 2		; PC advances by one PDP-11 word
 	gset v0, 7		; guest PC <- PC + 2
@@ -45,7 +51,7 @@ interrupt_priority
 	gget v4, 8
 	shr v4, v4, 5
 	and v4, v4, 7		; current PSW priority
-	ble fetch_instruction, v3, v4
+	ble fetch_no_interrupt, v3, v4
 	b interrupt_entry
 
 decode
@@ -122,7 +128,7 @@ decode_single_operand
 	setl v2, $2e
 	beq subtract_carry_operand, v3, v2	; 0056DD/1056DD: SBC/SBCB
 	setl v2, $2f
-	beq test_operand, v3, v2	; 0057DD/1057DD: TST/TSTB
+	fbeq test_operand, v3, v2	; 0057DD/1057DD: TST/TSTB
 	setl v2, $30
 	beq rotate_right_operand, v3, v2	; 0060DD/1060DD: ROR/RORB
 	setl v2, $31
@@ -155,7 +161,7 @@ decode_zero
 	mov v2, v1
 	shr v2, v2, 6
 	beq jump, v2, 1	; 0001DD: JMP
-	beq swap_bytes_operand, v2, 3	; 0003DD: SWAB
+	fbeq swap_bytes_operand, v2, 3	; 0003DD: SWAB
 	mov v2, v1
 	shr v2, v2, 4
 	beq condition_clear, v2, 10	; 000240..000257
@@ -268,6 +274,7 @@ reset_instruction
 reset_instruction_kernel
 	set v2, 1
 	gset v2, 15		; pulse the board peripheral-reset control
+	far_call peripherals_reset
 	b fetch
 
 multiply
@@ -283,9 +290,9 @@ multiply
 	mov v2, v1
 	set sp, $3f
 	and v2, v2, sp
-	bsr ea_resolve
+	far_call ea_resolve
 	beq multiply_source_register, v2, 0
-	ldr v4, v4, 0
+	readw v4, v4, 0
 	b multiply_operands_ready
 
 multiply_source_register
@@ -426,7 +433,7 @@ jump
 	mov v3, v2
 	shr v3, v3, 3
 	beq illegal_jump, v3, 0
-	bsr ea_resolve
+	far_call ea_resolve
 	gset v4, 7
 	b fetch
 
@@ -443,7 +450,7 @@ jump_subroutine
 	mov v3, v2
 	shr v3, v3, 3
 	beq reserved_instruction, v3, 0	; JSR mode 0 enters vector 010
-	bsr ea_resolve
+	far_call ea_resolve
 	mov v2, v1
 	shr v2, v2, 6
 	and v2, v2, 7		; link register
@@ -453,7 +460,7 @@ jump_subroutine
 	; Read the link register after destination EA side effects and after the
 	; stack decrement.  The latter preserves DCJ11 JSR SP,dst behavior.
 	ggetr v3, v2
-	str v3, sp, 0
+	writew v3, sp, 0
 	gsetr v0, v2		; return PC already includes any EA extension
 	gset v4, 7
 	b fetch
@@ -462,7 +469,7 @@ return_subroutine
 	and v2, v1, 7
 	ggetr v4, v2		; branch target is the old link register
 	gget sp, 6
-	ldr v3, sp, 0
+	readw v3, sp, 0
 	add sp, sp, 2
 	gset sp, 6
 	gsetr v3, v2
@@ -479,11 +486,11 @@ move
 	bsr ea_resolve
 	beq move_source_register, v2, 0
 	blt move_source_byte_memory, v1, 0
-	ldr v3, v4, 0
+	readw v3, v4, 0
 	b move_destination
 
 move_source_byte_memory
-	ldrl v3, v4, 0
+	readb v3, v4, 0
 	sxt v3, v3
 	b move_destination
 
@@ -510,16 +517,16 @@ move_destination
 move_destination_resolved
 	beq move_destination_register, v2, 0
 	blt move_destination_byte_memory, v1, 0
-	str v3, v4, 0
-	b move_flags
+	writew v3, v4, 0
+	far_jump move_flags
 
 move_destination_byte_memory
-	strl v3, v4, 0
-	b move_flags
+	writeb v3, v4, 0
+	far_jump move_flags
 
 move_destination_register
 	gsetr v3, v4
-	b move_flags
+	far_jump move_flags
 
 double_sub_operand
 	; ea_resolve treats the sign of this working IR copy as the byte-width flag.
@@ -544,11 +551,11 @@ double_operand
 	bsr ea_resolve
 	beq double_source_register, v2, 0
 	blt double_source_byte_memory, v1, 0
-	ldr v3, v4, 0
+	readw v3, v4, 0
 	b double_destination
 
 double_source_byte_memory
-	ldrl v3, v4, 0
+	readb v3, v4, 0
 	seth v3, 0
 	b double_destination
 
@@ -575,11 +582,11 @@ double_destination
 double_destination_resolved
 	beq double_destination_register, v2, 0
 	blt double_destination_byte_memory, v1, 0
-	ldr sp, v4, 0
+	readw sp, v4, 0
 	b double_execute
 
 double_destination_byte_memory
-	ldrl sp, v4, 0
+	readb sp, v4, 0
 	seth sp, 0
 	b double_execute
 
@@ -604,8 +611,9 @@ double_sub
 
 double_write_result
 	beq double_add_register, v2, 0
-	str sp, v4, 0
-	b double_arithmetic_flags
+	writew sp, v4, 0
+	gget v2, 18		; memory helper's saved pre-store ALU flags
+	b double_arithmetic_flags_ready
 
 double_add_register
 	gsetr sp, v4
@@ -626,7 +634,7 @@ double_exclusive_or
 double_logic_write
 	bge double_logic_write_word, v1, 0
 	beq double_logic_write_byte_register, v2, 0
-	strl sp, v4, 0
+	writeb sp, v4, 0
 	b double_logic_flags_byte
 
 double_logic_write_byte_register
@@ -638,7 +646,7 @@ double_logic_flags_byte
 
 double_logic_write_word
 	beq double_logic_write_word_register, v2, 0
-	str sp, v4, 0
+	writew sp, v4, 0
 	b double_logic_flags_word
 
 double_logic_write_word_register
@@ -667,6 +675,7 @@ double_bit_flags
 
 double_arithmetic_flags
 	getf v2
+double_arithmetic_flags_ready
 	gget v4, 8
 	set sp, $fff0
 	and v4, v4, sp
@@ -682,11 +691,11 @@ clear_operand
 	bsr ea_resolve
 	beq clear_register, v2, 0
 	blt clear_byte_memory, v1, 0
-	str v3, v4, 0
+	writew v3, v4, 0
 	b clear_flags
 
 clear_byte_memory
-	strl v3, v4, 0
+	writeb v3, v4, 0
 	b clear_flags
 
 clear_register
@@ -717,19 +726,19 @@ arithmetic_shift_combined_relay
 	b arithmetic_shift_combined
 
 divide_relay
-	b divide
+	far_jump divide
 
 test_and_set_relay
-	b test_and_set_operand
+	far_jump test_and_set_operand
 
 write_lock_relay
-	b write_lock_operand
+	far_jump write_lock_operand
 
 move_from_previous_relay
-	b move_from_previous
+	far_jump move_from_previous
 
 move_to_previous_relay
-	b move_to_previous
+	far_jump move_to_previous
 
 sign_extend_relay
 	b sign_extend_operand
@@ -776,13 +785,13 @@ trap_entry_mode_ready
 trap_entry_stack_ready
 	shl lr, lr, 12
 	sub v4, v4, 2
-	str v3, v4, 0
+	writew v3, v4, 0
 	sub v4, v4, 2
-	str v0, v4, 0
+	writew v0, v4, 0
 	gset v4, 6
-	ldr v0, sp, 0
+	readw v0, sp, 0
 	gset v0, 7
-	ldr v3, sp, 2
+	readw v3, sp, 2
 	set sp, $0fff		; vector enters kernel mode with old CM in PM
 	and v3, v3, sp
 	or v3, v3, lr
@@ -799,9 +808,9 @@ return_from_trace
 return_common
 	gget v1, 8		; privilege checks use the pre-RTI/RTT mode
 	gget v4, 6
-	ldr v0, v4, 0
+	readw v0, v4, 0
 	add v4, v4, 2
-	ldr v3, v4, 0
+	readw v3, v4, 0
 	add v4, v4, 2
 	gset v4, 6
 	mov v2, v1
@@ -856,6 +865,9 @@ return_stack_ready
 	b fetch
 
 interrupt_entry
+	set v3, $800
+	and v3, v2, v3
+	fbne peripherals_ack, v3, 0
 	mov sp, v2
 	set v3, $ff
 	and sp, sp, v3		; pending word low byte is the PDP-11 vector
@@ -887,15 +899,15 @@ complement_operand
 	bsr ea_resolve
 	beq complement_register, v2, 0
 	blt complement_byte_memory, v1, 0
-	ldr sp, v4, 0
+	readw sp, v4, 0
 	inv v3, sp
-	str v3, v4, 0
+	writew v3, v4, 0
 	b complement_flags
 
 complement_byte_memory
-	ldrl sp, v4, 0
+	readb sp, v4, 0
 	inv v3, sp
-	strl v3, v4, 0
+	writeb v3, v4, 0
 	sxt v3, v3
 	b complement_flags
 
@@ -968,11 +980,11 @@ adjust_operand
 	gset v3, 12
 	beq adjust_register_load, v2, 0
 	blt adjust_byte_memory_load, v1, 0
-	ldr sp, v4, 0
+	readw sp, v4, 0
 	b adjust_word_value
 
 adjust_byte_memory_load
-	ldrl sp, v4, 0
+	readb sp, v4, 0
 	seth sp, 0
 	b adjust_byte_value
 
@@ -1081,7 +1093,7 @@ adjust_word_test
 adjust_word_write
 	gget v2, 13
 	beq adjust_word_register_write, v2, 0
-	str v3, v4, 0
+	writew v3, v4, 0
 	b adjust_merge_flags
 
 adjust_word_register_write
@@ -1231,7 +1243,7 @@ adjust_shift_finish_byte
 adjust_byte_write
 	gget v2, 13
 	beq adjust_byte_register_write, v2, 0
-	strl v3, v4, 0
+	writeb v3, v4, 0
 	b adjust_merge_flags
 
 adjust_byte_register_write
@@ -1255,7 +1267,7 @@ swap_bytes_operand
 	shr v2, v2, 10
 	bsr ea_resolve
 	beq swap_bytes_register_load, v2, 0
-	ldr sp, v4, 0
+	readw sp, v4, 0
 	b swap_bytes_value
 
 swap_bytes_register_load
@@ -1267,7 +1279,7 @@ swap_bytes_value
 	shl sp, sp, 8
 	or v3, v3, sp
 	beq swap_bytes_register_write, v2, 0
-	str v3, v4, 0
+	writew v3, v4, 0
 	b swap_bytes_flags
 
 swap_bytes_register_write
@@ -1337,7 +1349,7 @@ ea_autoincrement_deferred
 	mov v0, sp
 ea_autoincrement_deferred_not_pc
 	sub sp, sp, 2
-	ldr v4, sp, 0
+	readw v4, sp, 0
 	rts
 
 ea_autodecrement
@@ -1366,11 +1378,11 @@ ea_autodecrement_deferred
 	bne ea_autodecrement_deferred_not_pc, v4, 7
 	mov v0, sp
 ea_autodecrement_deferred_not_pc
-	ldr v4, sp, 0
+	readw v4, sp, 0
 	rts
 
 ea_index
-	ldr sp, v0, 0
+	readw sp, v0, 0
 	add v0, v0, 2
 	gset v0, 7
 	ggetr v4, v4
@@ -1378,12 +1390,12 @@ ea_index
 	rts
 
 ea_index_deferred
-	ldr sp, v0, 0
+	readw sp, v0, 0
 	add v0, v0, 2
 	gset v0, 7
 	ggetr v4, v4
 	add v4, v4, sp
-	ldr v4, v4, 0
+	readw v4, v4, 0
 	rts
 
 sign_extend_operand
@@ -1399,7 +1411,7 @@ sign_extend_resolve
 	shr v2, v2, 10
 	bsr ea_resolve
 	beq sign_extend_register, v2, 0
-	str v3, v4, 0
+	writew v3, v4, 0
 	b move_flags
 
 sign_extend_register
@@ -1411,7 +1423,7 @@ sign_extend_register
 move_from_processor_status
 	gget v3, 8
 	sxt v3, v3		; MFPS sign-extends a register result
-	b move_destination
+	far_jump move_destination
 
 move_to_processor_status_tail
 	bge mark_instruction, v1, 0	; 0064NN: MARK; negative IR is MTPS
@@ -1420,7 +1432,7 @@ move_to_processor_status_tail
 	and v2, v2, sp
 	bsr ea_resolve
 	beq move_to_processor_status_register, v2, 0
-	ldrl v3, v4, 0
+	readb v3, v4, 0
 	b move_to_processor_status_apply
 
 move_to_processor_status_register
@@ -1459,7 +1471,7 @@ mark_instruction
 	gset sp, 6
 	gget v0, 5
 	gset v0, 7		; PC = old R5
-	ldr v3, sp, 0
+	readw v3, sp, 0
 	add sp, sp, 2
 	gset sp, 6
 	gset v3, 5		; R5 = pop()
@@ -1499,7 +1511,7 @@ arithmetic_shift
 	and v2, v2, sp
 	bsr ea_resolve
 	beq arithmetic_shift_count_register, v2, 0
-	ldr v4, v4, 0
+	readw v4, v4, 0
 	b arithmetic_shift_count_ready
 
 arithmetic_shift_count_register
@@ -1586,7 +1598,7 @@ arithmetic_shift_combined
 	and v2, v2, sp
 	bsr ea_resolve
 	beq arithmetic_shift_combined_count_register, v2, 0
-	ldr v4, v4, 0
+	readw v4, v4, 0
 	b arithmetic_shift_combined_count_ready
 
 arithmetic_shift_combined_count_register
@@ -1666,7 +1678,7 @@ arithmetic_shift_combined_carry
 	and v1, v1, v2
 	or v1, v1, v0
 	gset v1, 8
-	b fetch_far
+	far_jump fetch_far
 
 divide
 	; Capture the complete dividend before resolving the divisor EA.  As with
@@ -1685,7 +1697,7 @@ divide
 	and v2, v2, sp
 	bsr ea_resolve
 	beq divide_source_register, v2, 0
-	ldr v4, v4, 0
+	readw v4, v4, 0
 	b divide_source_ready
 
 divide_source_register
@@ -1808,17 +1820,17 @@ divide_merge_flags
 	and v1, v1, v2
 	or v1, v1, v0
 	gset v1, 8
-	b fetch_far
+	far_jump fetch_far
 
 test_and_set_operand
 	shl v2, v1, 10
 	shr v2, v2, 10
 	bsr ea_resolve
-	beq reserved_instruction, v2, 0	; DCJ11 rejects register-direct TSTSET
-	ldr v3, v4, 0
+	fbeq reserved_instruction, v2, 0	; DCJ11 rejects register-direct TSTSET
+	readw v3, v4, 0
 	gset v3, 0		; R0 receives the unmodified memory word
 	or sp, v3, 1
-	str sp, v4, 0		; memory bit zero is set
+	writew sp, v4, 0		; memory bit zero is set
 	and v0, v3, 1		; old bit zero becomes C
 	b lock_operand_nz
 
@@ -1826,9 +1838,9 @@ write_lock_operand
 	shl v2, v1, 10
 	shr v2, v2, 10
 	bsr ea_resolve
-	beq reserved_instruction, v2, 0	; DCJ11 rejects register-direct WRTLCK
+	fbeq reserved_instruction, v2, 0	; DCJ11 rejects register-direct WRTLCK
 	gget v3, 0		; sample R0 after destination EA side effects
-	str v3, v4, 0
+	writew v3, v4, 0
 	gget v0, 8
 	and v0, v0, 1		; WRTLCK preserves carry
 
@@ -1850,7 +1862,7 @@ lock_operand_merge_flags
 	and v1, v1, v2
 	or v1, v1, v0		; V remains clear
 	gset v1, 8
-	b fetch_far
+	far_jump fetch_far
 
 move_from_previous
 	; With no MMU or split I/D, MFPI and MFPD share the current unified address
@@ -1861,7 +1873,7 @@ move_from_previous
 	shr v2, v2, 10
 	bsr ea_resolve
 	beq move_from_previous_register, v2, 0
-	ldr v3, v4, 0
+	readw v3, v4, 0
 	b move_from_previous_push
 
 move_from_previous_register
@@ -1875,7 +1887,7 @@ move_from_previous_push
 	gget sp, 6
 	sub sp, sp, 2
 	gset sp, 6
-	str v3, sp, 0
+	writew v3, sp, 0
 	b move_flags		; set N/Z, clear V, preserve C
 
 move_to_previous
@@ -1886,11 +1898,11 @@ move_to_previous
 	shr v2, v2, 10
 	bsr ea_resolve
 	gget sp, 6
-	ldr v3, sp, 0
+	readw v3, sp, 0
 	add sp, sp, 2
 	gset sp, 6
 	beq move_to_previous_register, v2, 0
-	str v3, v4, 0
+	writew v3, v4, 0
 	b move_flags
 
 move_to_previous_register
@@ -1924,3 +1936,6 @@ previous_sp_mode_ready
 previous_sp_same_mode
 	set v4, 6
 	mov pc, lr
+
+	include j11_memory.asm
+	include j11_peripherals.asm

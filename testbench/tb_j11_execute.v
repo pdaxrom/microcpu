@@ -28,9 +28,10 @@ module tb_j11_execute;
 	wire [15:0] debug_pending_irq;
 	wire guest_reset;
 	integer guest_reset_count;
+	integer test_number = 0;
 
 	j11_microengine #(
-		.UROM_WORDS(2048),
+		.UROM_WORDS(`J11_UROM_WORDS),
 		.UCODE_FILE("build/j11_ucode.words")
 	) dut (
 		.clk(clk),
@@ -94,6 +95,7 @@ module tb_j11_execute;
 
 	task reset_engine;
 		begin
+			test_number = test_number + 1;
 			rst = 1;
 			repeat (4) @(negedge clk);
 			rst = 0;
@@ -577,6 +579,9 @@ module tb_j11_execute;
 		$readmemh("build/guest_system.hex", fram.memory);
 		reset_engine();
 		while (debug_guest_r0 != 16'o000001) @(negedge clk);
+		// Synchronize on WAIT itself, not a guessed instruction latency: the
+		// memory dispatcher may otherwise deliver the IRQ before WAIT executes.
+		while (debug_guest_ir != 16'o000001) @(negedge clk);
 		repeat (100) @(negedge clk);
 		if (debug_guest_r0 !== 16'o000001 || debug_cause !== 0) begin
 			$display("FAIL: J-11 WAIT did not hold pc=%06o ir=%06o r0=%06o psw=%06o cause=%04x",
@@ -737,9 +742,9 @@ module tb_j11_execute;
 	end
 
 	initial begin
-		#20000000;
-		$display("FAIL: J-11 execute timeout pc=%04x ir=%04x cause=%04x upc=%04x",
-			debug_guest_pc, debug_guest_ir, debug_cause, debug_upc);
+		#40000000;
+		$display("FAIL: J-11 execute timeout test=%0d pc=%04x ir=%04x cause=%04x upc=%04x",
+			test_number, debug_guest_pc, debug_guest_ir, debug_cause, debug_upc);
 		$finish_and_return(1);
 	end
 

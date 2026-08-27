@@ -17,7 +17,8 @@ module tb_j11_core_reference;
 	integer fetch_pc, wait_pc, check_banks;
 	integer i, cycles, started, done, failures, active_mode;
 
-	j11_microengine #(.UCODE_FILE("build/j11_ucode.words")) dut (
+	j11_microengine #(.UROM_WORDS(`J11_UROM_WORDS),
+		.UCODE_FILE("build/j11_ucode.words")) dut (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr),
 		.guest_byte(byte_access), .guest_bank(bank), .guest_address(address),
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),
