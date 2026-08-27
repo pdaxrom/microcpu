@@ -25,7 +25,7 @@ module tb_j11_fetch;
 	wire [15:0] debug_pending_irq;
 
 	j11_microengine #(
-		.UROM_WORDS(1024),
+		.UROM_WORDS(2048),
 		.UCODE_FILE("build/j11_ucode.words")
 	) dut (
 		.clk(clk),

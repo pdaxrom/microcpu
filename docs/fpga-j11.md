@@ -28,11 +28,11 @@ Microcode instruction fetches never use the guest bus. The uROM is intended
 to infer 16-bit EBR storage, while guest memory transactions use a separate
 request/ready interface.
 
-The current uROM is 1024 x 16 bits and therefore uses two MachXO2 9-kbit EBRs.
-The assembled microprogram currently occupies all 1024 words. Unsupported
-opcodes retain the architectural reserved-instruction trap path. The next
-instruction family will require a deeper uROM rather than weaker guest
-semantics.
+The current production uROM is 2048 x 16 bits and therefore uses four MachXO2
+9-kbit EBRs. The original 1024-word image was filled completely by the resident
+integer core, so the deeper image leaves room for the remaining non-MMU
+instructions without weakening guest semantics. Unsupported opcodes retain the
+architectural reserved-instruction trap path.
 
 ## Guest context
 
@@ -257,13 +257,11 @@ make -C testbench j11-test
 
 ## Next implementation steps
 
-1. Increase the uROM depth before adding more instructions; do not weaken guest
-   semantics merely to remain at 1024 words.
-2. Add the remaining non-MMU system instructions (`RESET` and `RTT`) before the
+1. Add the remaining non-MMU system instructions (`RESET` and `RTT`) before the
    larger EIS arithmetic group.
-3. Add a short sequential-read buffer so instruction fetches do not start a
+2. Add a short sequential-read buffer so instruction fetches do not start a
    new SPI command and address phase for every word.
-4. Differentially compare each guest step with the existing C J-11 core.
+3. Differentially compare each guest step with the existing C J-11 core.
 
 The present SPI controller favors simple, testable semantics over throughput.
 It opens a new SPI transaction for every request; burst/prefetch support is a

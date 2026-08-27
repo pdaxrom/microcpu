@@ -20,7 +20,7 @@ endif
 
 MICROASM ?= ../asm/microasm
 OD ?= od
-J11_UROM_WORDS = 1024
+J11_UROM_WORDS = 2048
 J11_UCODE_ASM = ../ucode/j11.asm
 J11_UCODE_BIN = hc1200-microcomp/j11_ucode.bin
 J11_UCODE_MEM = hc1200-microcomp/j11_ucode.mem
@@ -37,7 +37,7 @@ $(J11_UCODE_BIN): $(J11_UCODE_ASM) ../asm/include/pseudo.inc $(MICROASM)
 	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UROM_WORDS))) || { echo "J-11 microcode is $$size bytes; limit is $$((2 * $(J11_UROM_WORDS)))"; exit 1; }
 
 $(J11_UCODE_MEM): $(J11_UCODE_BIN)
-	{ printf '@0000\n'; $(OD) -An -v -tx2 $< | sed 's/[[:space:]]*$$//'; printf '@03ff\n00b0\n'; } > $@
+	{ printf '@0000\n'; $(OD) -An -v -tx2 $< | sed 's/[[:space:]]*$$//'; printf '@%04x\n00b0\n' $$(( $(J11_UROM_WORDS) - 1 )); } > $@
 
 j11-ucode: $(J11_UCODE_MEM)
 

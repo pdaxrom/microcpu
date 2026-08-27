@@ -23,7 +23,7 @@ J11_BOARD_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_r
 J11_BOARD_EXECUTE_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v ../boards/hc1200-microcomp/j11_microcomp.v spi_fram_model.v board/tb_board_j11_execute.v
 J11_ENGINE_ASM = ucode/j11_microengine_smoke.asm
 J11_UCODE_ASM = ../ucode/j11.asm
-J11_UROM_WORDS = 1024
+J11_UROM_WORDS = 2048
 J11_GUEST_PROGRAMS = $(wildcard j11_programs/*.asm)
 J11_GUEST_HEXES = $(patsubst j11_programs/%.asm,build/guest_%.hex,$(J11_GUEST_PROGRAMS))
 
@@ -140,7 +140,7 @@ build/j11_ucode.bin: $(J11_UCODE_ASM) ../asm/include/pseudo.inc $(ASM) | build
 	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UROM_WORDS))) || { echo "J-11 microcode is $$size bytes; limit is $$((2 * $(J11_UROM_WORDS)))"; exit 1; }
 
 build/j11_ucode.words: build/j11_ucode.bin
-	{ printf '@0000\n'; $(OD) -An -v -tx2 $< | sed 's/[[:space:]]*$$//'; printf '@03ff\n00b0\n'; } > $@
+	{ printf '@0000\n'; $(OD) -An -v -tx2 $< | sed 's/[[:space:]]*$$//'; printf '@%04x\n00b0\n' $$(( $(J11_UROM_WORDS) - 1 )); } > $@
 
 check-microasm11:
 	@test -x "$(ASM11)" || { echo "microasm11 not found: $(ASM11)"; exit 1; }
