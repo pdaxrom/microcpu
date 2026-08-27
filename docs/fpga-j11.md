@@ -165,12 +165,12 @@ conditions (`BR`, `BNE`, `BEQ`, `BGE`, `BLT`, `BGT`, `BLE`, `BPL`, `BMI`,
 `BHI`, `BLOS`, `BVC`, `BVS`, `BCC`, and `BCS`), and the condition-code group
 `CLC/CLV/CLZ/CLN/CCC/SEC/SEV/SEZ/SEN/SCC`. `JMP`, `JSR`, `RTS`, and `SOB`
 provide subroutine and loop control flow. `BPT`, `IOT`, `EMT`, and `TRAP` enter
-their architectural vectors through the common trap path, and `HALT` enters
-the stopped path. `WAIT` stalls until an interrupt request is latched, `MFPT`
+their architectural vectors through the common trap path, and kernel `HALT`
+enters the stopped path. `WAIT` stalls until an interrupt request is latched, `MFPT`
 reports DCJ11 processor type 5 in R0, and `SPL` updates only `PSW[7:5]` in the
-current single-mode configuration. Kernel-mode `RESET` clears the latched IRQ
-and resets the DL11 state without erasing or resetting the FRAM; RESET in a
-non-kernel current mode is a NOP.
+kernel current mode; it is a NOP in supervisor or user mode. Kernel-mode
+`RESET` clears the latched IRQ and resets the DL11 state without erasing or
+resetting the FRAM; RESET in a non-kernel current mode is a NOP.
 Reserved instructions enter PDP-11 vector `010`, save the post-instruction PC
 and old PSW on the guest stack, and can return with `RTI` or `RTT`. The engine
 snapshots T when it fetches each guest instruction, gives TRACE vector `014`
@@ -182,6 +182,13 @@ Latched external interrupts are accepted at guest instruction boundaries and
 enter the supplied even vector through the same stack-frame path. The engine
 latches the three-bit BR level with the vector and accepts it only when that
 level is strictly greater than `PSW[7:5]`; a masked request remains pending.
+All vector entries force the current mode to kernel and copy the interrupted
+current mode into the previous-mode field. A non-kernel `HALT` enters vector
+`004`; a kernel `HALT` stops the engine. Outside kernel mode, `RTI` and `RTT`
+treat `PSW[15:11]` as set-only and preserve the old interrupt priority. The
+reserved current-mode encoding 2 follows the DCJ11 rule and is treated as
+kernel. This no-MMU implementation still has one physical SP, so mode changes
+do not yet select banked stack pointers.
 
 The common `ea_resolve` micro-subroutine implements all PDP-11 addressing modes
 0 through 7. It consumes extension words, applies register side effects once,
@@ -211,8 +218,8 @@ Verilog opcode decoder.
 clears `V`, and preserves `C`. `MFPS` uses byte destination addressing, sign
 extends register results, updates `N/Z`, clears `V`, and preserves `C`.
 `MTPS` uses byte source addressing, updates priority and `NZVC`, and preserves
-the old `T` bit and upper PSW. With the current single-mode configuration it
-uses the DCJ11 kernel-mode behavior.
+the old `T` bit and upper PSW. In supervisor or user mode it also preserves the
+old interrupt priority, as required by the DCJ11 privilege rules.
 `XOR` reuses the word destination path and preserves `C` while updating `N/Z`
 and clearing `V`.
 `MUL` snapshots its R operand before source-EA side effects, then performs a

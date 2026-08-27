@@ -679,7 +679,20 @@ module tb_j11_execute;
 			$finish_and_return(1);
 		end
 
-		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, MARK, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, DIV, ASH, ASHC, TSTSET, WRTLCK, MFPI/MFPD/MTPI/MTPD, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
+		$readmemh("build/guest_privileged.hex", fram.memory);
+		guest_reset_count = 0;
+		reset_engine();
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345 || guest_reset_count !== 1) begin
+			$display("FAIL: J-11 privileged PSW modes pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o r3=%06o r4=%06o r5=%06o sp=%06o psw=%06o reset_count=%0d cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[1], dut.jctx[2], dut.jctx[3], dut.jctx[4],
+				dut.jctx[5], dut.jctx[6], debug_guest_psw,
+				guest_reset_count, debug_cause);
+			$finish_and_return(1);
+		end
+
+		$display("PASS: microasm11 guests execute traps, privileged PSW modes, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, MARK, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, MUL, DIV, ASH, ASHC, TSTSET, WRTLCK, MFPI/MFPD/MTPI/MTPD, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
 		$finish_and_return(0);
 	end
 

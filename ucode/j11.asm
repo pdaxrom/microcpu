@@ -241,9 +241,16 @@ move_from_processor_type
 	b fetch
 
 set_priority
+	gget v3, 8
+	set sp, $c000
+	and v4, v3, sp
+	beq set_priority_apply, v4, 0
+	set sp, $8000
+	bne fetch, v4, sp		; user/supervisor SPL is a NOP
+
+set_priority_apply
 	and v1, v1, 7
 	shl v1, v1, 5
-	gget v3, 8
 	set sp, $ff1f		; replace PSW priority, preserve all other bits
 	and v3, v3, sp
 	or v3, v3, v1
@@ -254,7 +261,11 @@ reset_instruction
 	gget v2, 8
 	set v3, $c000
 	and v2, v2, v3
-	bne fetch, v2, 0	; user/supervisor RESET is a NOP on DCJ11
+	beq reset_instruction_kernel, v2, 0
+	set v3, $8000
+	bne fetch, v2, v3	; user/supervisor RESET is a NOP on DCJ11
+
+reset_instruction_kernel
 	set v2, 1
 	gset v2, 15		; pulse the board peripheral-reset control
 	b fetch
@@ -720,6 +731,9 @@ move_from_previous_relay
 move_to_previous_relay
 	b move_to_previous
 
+move_to_processor_status
+	b move_to_processor_status_tail
+
 ; Keep the common control-flow handlers near the center of the image.  The
 ; microengine branch encoding has a +/-2047-byte range, so this placement stays
 ; reachable from both the fixed ABI entries and the growing instruction tail.
@@ -743,6 +757,14 @@ reserved_instruction
 trap_entry
 	gget v4, 6
 	gget v3, 8
+	mov lr, v3
+	shr lr, lr, 14
+	and lr, lr, 3		; old current mode becomes previous mode
+	bne trap_entry_mode_ready, lr, 2
+	clr lr			; DCJ11 treats reserved mode 2 as kernel
+
+trap_entry_mode_ready
+	shl lr, lr, 12
 	sub v4, v4, 2
 	str v3, v4, 0
 	sub v4, v4, 2
@@ -751,6 +773,9 @@ trap_entry
 	ldr v0, sp, 0
 	gset v0, 7
 	ldr v3, sp, 2
+	set sp, $0fff		; vector enters kernel mode with old CM in PM
+	and v3, v3, sp
+	or v3, v3, lr
 	gset v3, 8
 	b fetch
 
@@ -762,12 +787,34 @@ return_from_trace
 	clr lr			; RTT suppresses its own trace boundary
 
 return_common
+	gget v1, 8		; privilege checks use the pre-RTI/RTT mode
 	gget v4, 6
 	ldr v0, v4, 0
 	add v4, v4, 2
 	ldr v3, v4, 0
 	add v4, v4, 2
 	gset v4, 6
+	mov v2, v1
+	set sp, $c000
+	and v2, v2, sp
+	beq return_common_apply, v2, 0
+	set sp, $8000
+	beq return_common_apply, v2, sp
+	; Outside kernel, PSW[15:11] are set-only and IPL is unchanged.
+	mov v2, v3
+	or v2, v2, v1
+	set sp, $f800
+	and v2, v2, sp
+	set sp, $07ff
+	and v3, v3, sp
+	or v3, v3, v2
+	set sp, $ff1f
+	and v3, v3, sp
+	set sp, $00e0
+	and v1, v1, sp
+	or v3, v3, v1
+
+return_common_apply
 	gset v0, 7
 	gset v3, 8
 	and v3, v3, lr
@@ -785,6 +832,16 @@ interrupt_entry
 	b trap_entry
 
 halt
+	gget v3, 8
+	set sp, $c000
+	and v2, v3, sp
+	beq halt_stopped, v2, 0
+	set sp, $8000
+	beq halt_stopped, v2, sp
+	set sp, 4		; non-kernel HALT traps through vector 004
+	b trap_entry
+
+halt_stopped
 	set v2, 3
 	gset v2, 10		; cause 3: HALT until console mode exists
 
@@ -1159,7 +1216,7 @@ adjust_merge_mask_ready
 	and v4, v4, sp
 	or v4, v4, lr
 	gset v4, 8
-	b fetch
+	b fetch_far
 
 swap_bytes_operand
 	shl v2, v1, 10
@@ -1324,7 +1381,7 @@ move_from_processor_status
 	sxt v3, v3		; MFPS sign-extends a register result
 	b move_destination
 
-move_to_processor_status
+move_to_processor_status_tail
 	bge mark_instruction, v1, 0	; 0064NN: MARK; negative IR is MTPS
 	mov v2, v1
 	set sp, $3f
@@ -1342,6 +1399,20 @@ move_to_processor_status_apply
 	setl sp, $ef		; MTPS writes priority and NZVC, but not T
 	and v3, v3, sp
 	gget v4, 8
+	mov v2, v4
+	set sp, $c000
+	and v2, v2, sp
+	beq move_to_processor_status_merge, v2, 0
+	set sp, $8000
+	beq move_to_processor_status_merge, v2, sp
+	set sp, $001f		; non-kernel MTPS cannot change priority
+	and v3, v3, sp
+	mov v2, v4
+	set sp, $00e0
+	and v2, v2, sp
+	or v3, v3, v2
+
+move_to_processor_status_merge
 	set sp, $ff10		; preserve upper PSW and the old T bit
 	and v4, v4, sp
 	or v4, v4, v3
