@@ -54,9 +54,9 @@ and `srampages`.
   covers FRAM transactions, the HC1200 I/O overlay and DL11, guest fetch,
   condition-code operations, all PDP-11 conditional branches, all addressing
   modes for `MOV` and `MOVB`, `CMP/CMPB`, `BIT/BITB`, `BIC/BICB`, `BIS/BISB`,
-  `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`, `DEC/DECB`, `NEG/NEGB`,
+  `XOR`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`, `DEC/DECB`, `NEG/NEGB`,
   `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`, `ASR/ASRB`, `ASL/ASLB`,
-  `TST/TSTB`, `SOB`, the software-trap
+  `TST/TSTB`, `SWAB`, `SXT`, `MFPS`, `MTPS`, `SOB`, the software-trap
   group, and an assembled guest write to the physical DL11 UART. The
   double-operand test includes borrow, carry,
   signed-overflow, byte-width, and

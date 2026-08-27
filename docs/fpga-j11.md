@@ -29,7 +29,7 @@ to infer 16-bit EBR storage, while guest memory transactions use a separate
 request/ready interface.
 
 The current uROM is 1024 x 16 bits and therefore uses two MachXO2 9-kbit EBRs.
-The assembled microprogram currently occupies 1021 words, leaving 3 words of
+The assembled microprogram currently occupies 1008 words, leaving 16 words of
 integration margin. Unsupported opcodes retain the architectural
 reserved-instruction trap path.
 
@@ -152,9 +152,9 @@ The current hardware microprogram fetches guest words through the FRAM bus,
 stores each opcode in the guest IR context word, and advances guest PC. Its
 resident decoder implements `NOP`, `SWAB`, `SXT`, `MOV/MOVB`, `CMP/CMPB`,
 `BIT/BITB`,
-`BIC/BICB`, `BIS/BISB`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
+`BIC/BICB`, `BIS/BISB`, `XOR`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
 `DEC/DECB`, `NEG/NEGB`, `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`,
-`ASR/ASRB`, `ASL/ASLB`, `TST/TSTB`, all
+`ASR/ASRB`, `ASL/ASLB`, `TST/TSTB`, `MFPS`, `MTPS`, all
 sixteen PDP-11 branch
 conditions (`BR`, `BNE`, `BEQ`, `BGE`, `BLT`, `BGT`, `BLE`, `BPL`, `BMI`,
 `BHI`, `BLOS`, `BVC`, `BVS`, `BCC`, and `BCS`), and the condition-code group
@@ -179,7 +179,8 @@ and retains the two-byte step for SP, PC, and deferred modes. `MOV`, `MOVB`,
 `NEG`, `NEGB`,
 `ADC`, `ADCB`, `SBC`, `SBCB`, `ROR`, `RORB`, `ROL`, `ROLB`, `ASR`, `ASRB`,
 `ASL`, `ASLB`, `TST`, `TSTB`, `CMP`, `CMPB`, `BIT`, `BITB`, `BIC`, `BICB`,
-`BIS`, `BISB`, `ADD`, and `SUB` all use this shared resolver.
+`BIS`, `BISB`, `XOR`, `ADD`, `SUB`, `MFPS`, and `MTPS` all use this shared
+resolver.
 `MOVB` performs the PDP-11 sign extension on register destinations, while
 `CLRB`, `COMB`, `INCB`, `DECB`, `NEGB`, `ADCB`, `SBCB`, `BICB`, and `BISB`
 preserve the register's high byte; the byte shift/rotate group does the same.
@@ -195,8 +196,13 @@ Verilog opcode decoder.
 `SWAB` performs a word read/modify/write through the same resolver, derives
 `N/Z` from the swapped result's low byte, and clears `V/C`.
 `SXT` writes zero or all ones according to the previous `N`, updates `N/Z`,
-clears `V`, and preserves `C`. Its decoder explicitly rejects the adjacent
-`MFPS` opcode, which remains on the reserved-instruction path.
+clears `V`, and preserves `C`. `MFPS` uses byte destination addressing, sign
+extends register results, updates `N/Z`, clears `V`, and preserves `C`.
+`MTPS` uses byte source addressing, updates priority and `NZVC`, and preserves
+the old `T` bit and upper PSW. With the current single-mode configuration it
+uses the DCJ11 kernel-mode behavior.
+`XOR` reuses the word destination path and preserves `C` while updating `N/Z`
+and clearing `V`.
 
 `JMP` and `JSR` also use `ea_resolve`, including indexed and deferred modes.
 Register-direct mode 0 is rejected before applying any side effects: `JMP`
@@ -248,10 +254,11 @@ make -C testbench j11-test
 
 ## Next implementation steps
 
-1. Keep the remaining 3 uROM words as integration margin.
-2. Consider a decoder/helper refactor before adding `XOR`, `MFPS`, or `MTPS`; the
-   current 1024-word image no longer has room for another large instruction
-   family without trading something out.
+1. Keep the remaining 16 uROM words as integration margin. Increase the uROM
+   depth when the next instruction family no longer fits; do not weaken guest
+   semantics merely to remain at 1024 words.
+2. Add the remaining non-MMU system instructions (`MFPT`, `SPL`, `WAIT`,
+   `RESET`, and `RTT`) before the larger EIS arithmetic group.
 3. Add a short sequential-read buffer so instruction fetches do not start a
    new SPI command and address phase for every word.
 4. Differentially compare each guest step with the existing C J-11 core.

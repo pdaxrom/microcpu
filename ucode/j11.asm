@@ -42,13 +42,7 @@ decode
 	mov v2, v1
 	shr v2, v2, 8
 	beq decode_zero, v2, 0
-	beq branch_taken, v2, 1	; 0004xx: BR
-	beq branch_bne, v2, 2	; 0010xx: BNE
-	beq branch_beq, v2, 3	; 0014xx: BEQ
-	beq branch_bge, v2, 4	; 0020xx: BGE
-	beq branch_blt, v2, 5	; 0024xx: BLT
-	beq branch_bgt, v2, 6	; 0030xx: BGT
-	beq branch_ble, v2, 7	; 0034xx: BLE
+	bltu branch_low, v2, 8	; 0004xx..0034xx: BR and low branch group
 	setl v3, $88
 	beq emt_trap, v2, v3	; 1040xx: EMT
 	inc v3
@@ -74,24 +68,15 @@ decode
 	beq jump_subroutine, v3, 4	; 004RDD: JSR
 	set sp, $3f
 	beq subtract_one_branch, v3, sp	; 077RNN: SOB
+	sub sp, sp, 3
+	beq exclusive_or, v3, sp	; 074RDD: XOR
 
-	setl v3, $80
-	beq branch_bpl, v2, v3	; 1000xx: BPL
-	inc v3
-	beq branch_bmi, v2, v3	; 1004xx: BMI
-	inc v3
-	beq branch_bhi, v2, v3	; 1010xx: BHI
-	inc v3
-	beq branch_blos, v2, v3	; 1014xx: BLOS
-	inc v3
-	beq branch_bvc, v2, v3	; 1020xx: BVC
-	inc v3
-	beq branch_bvs, v2, v3	; 1024xx: BVS
-	inc v3
-	beq branch_bcc, v2, v3	; 1030xx: BCC/BHIS
-	inc v3
-	beq branch_bcs, v2, v3	; 1034xx: BCS/BLO
+	setl sp, $80
+	bltu decode_single_operand, v2, sp
+	setl sp, $88
+	bltu branch_high, v2, sp	; 1000xx..1034xx: high branch group
 
+decode_single_operand
 	; Single-operand word/byte opcodes share bits 14:6.
 	mov v3, v1
 	shl v3, v3, 1
@@ -120,6 +105,8 @@ decode
 	beq arithmetic_shift_right_operand, v3, v2	; 0062DD/1062DD: ASR/ASRB
 	setl v2, $33
 	beq arithmetic_shift_left_operand, v3, v2	; 0063DD/1063DD: ASL/ASLB
+	inc v2
+	beq move_to_processor_status, v3, v2	; 1064SS: MTPS (0064NN is MARK)
 	setl v2, $37
 	beq sign_extend_operand, v3, v2	; 0067DD: SXT
 	b reserved_instruction
@@ -300,6 +287,13 @@ double_sub_operand
 	shr v1, v1, 1
 	b double_operand
 
+exclusive_or
+	; Present XOR's register operand as a mode-0 source to the common
+	; double-operand resolver.  The unmodified opcode remains in guest IR.
+	shl v1, v1, 7
+	shr v1, v1, 7
+	b double_operand
+
 double_operand
 	mov v2, v1
 	shr v2, v2, 6
@@ -359,6 +353,7 @@ double_execute
 	beq double_bit, lr, 3
 	beq double_bic, lr, 4
 	beq double_bis, lr, 5
+	beq double_exclusive_or, lr, 7
 	add sp, sp, v3
 	b double_write_result
 
@@ -381,6 +376,10 @@ double_bic
 
 double_bis
 	or sp, sp, v3
+	b double_logic_write
+
+double_exclusive_or
+	xor sp, sp, v3
 
 double_logic_write
 	bge double_logic_write_word, v1, 0
@@ -973,7 +972,7 @@ ea_index_deferred
 	rts
 
 sign_extend_operand
-	blt reserved_instruction, v1, 0	; 1067DD is MFPS, not a byte SXT
+	blt move_from_processor_status, v1, 0	; 1067DD: MFPS
 	clr v3
 	gget v2, 8
 	and v2, v2, 8
@@ -992,6 +991,36 @@ sign_extend_register
 	gsetr v3, v4
 	; Fall through: SXT sets N/Z from the full-word result, clears V,
 	; and preserves the old carry through the shared MOV flag path.
+	b move_flags
+
+move_from_processor_status
+	gget v3, 8
+	sxt v3, v3		; MFPS sign-extends a register result
+	b move_destination
+
+move_to_processor_status
+	bge reserved_instruction, v1, 0	; MARK remains unsupported
+	mov v2, v1
+	set sp, $3f
+	and v2, v2, sp
+	bsr ea_resolve
+	beq move_to_processor_status_register, v2, 0
+	ldrl v3, v4, 0
+	b move_to_processor_status_apply
+
+move_to_processor_status_register
+	ggetr v3, v4
+
+move_to_processor_status_apply
+	seth v3, 0
+	setl sp, $ef		; MTPS writes priority and NZVC, but not T
+	and v3, v3, sp
+	gget v4, 8
+	set sp, $ff10		; preserve upper PSW and the old T bit
+	and v4, v4, sp
+	or v4, v4, v3
+	gset v4, 8
+	b fetch
 
 move_flags
 	gget v4, 8
@@ -1048,100 +1077,64 @@ return_interrupt
 	gset v2, 10
 	b fetch
 
-branch_bne
-	setl v2, 0
-	b branch_zero_pair
-
-branch_beq
-	setl v2, 4
-branch_zero_pair
+; Every conditional branch is encoded as an adjacent even/odd pair.  The low
+; bit selects false/true for a normalized predicate, so one evaluator replaces
+; the former instruction-by-instruction branch handlers.
+branch_low
+	and lr, v2, 1		; required predicate value
+	shr v2, v2, 1		; 0=BR, 1=Z, 2=N xor V, 3=Z or (N xor V)
+	beq branch_taken, v2, 0
 	gget v3, 8
-	and v3, v3, 4
-	beq branch_taken, v3, v2
-	b fetch
-
-branch_bge
-	setl v2, 0
-	b branch_signed_pair
-
-branch_blt
-	setl v2, 2
-branch_signed_pair
-	gget v3, 8
+	beq branch_low_zero, v2, 1
 	mov v4, v3
 	shr v4, v4, 2
 	xor v4, v4, v3
 	and v4, v4, 2
-	beq branch_taken, v4, v2
-	b fetch
-
-branch_bgt
-	setl v2, 0
-	b branch_ordered_pair
-
-branch_ble
-	setl v2, 1
-branch_ordered_pair
-	gget v3, 8
-	mov v4, v3
-	shr v4, v4, 2
-	xor v4, v4, v3
-	and v4, v4, 2
+	beq branch_low_signed, v2, 2
 	and v3, v3, 4
 	or v4, v4, v3
-	beq branch_ordered_normalized, v4, 0
+	b branch_boolean
+
+branch_low_zero
+	shr v4, v3, 2
+	and v4, v4, 1
+	b branch_compare
+
+branch_low_signed
+	shr v4, v4, 1
+	b branch_compare
+
+branch_high
+	and lr, v2, 1		; required predicate value
+	and v2, v2, 6		; 0=N, 2=C or Z, 4=V, 6=C
+	gget v3, 8
+	beq branch_high_negative, v2, 0
+	beq branch_high_carry_zero, v2, 2
+	beq branch_high_overflow, v2, 4
+	and v4, v3, 1
+	b branch_compare
+
+branch_high_negative
+	shr v4, v3, 3
+	and v4, v4, 1
+	b branch_compare
+
+branch_high_carry_zero
+	and v4, v3, 5
+	b branch_boolean
+
+branch_high_overflow
+	shr v4, v3, 1
+	and v4, v4, 1
+
+branch_compare
+	beq branch_taken, v4, lr
+	b fetch
+
+branch_boolean
+	beq branch_compare, v4, 0
 	setl v4, 1
-branch_ordered_normalized
-	beq branch_taken, v4, v2
-	b fetch
-
-branch_bpl
-	setl v2, 0
-	b branch_negative_pair
-
-branch_bmi
-	setl v2, 8
-branch_negative_pair
-	gget v3, 8
-	and v3, v3, 8
-	beq branch_taken, v3, v2
-	b fetch
-
-branch_bhi
-	gget v3, 8
-	and v3, v3, 5
-	beq branch_taken, v3, 0
-	b fetch
-
-branch_blos
-	gget v3, 8
-	and v3, v3, 5
-	bne branch_taken, v3, 0
-	b fetch
-
-branch_bvc
-	setl v2, 0
-	b branch_overflow_pair
-
-branch_bvs
-	setl v2, 2
-branch_overflow_pair
-	gget v3, 8
-	and v3, v3, 2
-	beq branch_taken, v3, v2
-	b fetch
-
-branch_bcc
-	setl v2, 0
-	b branch_carry_pair
-
-branch_bcs
-	setl v2, 1
-branch_carry_pair
-	gget v3, 8
-	and v3, v3, 1
-	beq branch_taken, v3, v2
-	b fetch
+	b branch_compare
 
 branch_taken
 	sxt v1, v1		; sign extend IR low byte

@@ -74,12 +74,6 @@ memory_c_ok
 	cmp #0177777, word_target
 	bne fail
 
-	; 1067DD is MFPS.  Until MFPS becomes resident it must take vector 010,
-	; rather than aliasing the bit-15-clear SXT decoder entry.
-	mfps r5
-	cmp #1, r4
-	bne fail
-
 	mov #012345, r0
 	halt
 
