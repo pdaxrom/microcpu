@@ -156,7 +156,8 @@ stores each opcode in the guest IR context word, and advances guest PC. Its
 resident decoder implements `NOP`, `SWAB`, `SXT`, `MOV/MOVB`, `CMP/CMPB`,
 `BIT/BITB`,
 `BIC/BICB`, `BIS/BISB`, `XOR`, `MUL`, `DIV`, `ASH`, `ASHC`, `TSTSET`,
-`WRTLCK`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
+`WRTLCK`, `MFPI`, `MFPD`, `MTPI`, `MTPD`, `ADD`, `SUB`, `CLR/CLRB`,
+`COM/COMB`, `INC/INCB`,
 `DEC/DECB`, `NEG/NEGB`, `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`,
 `ASR/ASRB`, `ASL/ASLB`, `TST/TSTB`, `MFPS`, `MTPS`, all
 sixteen PDP-11 branch
@@ -231,6 +232,10 @@ pre-EA dividend sampling, and the DCJ11 odd-register result convention.
 `WRTLCK` implement the DCJ11 memory-only lock operations; the present
 single-master guest bus keeps each microcoded read/modify/write instruction
 uninterrupted at guest instruction boundaries.
+Without an MMU or split I/D, `MFPI/MFPD/MTPI/MTPD` deliberately use the same
+unified guest address space and single register set. Their EA-before-stack
+ordering, push/pop behavior, SP/PC aliases, and condition codes remain
+architectural, leaving only mode-space selection for a future MMU version.
 
 `JMP` and `JSR` also use `ea_resolve`, including indexed and deferred modes.
 Register-direct mode 0 is rejected before applying any side effects: `JMP`

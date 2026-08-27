@@ -133,6 +133,10 @@ decode_single_operand
 	beq arithmetic_shift_left_operand, v3, v2	; 0063DD/1063DD: ASL/ASLB
 	inc v2
 	beq move_to_processor_status, v3, v2	; 1064SS: MTPS (0064NN is MARK)
+	inc v2
+	beq move_from_previous_relay, v3, v2	; 0065SS/1065SS: MFPI/MFPD
+	inc v2
+	beq move_to_previous_relay, v3, v2	; 0066DD/1066DD: MTPI/MTPD
 	setl v2, $37
 	beq sign_extend_operand, v3, v2	; 0067DD: SXT
 	setl v2, $3a
@@ -709,6 +713,12 @@ test_and_set_relay
 
 write_lock_relay
 	b write_lock_operand
+
+move_from_previous_relay
+	b move_from_previous
+
+move_to_previous_relay
+	b move_to_previous
 
 ; Keep the common control-flow handlers near the center of the image.  The
 ; microengine branch encoding has a +/-2047-byte range, so this placement stays
@@ -1738,3 +1748,44 @@ lock_operand_merge_flags
 	or v1, v1, v0		; V remains clear
 	gset v1, 8
 	b fetch_far
+
+move_from_previous
+	; With no MMU or split I/D, MFPI and MFPD share the current unified address
+	; space and the single guest register set. EA and stack ordering remain J-11.
+	shl v1, v1, 1		; MFPD has bit 15 set but remains word-width
+	shr v1, v1, 1
+	shl v2, v1, 10
+	shr v2, v2, 10
+	bsr ea_resolve
+	beq move_from_previous_register, v2, 0
+	ldr v3, v4, 0
+	b move_from_previous_push
+
+move_from_previous_register
+	ggetr v3, v4
+
+move_from_previous_push
+	gget sp, 6
+	sub sp, sp, 2
+	gset sp, 6
+	str v3, sp, 0
+	b move_flags		; set N/Z, clear V, preserve C
+
+move_to_previous
+	; Destination EA side effects precede the stack pop, including SP aliases.
+	shl v1, v1, 1		; MTPD has bit 15 set but remains word-width
+	shr v1, v1, 1
+	shl v2, v1, 10
+	shr v2, v2, 10
+	bsr ea_resolve
+	gget sp, 6
+	ldr v3, sp, 0
+	add sp, sp, 2
+	gset sp, 6
+	beq move_to_previous_register, v2, 0
+	str v3, v4, 0
+	b move_flags
+
+move_to_previous_register
+	gsetr v3, v4
+	b move_flags
