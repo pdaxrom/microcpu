@@ -86,7 +86,9 @@ decode
 	beq jump_subroutine, v3, 4	; 004RDD: JSR
 	set sp, $38
 	beq multiply, v3, sp		; 070RSS: MUL
-	add sp, sp, 2
+	inc sp
+	beq divide_relay, v3, sp	; 071RSS: DIV
+	inc sp
 	beq arithmetic_shift_relay, v3, sp	; 072RSS: ASH
 	inc sp
 	beq arithmetic_shift_combined_relay, v3, sp	; 073RSS: ASHC
@@ -694,6 +696,9 @@ arithmetic_shift_relay
 
 arithmetic_shift_combined_relay
 	b arithmetic_shift_combined
+
+divide_relay
+	b divide
 
 ; Keep the common control-flow handlers near the center of the image.  The
 ; microengine branch encoding has a +/-2047-byte range, so this placement stays
@@ -1519,6 +1524,148 @@ arithmetic_shift_combined_carry
 	gsetr v3, v2		; high word
 	or v2, v2, 1
 	gsetr v4, v2		; odd R selects the low word twice, like DCJ11
+	gget v1, 8
+	set v2, $fff0
+	and v1, v1, v2
+	or v1, v1, v0
+	gset v1, 8
+	b fetch_far
+
+divide
+	; Capture the complete dividend before resolving the divisor EA.  As with
+	; ASHC, v3 survives ea_resolve and carries the pre-EA low word.
+	mov v2, v1
+	shr v2, v2, 6
+	and v2, v2, 7
+	gset v2, 12		; quotient register number
+	ggetr v3, v2
+	gset v3, 13		; pre-EA dividend high word
+	or v2, v2, 1
+	ggetr v3, v2		; pre-EA dividend low word
+
+	mov v2, v1
+	set sp, $3f
+	and v2, v2, sp
+	bsr ea_resolve
+	beq divide_source_register, v2, 0
+	ldr v4, v4, 0
+	b divide_source_ready
+
+divide_source_register
+	ggetr v4, v4
+
+divide_source_ready
+	beq divide_by_zero, v4, 0
+	mov sp, v4		; unsigned divisor magnitude after sign setup
+	gget v2, 13		; dividend high
+	clr v0			; bit 0 quotient sign, bit 1 remainder sign
+	bge divide_dividend_magnitude_ready, v2, 0
+	or v0, v0, 3
+	inv v3, v3
+	add v3, v3, 1
+	getf v4
+	and v4, v4, 1
+	inv v2, v2
+	add v2, v2, v4
+
+divide_dividend_magnitude_ready
+	bge divide_divisor_magnitude_ready, sp, 0
+	clr v4
+	sub sp, v4, sp
+	xor v0, v0, 1
+
+divide_divisor_magnitude_ready
+	; Restoring unsigned 32/16 division. v3:v4 is the shifting quotient,
+	; v2 is the remainder, and sp is the divisor.  The invariant remainder <
+	; divisor keeps the shifted remainder within sixteen bits.
+	mov v4, v3
+	mov v3, v2
+	clr v2
+	set lr, 32
+
+divide_loop
+	mov v1, v3
+	shr v1, v1, 15
+	shl v2, v2, 1
+	or v2, v2, v1
+	mov v1, v4
+	shr v1, v1, 15
+	shl v3, v3, 1
+	or v3, v3, v1
+	shl v4, v4, 1
+	bltu divide_next_bit, v2, sp
+	sub v2, v2, sp
+	or v4, v4, 1
+
+divide_next_bit
+	dec lr
+	bne divide_loop, lr, 0
+
+	; The full unsigned quotient is v3:v4. Positive results must be <= 077777;
+	; negative magnitudes may also use the exact 0100000 boundary.
+	and v1, v0, 1
+	bne divide_negative_fit, v1, 0
+	bne divide_overflow, v3, 0
+	blt divide_overflow, v4, 0
+	b divide_quotient_sign
+
+divide_negative_fit
+	bne divide_overflow, v3, 0
+	set lr, $8000
+	bgtu divide_overflow, v4, lr
+	clr lr
+	sub v4, lr, v4
+
+divide_quotient_sign
+	and v1, v0, 2
+	beq divide_remainder_sign_ready, v1, 0
+	clr lr
+	sub v2, lr, v2		; PDP-11 remainder follows dividend sign
+
+divide_remainder_sign_ready
+	gget lr, 12
+	gsetr v4, lr		; quotient always writes R
+	and v1, lr, 1
+	bne divide_success_flags, v1, 0
+	or lr, lr, 1
+	gsetr v2, lr		; an even R also receives remainder in R|1
+
+divide_success_flags
+	clr v0
+	blt divide_success_negative, v4, 0
+	beq divide_success_zero, v4, 0
+	b divide_merge_flags
+
+divide_success_negative
+	or v0, v0, 8
+	b divide_merge_flags
+
+divide_success_zero
+	or v0, v0, 4
+	b divide_merge_flags
+
+divide_by_zero
+	; EA side effects remain visible. N/Z therefore use the current quotient
+	; register, while the captured dividend itself remains unwritten.
+	set v0, 3		; V=1, C=1
+	gget v1, 12
+	ggetr v3, v1
+	blt divide_by_zero_negative, v3, 0
+	beq divide_by_zero_zero, v3, 0
+	b divide_merge_flags
+
+divide_by_zero_negative
+	or v0, v0, 8
+	b divide_merge_flags
+
+divide_by_zero_zero
+	or v0, v0, 4
+	b divide_merge_flags
+
+divide_overflow
+	set v0, 2		; N=0, Z=0, V=1, C=0; registers unchanged
+
+divide_merge_flags
 	gget v1, 8
 	set v2, $fff0
 	and v1, v1, v2

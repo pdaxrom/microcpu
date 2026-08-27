@@ -155,7 +155,7 @@ The current hardware microprogram fetches guest words through the FRAM bus,
 stores each opcode in the guest IR context word, and advances guest PC. Its
 resident decoder implements `NOP`, `SWAB`, `SXT`, `MOV/MOVB`, `CMP/CMPB`,
 `BIT/BITB`,
-`BIC/BICB`, `BIS/BISB`, `XOR`, `MUL`, `ASH`, `ASHC`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
+`BIC/BICB`, `BIS/BISB`, `XOR`, `MUL`, `DIV`, `ASH`, `ASHC`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
 `DEC/DECB`, `NEG/NEGB`, `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`,
 `ASR/ASRB`, `ASL/ASLB`, `TST/TSTB`, `MFPS`, `MTPS`, all
 sixteen PDP-11 branch
@@ -223,6 +223,9 @@ uses repeated one-bit ALU shifts. It snapshots R before resolving the source EA,
 tracks every sign transition for `V`, and retains the final outgoing bit as `C`.
 `ASHC` applies the same rules to the full R:R|1 pair, including pre-EA pair
 sampling and the DCJ11 odd-register overwrite behavior.
+`DIV` uses a 32-step restoring divide over the same 16-bit ALU. It implements
+signed quotient and remainder rules, divide-by-zero and signed-word overflow,
+pre-EA dividend sampling, and the DCJ11 odd-register result convention.
 
 `JMP` and `JSR` also use `ea_resolve`, including indexed and deferred modes.
 Register-direct mode 0 is rejected before applying any side effects: `JMP`
@@ -274,10 +277,9 @@ make -C testbench j11-test
 
 ## Next implementation steps
 
-1. Complete the EIS arithmetic group with `DIV`.
-2. Add a short sequential-read buffer so instruction fetches do not start a
+1. Add a short sequential-read buffer so instruction fetches do not start a
    new SPI command and address phase for every word.
-3. Differentially compare each guest step with the existing C J-11 core.
+2. Differentially compare each guest step with the existing C J-11 core.
 
 The present SPI controller favors simple, testable semantics over throughput.
 It opens a new SPI transaction for every request; burst/prefetch support is a
