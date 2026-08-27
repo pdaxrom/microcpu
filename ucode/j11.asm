@@ -84,6 +84,8 @@ decode
 	mov v3, v1
 	shr v3, v3, 9
 	beq jump_subroutine, v3, 4	; 004RDD: JSR
+	set sp, $38
+	beq multiply, v3, sp		; 070RSS: MUL
 	set sp, $3f
 	beq subtract_one_branch, v3, sp	; 077RNN: SOB
 	sub sp, sp, 3
@@ -241,6 +243,119 @@ reset_instruction
 	bne fetch, v2, 0	; user/supervisor RESET is a NOP on DCJ11
 	set v2, 1
 	gset v2, 15		; pulse the board peripheral-reset control
+	b fetch
+
+multiply
+	; Snapshot R before resolving the source EA.  DCJ11 EIS instructions use
+	; the pre-EA register value even when the source modifies that register.
+	mov v2, v1
+	shr v2, v2, 6
+	and v2, v2, 7
+	gset v2, 12		; destination register number
+	ggetr v3, v2
+	gset v3, 13		; signed register operand
+
+	mov v2, v1
+	set sp, $3f
+	and v2, v2, sp
+	bsr ea_resolve
+	beq multiply_source_register, v2, 0
+	ldr v4, v4, 0
+	b multiply_operands_ready
+
+multiply_source_register
+	ggetr v4, v4
+
+multiply_operands_ready
+	gget v3, 13
+	clr v0			; result sign: sign(R) xor sign(source)
+	bge multiply_register_magnitude_ready, v3, 0
+	clr sp
+	sub v3, sp, v3
+	xor v0, v0, 1
+
+multiply_register_magnitude_ready
+	bge multiply_source_magnitude_ready, v4, 0
+	clr sp
+	sub v4, sp, v4
+	xor v0, v0, 1
+
+multiply_source_magnitude_ready
+	; Unsigned 16x16 shift-add. v4:sp is the 32-bit accumulator,
+	; v3 is the multiplicand, and v2 carries the 17th add bit.
+	mov sp, v4
+	clr v4
+	set lr, 16
+
+multiply_loop
+	clr v2
+	and v1, sp, 1
+	beq multiply_shift, v1, 0
+	add v4, v4, v3
+	getf v2
+	and v2, v2, 1
+
+multiply_shift
+	and v1, v4, 1
+	shr sp, sp, 1
+	beq multiply_shift_high, v1, 0
+	set v1, $8000
+	or sp, sp, v1
+
+multiply_shift_high
+	shr v4, v4, 1
+	beq multiply_next_bit, v2, 0
+	set v1, $8000
+	or v4, v4, v1
+
+multiply_next_bit
+	dec lr
+	bne multiply_loop, lr, 0
+
+	; Convert the magnitude to a signed 32-bit result when required.
+	beq multiply_signed_ready, v0, 0
+	inv sp, sp
+	add sp, sp, 1
+	getf v2
+	and v2, v2, 1
+	inv v4, v4
+	add v4, v4, v2
+
+multiply_signed_ready
+	; MUL flags use the full 32-bit product. C reports that the product does
+	; not fit in a signed 16-bit word; V is always clear.
+	clr v0
+	bge multiply_zero, v4, 0
+	or v0, v0, 8
+
+multiply_zero
+	or v1, v4, sp
+	bne multiply_carry, v1, 0
+	or v0, v0, 4
+
+multiply_carry
+	blt multiply_carry_negative_low, sp, 0
+	bne multiply_set_carry, v4, 0
+	b multiply_write
+
+multiply_carry_negative_low
+	set v1, $ffff
+	bne multiply_set_carry, v4, v1
+	b multiply_write
+
+multiply_set_carry
+	or v0, v0, 1
+
+multiply_write
+	gget v2, 12
+	gsetr v4, v2		; high product word
+	or v2, v2, 1
+	gsetr sp, v2		; odd R selects the low word twice, like DCJ11
+	gget v1, 8
+	set v2, $fff0
+	and v1, v1, v2
+	or v1, v1, v0
+	gset v1, 8
 	b fetch
 
 breakpoint_trap

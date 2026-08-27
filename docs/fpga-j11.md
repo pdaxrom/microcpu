@@ -155,7 +155,7 @@ The current hardware microprogram fetches guest words through the FRAM bus,
 stores each opcode in the guest IR context word, and advances guest PC. Its
 resident decoder implements `NOP`, `SWAB`, `SXT`, `MOV/MOVB`, `CMP/CMPB`,
 `BIT/BITB`,
-`BIC/BICB`, `BIS/BISB`, `XOR`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
+`BIC/BICB`, `BIS/BISB`, `XOR`, `MUL`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
 `DEC/DECB`, `NEG/NEGB`, `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`,
 `ASR/ASRB`, `ASL/ASLB`, `TST/TSTB`, `MFPS`, `MTPS`, all
 sixteen PDP-11 branch
@@ -213,6 +213,11 @@ the old `T` bit and upper PSW. With the current single-mode configuration it
 uses the DCJ11 kernel-mode behavior.
 `XOR` reuses the word destination path and preserves `C` while updating `N/Z`
 and clearing `V`.
+`MUL` snapshots its R operand before source-EA side effects, then performs a
+signed 16-by-16 multiply as a 16-step shift-add loop using only the base
+microengine ALU. It writes the architectural high/low register pair and derives
+`N/Z/C` from the full 32-bit product; an odd R retains the DCJ11 low-word
+overwrite behavior. No Verilog multiplier is instantiated.
 
 `JMP` and `JSR` also use `ea_resolve`, including indexed and deferred modes.
 Register-direct mode 0 is rejected before applying any side effects: `JMP`
@@ -264,7 +269,7 @@ make -C testbench j11-test
 
 ## Next implementation steps
 
-1. Add the EIS arithmetic group (`MUL`, `DIV`, `ASH`, and `ASHC`).
+1. Complete the EIS arithmetic group with `DIV`, `ASH`, and `ASHC`.
 2. Add a short sequential-read buffer so instruction fetches do not start a
    new SPI command and address phase for every word.
 3. Differentially compare each guest step with the existing C J-11 core.
