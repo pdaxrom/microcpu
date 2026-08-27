@@ -109,18 +109,11 @@ module j11_microengine #(
 	reg [15:0] context_read_data;
 	reg [15:0] operand_a;
 	reg [15:0] operand_b;
-	reg [15:0] operand_dest;
 	reg [3:0] alu_flags;
 	reg [3:0] state;
 	reg [4:0] clear_index;
 
-	reg [1:0] mem_kind;
-	reg [2:0] mem_dest;
-	reg [15:0] mem_next_pc;
-
-	reg [15:0] shift_value;
 	reg [4:0] shift_count;
-	reg shift_left;
 
 	/* Fixed debug mirrors avoid extra read ports on the context RAM. */
 	reg [15:0] guest_r0_mirror;
@@ -140,7 +133,18 @@ module j11_microengine #(
 	wire [7:0] immediate8 = uir[15:8];
 	wire [4:0] context_index = uir[12:8];
 	wire [15:0] exec_pc = upc + 1'b1;
-	wire [15:0] next_pc = upc + 2'd2;
+	// The read address stays at dest after ST_READ_D, so the synchronous RAM
+	// output already holds the destination operand throughout ST_EXEC.
+	wire [15:0] operand_dest = dest == 0 ? exec_pc : host_read_data;
+	// A single relative-PC adder handles fall-through, compare/bit skips and
+	// signed branches. Other instructions always select the ordinary +2.
+	wire relative_branch = !op[0] && kind == INST_B;
+	wire conditional_skip = op[0] && (kind == ALU_CMP || kind == ALU_BIT);
+	wire [15:0] pc_step = relative_branch ?
+		{{4{dest[2]}}, dest, immediate8, 1'b0} :
+		(conditional_skip && compare_true(dest,
+			{flag_n, flag_z, flag_v_sub, flag_c}) ? 16'd4 : 16'd2);
+	wire [15:0] next_pc = upc + pc_step;
 	localparam integer UROM_ADDR_WIDTH = $clog2(UROM_WORDS);
 	wire [UROM_ADDR_WIDTH-1:0] urom_address =
 		upc[UROM_ADDR_WIDTH:1];
@@ -150,8 +154,7 @@ module j11_microengine #(
 		case (state)
 		ST_READ_A: host_read_address = arg1;
 		ST_READ_B: host_read_address = arg2;
-		ST_READ_D: host_read_address = dest;
-		default:   host_read_address = arg1;
+		default:   host_read_address = dest;
 		endcase
 	end
 
@@ -178,10 +181,10 @@ module j11_microengine #(
 
 	reg [16:0] alu_result;
 	reg [8:0] alu_byte_result;
-	// Shared add/subtract datapath serves word operations and byte SUBB.
+	// Shared add/subtract datapath also generates native load/store addresses.
 	// Invert the extended B operand for subtraction so bit 16 stays borrow,
 	// matching the native ALU ABI (rather than the adder's not-borrow carry).
-	wire arithmetic_subtract = kind != ALU_ADD;
+	wire arithmetic_subtract = op[0] && kind != ALU_ADD;
 	wire [16:0] arithmetic_result = {1'b0, operand_a} +
 		{arithmetic_subtract, operand_b ^ {16{arithmetic_subtract}}} +
 		arithmetic_subtract;
@@ -201,9 +204,11 @@ module j11_microengine #(
 	wire [4:0] initial_shift_count =
 		(|operand_b[15:5] || operand_b[4:0] > 5'd17) ?
 		5'd17 : operand_b[4:0];
+	// Reuse operand A as the iterative shifter; uIR keeps the direction.
+	wire shift_left = kind == ALU_SHL;
 	wire [15:0] shifted_value = shift_left ?
-		{shift_value[14:0], 1'b0} : {1'b0, shift_value[15:1]};
-	wire shift_carry = shift_left && shift_value[15];
+		{operand_a[14:0], 1'b0} : {1'b0, operand_a[15:1]};
+	wire shift_carry = shift_left && operand_a[15];
 
 	`ifdef J11_EBR_UROM
 	wire [11:0] ebr_address = urom_address;
@@ -232,16 +237,17 @@ module j11_microengine #(
 
 	function compare_true;
 		input [2:0] condition;
+		input [3:0] flags;
 		begin
 			case (condition)
-			CMP_EQ:  compare_true = flag_z;
-			CMP_NE:  compare_true = !flag_z;
-			CMP_MI:  compare_true = flag_n;
-			CMP_VS:  compare_true = flag_v_sub;
-			CMP_LT:  compare_true = flag_n ^ flag_v_sub;
-			CMP_GE:  compare_true = !(flag_n ^ flag_v_sub);
-			CMP_LTU: compare_true = flag_c;
-			CMP_GEU: compare_true = !flag_c;
+			CMP_EQ:  compare_true = flags[2];
+			CMP_NE:  compare_true = !flags[2];
+			CMP_MI:  compare_true = flags[3];
+			CMP_VS:  compare_true = flags[1];
+			CMP_LT:  compare_true = flags[3] ^ flags[1];
+			CMP_GE:  compare_true = !(flags[3] ^ flags[1]);
+			CMP_LTU: compare_true = flags[0];
+			CMP_GEU: compare_true = !flags[0];
 			default: compare_true = 0;
 			endcase
 		end
@@ -383,12 +389,10 @@ module j11_microengine #(
 			host_write_high = 1;
 			host_write_data = shifted_value;
 		end else if (state == ST_MEM && guest_ready && !guest_error &&
-				(mem_kind == INST_LDRL || mem_kind == INST_LDR) &&
-				mem_dest != 0) begin
+				(kind == INST_LDRL || kind == INST_LDR) && dest != 0) begin
 			host_write_enable = 1;
 			host_write_low = 1;
-			host_write_high = mem_kind == INST_LDR;
-			host_write_address = mem_dest;
+			host_write_high = kind == INST_LDR;
 			host_write_data = guest_rdata;
 		end
 	end
@@ -430,15 +434,9 @@ module j11_microengine #(
 			guest_bank <= 0;
 			guest_address <= 0;
 			guest_wdata <= 0;
-			mem_kind <= 0;
-			mem_dest <= 0;
-			mem_next_pc <= 0;
 			operand_a <= 0;
 			operand_b <= 0;
-			operand_dest <= 0;
-			shift_value <= 0;
 			shift_count <= 0;
-			shift_left <= 0;
 			alu_flags <= 0;
 			guest_r0_mirror <= 0;
 			guest_pc_mirror <= 0;
@@ -483,7 +481,6 @@ module j11_microengine #(
 			end
 
 			ST_PRE_EXEC: begin
-				operand_dest <= dest == 0 ? exec_pc : host_read_data;
 				state <= ST_EXEC;
 			end
 
@@ -498,11 +495,8 @@ module j11_microengine #(
 						guest_write <= kind == INST_STRL || kind == INST_STR;
 						guest_byte <= kind == INST_LDRL || kind == INST_STRL;
 						guest_bank <= 0;
-						guest_address <= operand_a + operand_b;
+						guest_address <= arithmetic_result[15:0];
 						guest_wdata <= operand_dest;
-						mem_kind <= kind[1:0];
-						mem_dest <= dest;
-						mem_next_pc <= next_pc;
 						state <= ST_MEM;
 					end
 					INST_SETL: begin
@@ -571,7 +565,7 @@ module j11_microengine #(
 						state <= ST_FETCH;
 					end
 					INST_B: begin
-						upc <= upc + {{4{dest[2]}}, dest, immediate8, 1'b0};
+						upc <= next_pc;
 						state <= ST_FETCH;
 					end
 					default: begin
@@ -587,9 +581,7 @@ module j11_microengine #(
 						upc <= dest == 0 ? operand_a : next_pc;
 						state <= ST_FETCH;
 					end else begin
-						shift_value <= operand_a;
 						shift_count <= initial_shift_count;
-						shift_left <= kind == ALU_SHL;
 						state <= ST_SHIFT;
 					end
 				end else begin
@@ -597,7 +589,7 @@ module j11_microengine #(
 						alu_flags <= alu_next_flags;
 					end
 					if (kind == ALU_CMP || kind == ALU_BIT) begin
-						upc <= compare_true(dest) ? upc + 3'd4 : next_pc;
+						upc <= next_pc;
 					end else begin
 						upc <= dest == 0 ? alu_result[15:0] : next_pc;
 					end
@@ -615,29 +607,31 @@ module j11_microengine #(
 					shift_count <= 0;
 					state <= ST_FETCH;
 				end else begin
-					shift_value <= shifted_value;
+					operand_a <= shifted_value;
 					shift_count <= shift_count - 1'b1;
 				end
 			end
 
 			ST_MEM: begin
+				// Neither uIR nor uPC changes while waiting, so the instruction
+				// fields and next_pc need no duplicate transaction registers.
 				if (guest_ready) begin
 					guest_req <= 0;
 					if (guest_error) begin
 						cause_reg <= 16'h0001;
 						upc <= BUS_ERROR_PC;
-					end else if (mem_kind == INST_LDRL || mem_kind == INST_LDR) begin
-						if (mem_dest == 0) begin
-							if (mem_kind == INST_LDRL) begin
-								upc <= {mem_next_pc[15:8], guest_rdata[7:0]};
+					end else if (kind == INST_LDRL || kind == INST_LDR) begin
+						if (dest == 0) begin
+							if (kind == INST_LDRL) begin
+								upc <= {next_pc[15:8], guest_rdata[7:0]};
 							end else begin
 								upc <= guest_rdata;
 							end
 						end else begin
-							upc <= mem_next_pc;
+							upc <= next_pc;
 						end
 					end else begin
-						upc <= mem_next_pc;
+						upc <= next_pc;
 					end
 					state <= ST_FETCH;
 				end

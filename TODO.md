@@ -173,6 +173,33 @@ The generated EBR ROM also passes all 3584 word/enable checks, the assembled
 instruction and CPU-I/O suites, and the same 201/201 C-core snapshots using
 Lattice's simulation models.
 
+### RISC area reduction and SD feasibility (requested 2026-08-28)
+
+- [x] Audit the actual J-11 microengine, not the ordinary `cpu.v` that this
+  board configuration does not instantiate.
+- [x] Share native address/ALU arithmetic and relative-PC arithmetic; reuse
+  stable instruction/PC and operand registers without changing ISA or cycles.
+- [x] Narrow the FRAM SPI divider to its reachable range; test dividers
+  1, 2, 3, 5 and 17, including individual clock phases.
+- [x] Verify 115,255 ALU/address cases, 109,360 PC cases and 900 timed shifts;
+  expand the native assembly smoke test for byte writes and memory-loaded PC.
+  All twelve Mac suites and 201/201 J-11 C-core snapshots (29 EIS) pass.
+- [x] Measure the complete board in Diamond: **1138/1280 LUTs**, 571/640 slices,
+  377/1346 registers and 7/7 EBRs. This saves 141 LUTs and 85 registers versus
+  `0522437`, leaving **142 LUTs**. Timing passes at 26.6 MHz, maximum 28.103 MHz,
+  setup +2.011 ns and hold +0.289 ns. External I/O timing is still unverified.
+- [x] Repeat the final guest/core tests through the actual EBR model:
+  all 3584 ROM words, the guest instruction/CPU-I/O suites and 201/201
+  C-core snapshots (29 EIS) pass. Commit only the verified source changes.
+- [ ] Confirm SD wiring and guest-visible disk-controller type before its
+  implementation. Evaluate separate-SPI streaming into FRAM with a small
+  FIFO: no EBR sector buffer is available while retaining the 3584-word uROM.
+  Do not claim the entire disk controller fits from the RISC saving alone.
+
+The microcode remains **3002/3584 words**. FIS is still pending against the
+582-word reserve; ODT remains deferred. No disk controller or SD access has
+been implemented and no board programming was performed.
+
 ### Deferred: not part of the active follow-up
 
 - [ ] Full `MFPI`, `MTPI`, `MFPD`, `MTPD` previous-mode/space semantics.

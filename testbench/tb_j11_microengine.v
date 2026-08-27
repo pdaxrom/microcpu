@@ -26,6 +26,9 @@ module tb_j11_microengine;
 	wire [15:0] debug_pending_irq;
 	wire guest_reset;
 	integer guest_reset_count;
+	reg waiting = 0;
+	reg [15:0] held_pc, held_ir, held_address, held_data;
+	reg [2:0] held_kind;
 
 	j11_microengine #(
 		.UROM_WORDS(1024),
@@ -86,6 +89,18 @@ module tb_j11_microengine;
 	always #5 clk = !clk;
 	always @(posedge clk) begin
 		if (guest_reset) guest_reset_count = guest_reset_count + 1;
+	end
+	always @(negedge clk) begin
+		if (!rst && dut.state == dut.ST_MEM) begin
+			if (waiting && ({dut.upc, dut.uir, guest_address, guest_wdata,
+					guest_bank, guest_write, guest_byte} !==
+					{held_pc, held_ir, held_address, held_data, held_kind} || !guest_req))
+				$fatal(1, "Native memory instruction/request changed while waiting");
+			held_pc = dut.upc; held_ir = dut.uir;
+			held_address = guest_address; held_data = guest_wdata;
+			held_kind = {guest_bank, guest_write, guest_byte};
+			waiting = 1;
+		end else waiting = 0;
 	end
 
 	initial begin

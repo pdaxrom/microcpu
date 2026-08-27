@@ -120,7 +120,21 @@ board-mcu-bootload-rx: build/board_mcu_bootload.vvp build/bootldr-mcu-board.hex 
 board-microcomp-memmap: build/board_microcomp.vvp build/microcomp_memmap.hex
 	$(VVP) build/board_microcomp.vvp +SRAM_HEX=build/microcomp_memmap.hex
 
-j11-test: j11-alu-test j11-ebr-pack-test j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-cpu-io-test j11-board-test j11-board-execute-test j11-board-ucode
+j11-test: j11-alu-test j11-pc-test j11-shift-test j11-ebr-pack-test j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-cpu-io-test j11-board-test j11-board-execute-test j11-board-ucode
+
+.PHONY: j11-shift-test
+build/tb_j11_shift.vvp: tb_j11_shift.v ../rtl/j11_microengine.v | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_shift -o $@ $^
+
+j11-shift-test: build/tb_j11_shift.vvp
+	$(VVP) build/tb_j11_shift.vvp
+
+.PHONY: j11-pc-test
+build/tb_j11_pc.vvp: tb_j11_pc.v ../rtl/j11_microengine.v | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_pc -o $@ $^
+
+j11-pc-test: build/tb_j11_pc.vvp
+	$(VVP) build/tb_j11_pc.vvp
 
 .PHONY: j11-alu-test
 build/tb_j11_alu.vvp: tb_j11_alu.v ../rtl/j11_microengine.v | build
@@ -157,6 +171,12 @@ build/tb_spi_fram_guest_ram.vvp: $(J11_FRAM_VSRC) | build
 
 j11-fram-test: build/tb_spi_fram_guest_ram.vvp
 	$(VVP) build/tb_spi_fram_guest_ram.vvp
+	@set -e; for divider in 2 3 5 17; do \
+		$(IVERILOG) -g2012 -Wall -s tb_spi_fram_guest_ram \
+			-Ptb_spi_fram_guest_ram.CLK_DIV=$$divider \
+			-o build/tb_spi_fram_guest_ram_$$divider.vvp $(J11_FRAM_VSRC); \
+		$(VVP) build/tb_spi_fram_guest_ram_$$divider.vvp; \
+	done
 
 build/j11_microengine_smoke.bin: $(J11_ENGINE_ASM) ../asm/include/pseudo.inc $(ASM) | build
 	$(ASM) -binary $< $@ > build/j11_microengine_smoke.asm.log 2>&1 || { cat build/j11_microengine_smoke.asm.log; exit 1; }

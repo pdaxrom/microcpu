@@ -21,6 +21,7 @@ module tb_j11_alu;
 			dut.operand_b = right;
 			dut.urom_data = 0;
 			dut.urom_data[7:4] = operation;
+			dut.urom_data[3] = 1; // native ALU encoding, not a load/store
 			if (operation == dut.ALU_SUBB) begin
 				byte_result = {1'b0, left[7:0]} - {1'b0, right[7:0]};
 				result = {9'b0, byte_result[7:0]};
@@ -42,6 +43,24 @@ module tb_j11_alu;
 			checked = checked + 1;
 		end
 	endtask
+	task check_address;
+		input [15:0] left, right;
+		reg [15:0] expected;
+		integer memory_kind;
+		begin
+			dut.operand_a = left;
+			dut.operand_b = right;
+			expected = left + right;
+			for (memory_kind = 0; memory_kind < 4; memory_kind = memory_kind + 1) begin
+				dut.urom_data = memory_kind << 4;
+				#1;
+				if (dut.arithmetic_result[15:0] !== expected)
+					$fatal(1, "Address op=%h A=%h B=%h got=%h expected=%h",
+						memory_kind, left, right, dut.arithmetic_result[15:0], expected);
+				checked = checked + 1;
+			end
+		end
+	endtask
 	initial begin
 		boundaries[0] = 0; boundaries[1] = 1; boundaries[2] = 16'h007f;
 		boundaries[3] = 16'h0080; boundaries[4] = 16'h00ff; boundaries[5] = 16'h0100;
@@ -51,6 +70,7 @@ module tb_j11_alu;
 				check(dut.ALU_ADD, boundaries[i], boundaries[j]);
 				check(dut.ALU_SUB, boundaries[i], boundaries[j]);
 				check(dut.ALU_CMP, boundaries[i], boundaries[j]);
+				check_address(boundaries[i], boundaries[j]);
 			end
 		for (i = 0; i < 256; i = i + 1)
 			for (j = 0; j < 256; j = j + 1)
@@ -59,8 +79,9 @@ module tb_j11_alu;
 			a = $random(seed); b = $random(seed);
 			check(dut.ALU_ADD, a, b);
 			check(dut.ALU_SUB, a, b);
+			check_address(a, b);
 		end
-		$display("PASS: %0d native ALU results/NZVC, including every byte subtraction", checked);
+		$display("PASS: %0d native ALU/address checks, including every byte subtraction", checked);
 		$finish;
 	end
 endmodule

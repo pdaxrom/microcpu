@@ -339,17 +339,33 @@ TRACE and JED export in an isolated Ubuntu checkout:
 
 | Resource | Used | Available | Free |
 |---|---:|---:|---:|
-| LUT4 | 1279 | 1280 | 1 |
-| Slices | 640 | 640 | 0 |
+| LUT4 | 1138 | 1280 | 142 |
+| Slices | 571 | 640 | 69 |
 | EBR | 7 | 7 | 0 |
-| Registers (PFU + PIO) | 462 | 1346 | 884 |
+| Registers (PFU + PIO) | 377 | 1346 | 969 |
 | Microcode words | 3002 | 3584 | 582 |
 
-The LUT total includes 72 distributed-RAM LUTs. The existing 7 EBRs already
+The previous checkpoint (`0522437`) used 1279 LUTs and 462 registers. The
+follow-up saves **141 LUTs and 85 registers**, without changing the native ISA,
+microinstruction cycle count, guest microcode, uROM capacity or board pinout:
+
+- Native loads/stores use the same adder as ADD/SUB/SUBB.
+- Fall-through, conditional skips and signed branches share one PC adder.
+  The full 16-bit PC and its wraparound behavior are retained.
+- Memory waits reuse the stable instruction/PC instead of latching copies.
+- The synchronous register-file output supplies the destination operand;
+  iterative shifts reuse operand A and the instruction's direction bit.
+- The FRAM SPI divider has `$clog2(CLK_DIV)` bits (at least one), rather than
+  a 32-bit integer. The board's divider is two.
+
+The ordinary `rtl/cpu.v` is not in this project's source list and is unchanged.
+The LUT total still includes 72 distributed-RAM LUTs. The existing 7 EBRs
 reserve the full ROM capacity; changing their contents does not require more
-EBRs. There is essentially no remaining fabric budget for additional RTL.
-At 26.6 MHz, setup slack is +4.746 ns and hold slack +0.289 ns, with zero
-timing errors. TRACE reports an internal-clock maximum of 30.443 MHz.
+EBRs. The recovered 142 LUTs are a budget to measure new RTL against, not a
+guarantee that a complete SD-backed disk controller will fit.
+At 26.6 MHz, setup slack is +2.011 ns and hold slack +0.289 ns, with zero
+timing errors. TRACE reports an internal-clock maximum of 28.103 MHz, down
+from 30.443 MHz before the area optimizations.
 External I/O delays remain unconstrained (three input and five output paths);
 this is internal timing closure, not physical UART/FRAM board validation.
 
@@ -358,6 +374,28 @@ in **CFG_EBRUFM** mode. This project explicitly uses **CFG**, not CFG_EBRUFM;
 the configuration report confirms CFG, with no UFM pages used. The existing
 JTAG/GPIO multiplexing policy is unchanged; programming requires the board's
 normal JTAGENB arrangement. No FPGA or FRAM programming was performed.
+
+### SD-backed disk: feasibility, not an implemented device
+
+The user requested saving logic for a future Verilog disk controller backed by
+an SD card. The guest-visible controller type and SD wiring are not chosen yet;
+no disk registers, DMA, card initialization, or disk-image handling are present.
+
+SDHC/SDXC transfers use 512-byte blocks; see the SD Association's
+[Physical Layer specification, section 7](https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver5.10.pdf).
+All EBRs are currently reserved for uROM. Keeping the 582-word microcode reserve
+(including the pending FIS assessment) rules out simply dedicating an extra EBR
+to a sector buffer in this configuration.
+
+A candidate to evaluate is a separate SD SPI connection, a small byte/word
+FIFO, and streamed transfers to/from FRAM with explicit bus arbitration and
+backpressure. This avoids assuming that an SD transaction can be interrupted
+by switching the same SPI wires over to FRAM. The four currently unused
+`gpio[3:0]` ports are a possible connection, but physical availability and pin
+assignment need confirmation. Card stalls/timeouts, error recovery, partial
+guest transfers, and guest-controller compatibility all need tests before
+making a hardware fit or correctness claim. No SD/FRAM writes on a real device
+are authorized by these build checks.
 
 The current hardware microprogram fetches guest words through the FRAM bus,
 stores each opcode in the guest IR context word, and advances guest PC. Its
@@ -504,8 +542,13 @@ Run the new tests with:
 make -C testbench j11-test
 ```
 
-The native ALU unit test checks 82,163 result/NZVC combinations, including all
-65,536 byte subtractions; three Python tests verify EBR packing and bounds.
+The native tests check 115,255 ALU/address combinations (including all 65,536
+byte subtractions), 109,360 PC/branch/skip cases and 900 shift cases with exact
+cycle counts. The assembly microengine smoke test covers byte register writes,
+word/byte loads into PC and stable requests during long FRAM waits. SPI timing
+and data tests run with dividers 1, 2, 3, 5 and 17. Three Python tests verify
+EBR packing and bounds. All twelve simulation suites and 201/201 no-MMU
+C-core snapshots (29 EIS) pass on the Mac after the area optimizations.
 To verify the generated hardware ROM using the installed vendor models:
 
 ```sh
@@ -516,8 +559,10 @@ This checks all 3584 words, bank boundaries and clock-enable holds, then runs
 the assembled guest instruction/CPU-I/O suites and the 201 no-MMU core
 snapshots through that same hardware ROM. Vendor library files remain
 external dependencies and are not copied into the repository.
-The final hardware-ROM run passed all word checks, guest suites and 201/201
-reference snapshots (including 29 EIS), as did the portable-ROM regression.
+The final run after the RISC area changes passes all 3584 hardware-ROM word
+checks, guest instruction/CPU-I/O suites and 201/201 reference snapshots
+(including 29 EIS). The synthesized RTL and generated ROM hashes match the
+files tested on the Mac.
 
 ## Deferred follow-up candidates
 

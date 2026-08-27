@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module tb_spi_fram_guest_ram;
+module tb_spi_fram_guest_ram #(parameter integer CLK_DIV = 1);
 	reg clk;
 	reg rst;
 	reg req;
@@ -18,9 +18,11 @@ module tb_spi_fram_guest_ram;
 	wire spi_mosi;
 	wire spi_miso;
 	integer old_transactions;
+	integer cycle = 0, last_edge = 0;
+	reg previous_sck = 0;
 
 	spi_fram_guest_ram #(
-		.CLK_DIV(1)
+		.CLK_DIV(CLK_DIV)
 	) dut (
 		.clk(clk),
 		.rst(rst),
@@ -48,6 +50,17 @@ module tb_spi_fram_guest_ram;
 	);
 
 	always #5 clk = !clk;
+	// Check every high phase and every intra-byte low phase. The low gap
+	// between bytes intentionally includes command-state overhead.
+	always @(negedge clk) begin
+		cycle = cycle + 1;
+		if (!rst && spi_sck != previous_sck) begin
+			if ((!spi_sck || dut.bit_count != 0) && cycle - last_edge != CLK_DIV)
+				$fatal(1, "SPI divider %0d: half-cycle was %0d clocks", CLK_DIV, cycle - last_edge);
+			last_edge = cycle;
+		end
+		previous_sck = spi_sck;
+	end
 
 	task request_write;
 		input req_bank;
@@ -142,12 +155,12 @@ module tb_spi_fram_guest_ram;
 		end
 		req = 0;
 
-		$display("PASS: SPI FRAM guest RAM byte/word/bank/odd-address");
+		$display("PASS: SPI FRAM divider=%0d, clock phases, byte/word/bank/odd-address", CLK_DIV);
 		$finish_and_return(0);
 	end
 
 	initial begin
-		#200000;
+		#(200000 * CLK_DIV);
 		$display("FAIL: timeout");
 		$finish_and_return(1);
 	end

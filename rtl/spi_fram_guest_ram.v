@@ -57,7 +57,10 @@ module spi_fram_guest_ram #(
 	reg [7:0] tx_shift;
 	reg [7:0] rx_shift;
 	reg [2:0] bit_count;
-	integer   div_count;
+	// Only 0..CLK_DIV-1 is reachable. An integer here synthesizes a 32-bit
+	// incrementer even for the board's divide-by-two SPI clock.
+	localparam integer DIV_WIDTH = CLK_DIV > 1 ? $clog2(CLK_DIV) : 1;
+	reg [DIV_WIDTH-1:0] div_count;
 
 	assign busy = (state != ST_IDLE) || spi_active;
 
@@ -118,7 +121,7 @@ module spi_fram_guest_ram #(
 						end
 					end
 				end else begin
-					div_count <= div_count + 1;
+					div_count <= div_count + 1'b1;
 				end
 			end else begin
 				case (state)
