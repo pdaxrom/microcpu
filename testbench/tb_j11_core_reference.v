@@ -13,7 +13,7 @@ module tb_j11_core_reference;
 	reg error = 0;
 	reg [7:0] memory [0:65535];
 	reg [7:0] expected [0:65535];
-	reg [15:0] fixture [0:25];
+	reg [15:0] fixture [0:31];
 	integer fetch_pc, wait_pc, check_banks;
 	integer i, cycles, started, done, failures, active_mode;
 
@@ -61,13 +61,17 @@ module tb_j11_core_reference;
 		dut.jctx[16] = fixture[18];
 		dut.jctx[17] = fixture[19];
 		dut.jctx[19] = fixture[20];
-		if (fixture[24]) dut.upc = wait_pc;
+		if (fixture[24]) begin
+			dut.upc = wait_pc;
+			deposit_cpu_io();
+		end
 		started = fixture[24] != 0;
 		done = 0;
 		for (cycles = 0; cycles < 200000 && !done; cycles = cycles + 1) begin
 			@(negedge clk);
 			if (dut.state == dut.ST_FETCH && dut.upc == fetch_pc) begin
 				if (started) done = 1;
+				else deposit_cpu_io(); // after reset init, before this instruction
 				started = 1;
 			end
 			if (started && fixture[25] && dut.state == dut.ST_FETCH &&
@@ -76,6 +80,13 @@ module tb_j11_core_reference;
 		if (!done) $fatal(1, "Timeout: uPC=%04h PC=%06o cause=%04h",
 			dut.upc, dut.jctx[7], dut.cause_reg);
 		failures = 0;
+		if ((dut.jctx[23] >> 8) !== fixture[29] ||
+				(dut.jctx[21] & 16'hfe00) !== fixture[30] || dut.jctx[31] !== fixture[31]) begin
+			$display("CPU I/O: CPUERR=%06o/%06o PIRQ=%06o/%06o CCR=%06o/%06o (got/expected)",
+				dut.jctx[23] >> 8, fixture[29], dut.jctx[21] & 16'hfe00,
+				fixture[30], dut.jctx[31], fixture[31]);
+			failures = failures + 1;
+		end
 		for (i = 0; i < 9; i = i + 1) begin
 			if (dut.jctx[i] !== fixture[9 + i]) begin
 				$display("state[%0d]: got %06o expected %06o", i, dut.jctx[i], fixture[9 + i]);
@@ -104,4 +115,12 @@ module tb_j11_core_reference;
 		if (failures) $finish_and_return(1);
 		$finish;
 	end
+
+	task deposit_cpu_io;
+		begin
+			dut.jctx[23] = {fixture[26][7:0], dut.jctx[23][7:0]};
+			dut.jctx[21] = (dut.jctx[21] & 16'h00ff) | (fixture[27] & 16'hfe00);
+			dut.jctx[31] = fixture[28];
+		end
+	endtask
 endmodule

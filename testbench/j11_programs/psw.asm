@@ -65,7 +65,9 @@ fail
 	clr r0
 	halt
 
-	align 2
+	; TRACE pushes a kernel frame after every instruction. Keep this fixture
+	; above the real DCJ11 limit 0400; stack-fault behavior has separate tests.
+	org 0600
 return_frame
 	dw after_rti
 	dw 0420			; H and T

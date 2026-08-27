@@ -74,7 +74,8 @@ def main():
         write_bytes(directory / "input.hex", before)
         write_bytes(directory / "expected.hex", expected)
         state = (case["before"] + case["after"] + case["banks_before"] +
-                 case["banks_after"] + [case["wait_before"], case["wait_after"]])
+                 case["banks_after"] + [case["wait_before"], case["wait_after"]] +
+                 case["cpu_io_before"] + case["cpu_io_after"])
         (directory / "state.hex").write_text("\n".join(f"{value:04x}" for value in state) + "\n")
         cmd = [args.vvp, "build/tb_j11_core_reference.vvp",
                f"+FETCH_PC={labels['fetch_instruction']:x}",

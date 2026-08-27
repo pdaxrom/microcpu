@@ -39,12 +39,16 @@ Microcode instruction fetches never use the guest bus. The uROM is intended
 to infer 16-bit EBR storage, while guest memory transactions use a separate
 request/ready interface.
 
-The current production uROM is 2560 x 16 bits, with 2529 words occupied and
-31 free after the microcoded UART/LTC step. `ucode/config.mk` supplies the image
+The current uROM is 3072 x 16 bits, with 3002 words occupied and
+70 free after CPU I/O and fixed-limit stack protection. `ucode/config.mk` supplies the image
 size to both Makefiles; the board top-level parameter has the same default.
 This enlarged image has been simulated on the Mac, not synthesized or placed
 in Diamond. Actual FPGA resource use and timing remain unverified for this
-revision. Unsupported opcodes retain the reserved-instruction trap path.
+revision. The previous register-file mapping used three EBRs (two for the
+byte-enabled host registers, one for guest context). Together with six EBRs
+for the enlarged ROM this exceeds the HC1200's seven blocks. This checkpoint
+is simulation-only until those small arrays are remapped to distributed RAM.
+Unsupported opcodes retain the reserved-instruction trap path.
 
 ## Guest context
 
@@ -56,16 +60,19 @@ context RAM. Immediate and register-indexed accesses both use a five-bit index:
 | 0..7 | J-11 R0..R7 |
 | 8 | J-11 PSW |
 | 9 | current J-11 instruction word |
-| 10 | latched cause: `1` bus/address error, `2` reserved instruction, `3` HALT |
+| 10 | latched cause: `1` bus/address error, `2` reserved instruction, `3` HALT, `4` double abort |
 | 11 | pending IRQ: bit 15 valid, bits 10..8 level, bits 7..0 vector |
 | 12..13 | reserved microcode scratch/state |
-| 14 | pre-instruction T-bit snapshot used by TRACE/RTI/RTT |
+| 14 | bit 0 yellow pending, 1 yellow inhibit, 2 vector push, 3 explicit PSW write, 4 pre-instruction T, 5 red recovery |
 | 15 | write-only microcode control; bit 0 pulses guest peripheral RESET |
 | 16, 17, 19 | inactive KSP, SSP, USP; active SP lives in R6 |
-| 18 | saved native ALU flags across a guest store |
-| 20, 21, 22 | software DL11 RCSR, RBUF, XCSR; CSR bit 8 is a private IRQ latch |
-| 23, 24 | software LTC CSR and last observed native tick sequence |
-| 25..31 | non-reentrant memory-helper scratch/return state |
+| 18 | load result, or saved NZVC plus memory access mode in bits 6:4 |
+| 20, 22 | DL11 RCSR, XCSR; bit 8 is a private IRQ latch |
+| 21 | low byte RBUF; high bits 15:9 PIRQ requests |
+| 23 | low byte LTC; high byte CPUERR |
+| 24 | last observed native tick sequence |
+| 25..30 | non-reentrant memory/stack-helper scratch and return state |
+| 31 | CCR; implemented mask `003377` |
 
 `GGET` and `GSET` are microengine-only aliases for the old `SWS` and `SWU`
 opcode groups. They move values between RISC registers and the guest context.
@@ -153,34 +160,77 @@ save native ALU flags before stores. They use a single context scratch frame:
 device handlers must not call them recursively. Peripheral service runs only
 at instruction boundaries or while WAIT is active.
 
-### Planned microcoded processor I/O (not implemented yet)
+### Microcoded processor I/O
 
-The reference is `k1801vm1/core/core.c`, built with `ENABLE_MMU=0` and its
-default disabled `DCJ_REG_RSVD_ENABLED` option. The following is the intended
-software-visible map, not a statement that these accesses currently work:
+The architectural reference is DEC's
+[DCJ11 User's Guide, sections 1.4, 1.7, 1.8 and 5.1](https://www.bitsavers.org/pdf/dec/pdp11/1173/EK-DCJ11-UG-PRE_J11ug_Oct83.pdf).
+`ucode/j11_cpu_io.asm` implements the following map. The existing C core is
+used for matching no-MMU fixtures, not as authority over the manual.
 
-| Octal address | Register | Reference behavior |
+| Octal address | Register | Implemented behavior |
 |---:|---|---|
-| `177744` | MEMERR | Read state; any write clears |
-| `177746` | CCR | Read/write storage; no physical cache in this target |
-| `177750` | MAINT | Read-only configuration |
-| `177752` | HITMISS | Read-only; no cache activity |
+| `177744` | MEMERR | Zero: this board has no parity-error source; writes ignored |
+| `177746` | CCR | Read/write bits 10:0 except bit 8; no physical cache |
+| `177750` | MAINT | Read-only zero for this board profile |
+| `177752` | HITMISS | Read-only zero; no cache activity |
 | `177766` | CPUERR | Read mask `000374`; any write clears |
 | `177772` | PIRQ | Request bits 15..9, encoded highest priority; vector `240` |
 | `177776` | PSW | Explicit writes preserve T; mode changes switch SP banks |
 
-The C model's programmable STKLIM is **not** a DCJ11 feature. The target has
-the fixed kernel stack boundary `0400`, per DEC
-[DCJ11 User's Guide, section 1.8](https://www.bitsavers.org/pdf/dec/pdp11/1173/EK-DCJ11-UG-PRE_J11ug_Oct83.pdf).
-Yellow/red stack traps are still pending with CPUERR; the current image does
-not yet enforce that boundary. Address `177774` remains unmapped and its
-bus-error behavior is covered by the peripheral guest test.
+MEMERR/MAINT are board-profile registers, not extra devices inside the DCJ11.
+Byte lanes are implemented for CCR, PIRQ and PSW. Any CPUERR byte/word write
+clears the entire register; RESET preserves CPUERR/CCR but clears PIRQ.
+Explicit PSW writes preserve T and suppress that instruction's automatic NZVC
+commit. Word/high-byte mode changes select KSP/SSP/USP. Instruction fetches
+from internal registers raise CPUERR.ADR and vector `004`.
 
-MMR0/1/2 at `177572/177574/177576`, MMR3 at `172516` (alias `177516`), and
-the supervisor/kernel/user PAR/PDR ranges are also pending. The C model's
-no-MMU stubs are a reference to review, not an implemented FPGA feature.
-The optional reserved-register addresses are not enabled merely because a test
-backend happens to accept them.
+PIRQ reads encode the highest request in bits 7:5 and 3:1. Low-byte writes do
+not change requests, and interrupt acknowledge does not clear them. Arbitration
+compares levels first; PIRQ wins equal BR levels except that EVENT/LTC wins
+over PIR6. UART and LTC state cannot leak into the packed CPU register storage.
+
+The C model differs in two reviewed areas: it retains all CCR bits rather than
+the documented mask, and its PIRQ-first polling can outrank higher external
+levels. Independent assembly tests check the documented mask and priority
+ordering instead of silently changing or copying those C behaviors.
+
+MMR0/1/2 at `177572/177574/177576`, MMR3 at `172516`, and the S/K/U PAR/PDR
+ranges are intentionally zero-read/write-ignore stubs for this **no-MMU**
+configuration, not an implementation of memory management. The C-only MMR3
+alias `177516`, programmable STKLIM at `177774`, and optional reserved
+registers remain unmapped.
+
+### Fixed kernel stack protection
+
+`ucode/j11_stack.asm` enforces the fixed limit `0400`: equality is allowed;
+kernel stack references below it set CPUERR.YEL and trap through `004` at the
+instruction boundary. Checks cover autodecrement/deferred SP addressing,
+JSR, MFPI/MFPD pushes and kernel vector frames. Byte SP steps remain two bytes;
+supervisor/user stacks are exempt. TRACE precedes a pending yellow trap.
+
+RED is an abort while pushing a trap/interrupt frame, **not** another numerical
+boundary below `0400`. Recovery sets CPUERR.RED and writes the original PC/PSW
+at addresses `0/2` using the emergency stack starting at `4`. An abort during
+that emergency save stops with cause `4`; console/ODT recovery is deferred.
+The C-only programmable STKLIM is not implemented.
+
+`cpu_registers.asm`, `cpu_psw.asm`, `cpu_pirq.asm` and `cpu_stack.asm` check
+the new behavior through actual board services and SPI FRAM. `cpu_nxm.asm`
+additionally injects raw bus faults for NXM and double-abort checks, without
+injecting architectural state. The reference runner now verifies CPUERR,
+PIRQ and CCR as well as R0..R7, PSW, inactive SP banks and guest RAM:
+**201/201** selected J-11 no-MMU snapshots, including **29 EIS** cases.
+
+### FIS budget decision
+
+All four FIS instructions remain **unimplemented**. After SP/CPU I/O work,
+3002 of 3072 uROM words are occupied. The remaining 70 words are insufficient
+for operand unpacking, exponent alignment, signed mantissa arithmetic,
+normalization, rounding and overflow/underflow/divide-by-zero handling for
+FADD/FSUB/FMUL/FDIV. No uROM enlargement solely for FIS has been made.
+`fis_unavailable.asm` verifies that all four assembled opcodes enter reserved
+vector `010` without reading operands. This is a missing-feature test, not a
+FIS arithmetic test. FIS is distinct from FP11; ODT remains a later task.
 
 ### Microcoded timer and reference difference
 
@@ -237,6 +287,8 @@ Words are stored little-endian.
   notifications, unmapped I/O, and service-bank checks
 - `testbench/tb_j11_peripherals.v`: assembled guest CSR/IRQ/WAIT/RESET tests,
   actual UART pin decoding, deterministic ticks and private-address isolation
+- `testbench/tb_j11_cpu_io.v`: assembled CPU-register, stack, PIRQ and reserved
+  FIS tests; optional raw-bus error injection for NXM/emergency-stack failure
 - `testbench/board/tb_board_j11_microcomp.v`: verifies the same transaction
   through the actual HC1200 top-level package pins
 

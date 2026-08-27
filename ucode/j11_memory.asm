@@ -1,5 +1,10 @@
 ; Raw transfers are confined to this dispatcher (and native peripheral I/O).
-; Mode: bit 0 write, bit 1 byte. Guest device decoding is added here, in code.
+; Mode: bit 0 write, bit 1 byte, bit 2 instruction fetch.
+memory_fetch_word
+	gset v3, 27
+	set lr, 4
+	b memory_access
+
 memory_read_word
 	gset v3, 27
 	clr lr
@@ -20,11 +25,15 @@ memory_write_byte
 memory_access
 	gset v2, 28
 	gset sp, 29
-	gset lr, 31
+	gget v2, 18
+	and v2, v2, 15
+	shl sp, lr, 4
+	or v2, v2, sp
+	gset v2, 18
 	; Word alignment is checked before any device side effect.
 	bmask_set memory_aligned, lr, 2
 	bmask_clear memory_aligned, v4, 1
-	far_jump bus_error_entry
+	far_jump cpu_address_error
 memory_aligned
 	set sp, $fff8
 	and v2, v4, sp
@@ -36,7 +45,9 @@ memory_aligned
 	and v2, v4, sp
 	set sp, $ff66		; 177546: KDJ11-B line-time clock
 	beq memory_device, v2, sp
-	b memory_raw
+	set sp, $e000
+	bltu memory_raw, v4, sp
+	far_jump cpu_io_decode
 
 memory_console
 	set sp, $fffe
@@ -117,6 +128,7 @@ memory_csr_read
 
 memory_rbuf
 	gget v4, 21
+	seth v4, 0		; high bits hold private PIRQ state
 	gget v2, 20
 	set sp, $40
 	and v2, v2, sp
@@ -125,14 +137,19 @@ memory_rbuf
 
 memory_ltc
 	gget v4, 23
-	bmask_clear memory_return, lr, 1 ; LCM is NOT read-to-clear on KDJ11-B
+	bmask_clear memory_ltc_read, lr, 1 ; LCM is NOT read-to-clear on KDJ11-B
+	mov v2, v4
+	setl v2, 0		; preserve CPUERR in the context word's high byte
 	set sp, $80
 	and v4, v4, v3		; writing zero clears LCM; one cannot set it
 	and v4, v4, sp
 	set sp, $40
 	and v3, v3, sp
 	or v4, v4, v3
+	or v4, v4, v2
 	gset v4, 23
+memory_ltc_read
+	seth v4, 0
 	b memory_return
 
 memory_zero
@@ -159,7 +176,11 @@ memory_raw_write_byte
 	strl v3, v4, 0
 
 memory_return
-	gset v4, 31
+	gget lr, 18
+	shr lr, lr, 4
+	bmask_set memory_restore, lr, 1
+	gset v4, 18		; stores retain their original NZVC and access mode
+memory_restore
 	gget v2, 28
 	gget v3, 27
 	gget v4, 26

@@ -33,6 +33,9 @@ mark_target
 	bne fail
 	cmp #033333, r5
 	bne fail
+	; MARK leaves SP in the inline data below 0400. Restore a normal kernel
+	; stack before the later reserved-instruction traps.
+	mov #04000, sp
 
 	; TSTSET copies the old word to R0, sets memory bit zero, and replaces NZVC.
 	mov #0100000, lock_word

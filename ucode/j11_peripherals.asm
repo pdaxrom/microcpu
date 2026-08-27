@@ -1,6 +1,6 @@
 ; Software DL11 console and KDJ11-B LTC. Only raw bytes and elapsed ticks are
 ; obtained from hardware; all CSRs, request latches and arbitration live here.
-; Context 20=RCSR, 21=RBUF, 22=XCSR, 23=LTC, 24=last tick sequence.
+; Context 20=RCSR, 21=RBUF/PIRQ, 22=XCSR, 23=LTC/CPUERR, 24=last tick.
 ; UART CSR bit 8 is a private request latch, never visible to guest software.
 
 peripherals_reset
@@ -9,6 +9,8 @@ peripherals_reset
 	gset v2, 21
 	set v2, $80
 	gset v2, 22
+	gget v2, 23
+	setl v2, $80		; RESET preserves CPUERR, but clears PIRQ above
 	gset v2, 23
 	set sp, $f004
 	ldr v2, sp, 0
@@ -32,6 +34,9 @@ peripherals_poll
 	set v3, $80
 	bmask_set peripherals_tx, v2, v3
 	ldr v3, sp, 2
+	gget sp, 21
+	setl sp, 0
+	or v3, v3, sp		; received data must not disturb PIRQ requests
 	gset v3, 21
 	set v3, $80
 	or v2, v2, v3
@@ -79,30 +84,33 @@ peripherals_select
 	clr v2
 	gset v2, 11		; acknowledge only the native BR0 notification
 peripherals_select_ltc
-	bgeu peripherals_select_uart, v4, 6
+	bgtu peripherals_select_uart, v4, 6 ; dedicated EVENT outranks external BR6
 	gget v3, 23
 	set sp, $c0
+	and v3, v3, sp
 	bne peripherals_select_uart, v3, sp
 	set v2, $8e40		; software tag bit 11, BR6, vector 100 octal
-	rts
+	b peripherals_selected
 peripherals_select_uart
 	bgeu peripherals_selected, v4, 4
 	set sp, $100
 	gget v3, 20
 	bmask_clear peripherals_select_tx, v3, sp
 	set v2, $8c30		; BR4, RX vector 060 wins over TX
-	rts
+	b peripherals_selected
 peripherals_select_tx
 	gget v3, 22
 	bmask_clear peripherals_selected, v3, sp
 	set v2, $8c34		; BR4, TX vector 064
 peripherals_selected
-	rts
+	b cpu_interrupt_select
 
 ; v2 contains the accepted software request. Do not consume any external IRQ.
 peripherals_ack
 	set v3, $ff
 	and sp, v2, v3
+	set v3, $a0
+	fbeq trap_entry, sp, v3	; PIRQ stays asserted until software clears it
 	set v3, $40
 	beq peripherals_ack_ltc, sp, v3
 	set v4, 20
@@ -117,6 +125,7 @@ peripherals_ack_uart
 	far_jump trap_entry
 peripherals_ack_ltc
 	gget v2, 23
-	and v2, v2, sp		; LCM clears on interrupt acknowledge; IE stays
+	set v3, $ff40
+	and v2, v2, v3		; clear LCM; retain IE and the separate CPUERR state
 	gset v2, 23
 	far_jump trap_entry

@@ -19,7 +19,8 @@ follow-up is recorded separately; do not infer authorization for other features.
   Native UART/time event notifications are also explicitly approved;
   an instruction-count clock is a simulation timebase, not a real 50/60 Hz clock.
 - Write guest tests in assembly and build them with `microasm11`.
-- Run tests on the Mac; do not run Diamond until requested.
+- Run tests on the Mac. Diamond is now approved for the uROM resource/fit check
+  (2026-08-28), in an isolated copy without overwriting the Ubuntu worktree.
 - Generate `boards/hc1200-microcomp/j11_ucode.mem` through `boards/Makefile`;
   do not commit generated images or build products.
 - Commit each verified step. Increase uROM only if the in-scope work needs it.
@@ -73,7 +74,7 @@ needed for this acceptance step. Deferred work below remains deferred.
   and previous-mode SP access, with the corresponding core and assembly tests.
   `j11-core-banks-test`: 187/187 RTL snapshots pass, including 29 EIS cases.
   `sp_banks.asm` passes through SPI FRAM; uROM is now 1694/2048 words.
-- [ ] J-11 processor-owned I/O registers: inventory the C-core map, implement
+- [x] J-11 processor-owned I/O registers: inventory the C-core map, implement
   defined reads/writes and side effects, and port register tests. This is
   separate from board UART/timer devices; MMU remains disabled.
   - [x] Inventory `core/core.c`: MEMERR, CCR, MAINT, HITMISS, CPUERR, PIRQ,
@@ -81,15 +82,22 @@ needed for this acceptance step. Deferred work below remains deferred.
     The C-only programmable STKLIM is not part of the DCJ11 target: implement
     the documented fixed kernel stack limit `0400`, with yellow/red traps.
   - [x] Remove the uncommitted RTL CPU-MMIO experiment. `cpu.v` and
-    `j11_microengine.v` remain unchanged; CPU registers are still pending.
+    `j11_microengine.v` remained unchanged at that checkpoint; CPU register
+    implementation is recorded below.
   - [x] Add shared microcoded word/byte access helpers, including indirect EA,
     stack, and instruction-fetch paths. Preserve live microengine registers and
     explicitly save arithmetic flags before helper calls where necessary.
-  - [ ] Implement register reads/writes and side effects in those helpers;
+  - [x] Implement register reads/writes and side effects in those helpers;
     test byte lanes, read-only/write-clear behavior, explicit PSW writes and
     stack-bank switching, PIRQ arbitration, and CPUERR/fixed-limit stack traps.
-  - [ ] Replay corresponding J-11 C-core fixtures and add `microasm11` guest
+  - [x] Replay corresponding J-11 C-core fixtures and add `microasm11` guest
     programs. Do not mark register support complete from C-only test results.
+    CPU I/O is in `j11_cpu_io.asm`, stack checking in `j11_stack.asm`; no new
+    RISC opcode, context word, or J-11-specific RTL logic was added. Tests cover
+    byte lanes, CCR masks, PSW/T/CC/bank effects, seven PIR levels and priority
+    arbitration, sticky CPUERR, fixed-0400 yellow, RED recovery at 0/2, and
+    raw-bus-fault NXM/double-abort behavior. CCR/PIRQ differences from the C
+    model are documented; disabled-MMU registers are zero/ignore stubs only.
 - [x] DL11 console in microcode: `177560..177566`, IE/DONE, RX/TX request
   latches, byte lanes, RE/RBUF acknowledgement, BREAK/maintenance loopback.
   Raw UART/time notifications skip hardware polling on event-free boundaries.
@@ -114,7 +122,15 @@ needed for this acceptance step. Deferred work below remains deferred.
 - [ ] FIS (`FADD`, `FSUB`, `FMUL`, `FDIV`): add all four instructions with
   rounding/error tests if they fit the remaining current uROM after SP/I/O work.
   Do not confuse FIS with FP11 or silently enlarge the FIS budget.
-- [ ] Full local regression and source-only commits for verified steps.
+  - [x] Recheck budget after CPU/SP/I/O work: **3002/3072 words, 70 free**.
+    Full FIS with normalization, rounding and arithmetic errors does not fit
+    this remainder. It is not implemented; no partial arithmetic is claimed.
+    `fis_unavailable.asm` checks all four opcodes still trap through `010`.
+    The user now approved checking a larger uROM via distributed register RAM
+    and Diamond. Reassess FIS after that fit check; ODT remains deferred.
+- [ ] Move the 8x16 host and 32x16 context arrays to distributed RAM; check
+  3584x16 uROM packing, total LUT/EBR use and timing on HC1200 in Diamond.
+- [x] Full local regression and source-only checkpoint for CPU I/O/stack work.
 
 Architecture correction verified on 2026-08-27: after removing the uncommitted
 RTL MMIO attempt, `make -C testbench j11-test j11-core-banks-test` passes all
@@ -127,7 +143,20 @@ reference snapshots (29 EIS). The common memory dispatcher and devices occupy
 2529/2560 uROM words. Generated board/testbench images match; no generated files
 are committed. Diamond was not run: hardware fit/timing must be measured later.
 CPU-owned I/O registers and fixed-`0400` yellow/red stack protection remain
-the next unimplemented step, before deciding whether FIS fits.
+the next step at that historical checkpoint; they are implemented below.
+
+CPU I/O and stack follow-up (2026-08-28): 201 selected J-11 no-MMU C-core
+snapshots (29 EIS) now compare CPUERR/PIRQ/CCR in addition to registers, SP
+banks and RAM. New assembly programs exercise processor I/O and fixed-stack
+semantics on the board/FRAM path. The simulated uROM grew from 2560 to 3072
+words for this CPU work, with 3002 occupied; the remaining 70 words do not fit
+FIS. The old mapping would need nine EBRs including the register files, beyond
+the seven available: hardware fit requires the RAM placement work above.
+FIS and ODT remain unimplemented, explicitly rather than accidentally omitted.
+`make -C testbench j11-test j11-core-banks-test` passes all nine simulation
+suites and 201/201 reference snapshots (29 EIS). Board/testbench uROM images
+match. Legacy PSW/privileged/MARK test stacks were moved or restored above
+0400; explicit stack-fault tests still exercise the protected region.
 
 ### Deferred: not part of the active follow-up
 
@@ -137,6 +166,8 @@ the next unimplemented step, before deciding whether FIS fits.
 - [ ] `CSM` and the associated processor-mode/MMR3 behavior.
 - [ ] MMU and split I/D spaces.
 - [ ] FP11: not requested; no FP11 instructions have been implemented.
+- [ ] ODT console/monitor: explicitly postponed by the user; DL11-compatible
+  polling and serial framing are ready, but ODT itself is not implemented.
 - [ ] Alternate R0..R5 register sets (distinct from the now-requested SP banks).
 - [ ] CIS.
 - [ ] SPI sequential-read buffering and broader randomized differential tests:

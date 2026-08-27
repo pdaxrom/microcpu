@@ -22,6 +22,7 @@ J11_FETCH_VSRC = ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v spi_fram_m
 J11_EXECUTE_VSRC = ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v spi_fram_model.v tb_j11_execute.v
 J11_BUS_VSRC = ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v spi_fram_model.v tb_j11_guest_bus.v
 J11_PERIPHERAL_VSRC = ../rtl/j11_microengine.v $(filter-out tb_j11_guest_bus.v,$(J11_BUS_VSRC)) tb_j11_peripherals.v
+J11_CPU_IO_VSRC = $(filter-out tb_j11_peripherals.v,$(J11_PERIPHERAL_VSRC)) tb_j11_cpu_io.v
 J11_BOARD_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v ../boards/hc1200-microcomp/j11_microcomp.v spi_fram_model.v board/tb_board_j11_microcomp.v
 J11_BOARD_EXECUTE_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v ../boards/hc1200-microcomp/j11_microcomp.v spi_fram_model.v board/tb_board_j11_execute.v
 J11_ENGINE_ASM = ucode/j11_microengine_smoke.asm
@@ -119,7 +120,19 @@ board-mcu-bootload-rx: build/board_mcu_bootload.vvp build/bootldr-mcu-board.hex 
 board-microcomp-memmap: build/board_microcomp.vvp build/microcomp_memmap.hex
 	$(VVP) build/board_microcomp.vvp +SRAM_HEX=build/microcomp_memmap.hex
 
-j11-test: j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-board-test j11-board-execute-test j11-board-ucode
+j11-test: j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-cpu-io-test j11-board-test j11-board-execute-test j11-board-ucode
+
+.PHONY: j11-cpu-io-test
+build/tb_j11_cpu_io.vvp: $(J11_CPU_IO_VSRC) ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o $@ $(J11_CPU_IO_VSRC)
+
+j11-cpu-io-test: build/tb_j11_cpu_io.vvp build/j11_ucode.words build/guest_cpu_registers.hex build/guest_cpu_psw.hex build/guest_cpu_pirq.hex build/guest_cpu_stack.hex build/guest_cpu_nxm.hex build/guest_fis_unavailable.hex
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_registers.hex
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_psw.hex
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_pirq.hex
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_stack.hex
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_fis_unavailable.hex
 
 .PHONY: j11-peripherals-test
 build/tb_j11_peripherals.vvp: $(J11_PERIPHERAL_VSRC) ../ucode/config.mk | build

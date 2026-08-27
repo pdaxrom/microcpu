@@ -79,7 +79,9 @@ halt_handler_fail
 	bic #0140000, 2(sp)
 	rti
 
-	even
+	; The outgoing kernel SP becomes the inactive KSP after RTI. Keep its
+	; frame above the fixed 0400 stack boundary for the later HALT trap.
+	org 0600
 user_frame
 	dw user_entry
 	dw 0140100		; user CM, kernel PM, priority 2

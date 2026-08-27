@@ -9,12 +9,7 @@ reset_entry
 ; Fixed microengine ABI entry: rtl/j11_microengine.v redirects failed guest
 ; transactions to byte address 0002.  Trap mechanics remain in microcode.
 bus_error_entry
-	clr v2
-	gset v2, 14		; failed instructions do not produce a trace trap
-	set v2, 1
-	gset v2, 10
-	set sp, 4		; PDP-11 bus/address-error vector 004
-	b trap_entry
+	far_jump cpu_bus_error
 
 wait_instruction
 	set v1, 1
@@ -27,14 +22,16 @@ fetch
 	clr v1
 fetch_events
 	gget v2, 14		; TRACE has priority over device interrupts
-	bne trace_entry, v2, 0
+	set v3, $10
+	bmask_set trace_entry, v2, v3
+	bmask_set yellow_stack_entry, v2, 1
 	gget v0, 7		; v0 <- guest PC
 	far_call peripherals_poll
 	blt interrupt_priority, v2, 0
 fetch_no_interrupt
 	bne wait_instruction, v1, 0
 fetch_instruction
-	readw v1, v0, 0		; v1 <- guest word at PC
+	fetchw v1, v0, 0		; internal CPU registers are not executable
 	gset v1, 9		; guest IR <- fetched word
 	add v0, v0, 2		; PC advances by one PDP-11 word
 	gset v0, 7		; guest PC <- PC + 2
@@ -52,16 +49,16 @@ interrupt_priority
 	shr v4, v4, 5
 	and v4, v4, 7		; current PSW priority
 	ble fetch_no_interrupt, v3, v4
-	b interrupt_entry
+	far_jump interrupt_entry
 
 decode
-	beq halt, v1, 0		; 000000: HALT
+	fbeq halt, v1, 0		; 000000: HALT
 	beq wait_instruction, v1, 1	; 000001: WAIT
-	beq return_interrupt, v1, 2	; 000002: RTI
+	fbeq return_interrupt, v1, 2	; 000002: RTI
 	beq breakpoint_trap, v1, 3	; 000003: BPT
 	beq io_trap, v1, 4		; 000004: IOT
 	beq reset_instruction, v1, 5	; 000005: RESET
-	beq return_from_trace, v1, 6	; 000006: RTT
+	fbeq return_from_trace, v1, 6	; 000006: RTT
 	beq move_from_processor_type, v1, 7	; 000007: MFPT
 	mov v2, v1
 	shr v2, v2, 8
@@ -116,27 +113,27 @@ decode_single_operand
 	setl v2, $28
 	beq clear_operand, v3, v2	; 0050DD/1050DD: CLR/CLRB
 	setl v2, $29
-	beq complement_operand, v3, v2	; 0051DD/1051DD: COM/COMB
+	fbeq complement_operand, v3, v2	; 0051DD/1051DD: COM/COMB
 	setl v2, $2a
-	beq increment_operand, v3, v2	; 0052DD/1052DD: INC/INCB
+	fbeq increment_operand, v3, v2	; 0052DD/1052DD: INC/INCB
 	setl v2, $2b
-	beq decrement_operand, v3, v2	; 0053DD/1053DD: DEC/DECB
+	fbeq decrement_operand, v3, v2	; 0053DD/1053DD: DEC/DECB
 	setl v2, $2c
-	beq negative_operand, v3, v2	; 0054DD/1054DD: NEG/NEGB
+	fbeq negative_operand, v3, v2	; 0054DD/1054DD: NEG/NEGB
 	setl v2, $2d
-	beq add_carry_operand, v3, v2	; 0055DD/1055DD: ADC/ADCB
+	fbeq add_carry_operand, v3, v2	; 0055DD/1055DD: ADC/ADCB
 	setl v2, $2e
-	beq subtract_carry_operand, v3, v2	; 0056DD/1056DD: SBC/SBCB
+	fbeq subtract_carry_operand, v3, v2	; 0056DD/1056DD: SBC/SBCB
 	setl v2, $2f
 	fbeq test_operand, v3, v2	; 0057DD/1057DD: TST/TSTB
 	setl v2, $30
-	beq rotate_right_operand, v3, v2	; 0060DD/1060DD: ROR/RORB
+	fbeq rotate_right_operand, v3, v2	; 0060DD/1060DD: ROR/RORB
 	setl v2, $31
-	beq rotate_left_operand, v3, v2	; 0061DD/1061DD: ROL/ROLB
+	fbeq rotate_left_operand, v3, v2	; 0061DD/1061DD: ROL/ROLB
 	setl v2, $32
-	beq arithmetic_shift_right_operand, v3, v2	; 0062DD/1062DD: ASR/ASRB
+	fbeq arithmetic_shift_right_operand, v3, v2	; 0062DD/1062DD: ASR/ASRB
 	setl v2, $33
-	beq arithmetic_shift_left_operand, v3, v2	; 0063DD/1063DD: ASL/ASLB
+	fbeq arithmetic_shift_left_operand, v3, v2	; 0063DD/1063DD: ASL/ASLB
 	inc v2
 	beq move_to_processor_status, v3, v2	; 1064SS: MTPS (0064NN is MARK)
 	inc v2
@@ -231,14 +228,14 @@ condition_clear
 	and v1, v1, 15
 	inv v1, v1
 	and v3, v3, v1
-	gset v3, 8
+	pset v3
 	b fetch
 
 condition_set
 	gget v3, 8
 	and v1, v1, 15
 	or v3, v3, v1
-	gset v3, 8
+	pset v3
 	b fetch
 
 move_from_processor_type
@@ -260,7 +257,7 @@ set_priority_apply
 	set sp, $ff1f		; replace PSW priority, preserve all other bits
 	and v3, v3, sp
 	or v3, v3, v1
-	gset v3, 8
+	pset v3
 	b fetch
 
 reset_instruction
@@ -387,7 +384,7 @@ multiply_write
 	set v2, $fff0
 	and v1, v1, v2
 	or v1, v1, v0
-	gset v1, 8
+	pset v1
 	b fetch
 
 breakpoint_trap
@@ -459,6 +456,7 @@ jump_subroutine
 	gset sp, 6
 	; Read the link register after destination EA side effects and after the
 	; stack decrement.  The latter preserves DCJ11 JSR SP,dst behavior.
+	scheck sp
 	ggetr v3, v2
 	writew v3, sp, 0
 	gsetr v0, v2		; return PC already includes any EA extension
@@ -676,11 +674,12 @@ double_bit_flags
 double_arithmetic_flags
 	getf v2
 double_arithmetic_flags_ready
+	and v2, v2, 15		; discard the memory helper's saved access mode
 	gget v4, 8
 	set sp, $fff0
 	and v4, v4, sp
 	or v4, v4, v2
-	gset v4, 8
+	pset v4
 	b fetch
 
 clear_operand
@@ -713,17 +712,17 @@ clear_flags
 	set v2, $fff0		; CLR: N=0, Z=1, V=0, C=0
 	and v4, v4, v2
 	or v4, v4, 4
-	gset v4, 8
+	pset v4
 	b fetch
 
 fetch_far
 	b fetch			; relay for tail handlers beyond direct branch range
 
 arithmetic_shift_relay
-	b arithmetic_shift		; second leg for the tail EIS handler
+	far_jump arithmetic_shift
 
 arithmetic_shift_combined_relay
-	b arithmetic_shift_combined
+	far_jump arithmetic_shift_combined
 
 divide_relay
 	far_jump divide
@@ -750,11 +749,19 @@ move_to_processor_status
 ; microengine branch encoding has a +/-2047-byte range, so this placement stays
 ; reachable from both the fixed ABI entries and the growing instruction tail.
 trace_entry
-	clr v2
+	and v2, v2, 1		; preserve a lower-priority yellow stack request
 	gset v2, 14
+	clr v2
 	gset v2, 10
 	gget v0, 7
 	set sp, $0c		; PDP-11 trace/BPT vector 014
+	b trap_entry
+
+yellow_stack_entry
+	set v2, 2		; inhibit recursion while pushing this yellow trap
+	gset v2, 14
+	gget v0, 7
+	set sp, 4
 	b trap_entry
 
 reserved_instruction
@@ -783,11 +790,20 @@ trap_entry_mode_ready
 	gget v4, 16
 
 trap_entry_stack_ready
+	gget v2, 14
+	or v2, v2, 4		; an abort during these writes is a RED stack error
+	gset v2, 14
 	shl lr, lr, 12
 	sub v4, v4, 2
+	scheck v4
 	writew v3, v4, 0
 	sub v4, v4, 2
+	scheck v4
 	writew v0, v4, 0
+	gget v2, 14
+	set v3, $ffdb		; finished pushing: clear vector/red-recovery markers
+	and v2, v2, v3
+	gset v2, 14
 	gset v4, 6
 	readw v0, sp, 0
 	gset v0, 7
@@ -796,7 +812,7 @@ trap_entry_stack_ready
 	and v3, v3, sp
 	or v3, v3, lr
 	gset v3, 8
-	b fetch
+	b fetch_far
 
 return_interrupt
 	set lr, $10		; RTI traces immediately when the restored T bit is set
@@ -862,7 +878,7 @@ return_stack_ready
 	gset v3, 14
 	clr v2
 	gset v2, 10
-	b fetch
+	b fetch_far
 
 interrupt_entry
 	set v3, $800
@@ -882,8 +898,7 @@ halt
 	beq halt_stopped, v2, 0
 	set sp, $8000
 	beq halt_stopped, v2, sp
-	set sp, 4		; non-kernel HALT traps through vector 004
-	b trap_entry
+	far_jump cpu_illegal_halt
 
 halt_stopped
 	set v2, 3
@@ -928,7 +943,7 @@ complement_register_word
 complement_flags
 	gget v4, 8
 	or v4, v4, 1		; COM: C=1; move_flags clears V and sets N/Z
-	gset v4, 8
+	pset v4
 	b move_flags
 
 increment_operand
@@ -1259,7 +1274,7 @@ adjust_merge_flags
 adjust_merge_mask_ready
 	and v4, v4, sp
 	or v4, v4, lr
-	gset v4, 8
+	pset v4
 	b fetch_far
 
 swap_bytes_operand
@@ -1359,6 +1374,9 @@ ea_autodecrement
 ea_autodecrement_two
 	sub sp, sp, 2
 	gsetr sp, v4
+	bne ea_autodecrement_not_sp, v4, 6
+	scheck sp
+ea_autodecrement_not_sp
 	bne ea_autodecrement_done, v4, 7
 	mov v0, sp
 ea_autodecrement_done
@@ -1375,6 +1393,9 @@ ea_autodecrement_deferred
 	ggetr sp, v4
 	sub sp, sp, 2
 	gsetr sp, v4
+	bne ea_autodecrement_deferred_not_sp, v4, 6
+	scheck sp
+ea_autodecrement_deferred_not_sp
 	bne ea_autodecrement_deferred_not_pc, v4, 7
 	mov v0, sp
 ea_autodecrement_deferred_not_pc
@@ -1382,7 +1403,7 @@ ea_autodecrement_deferred_not_pc
 	rts
 
 ea_index
-	readw sp, v0, 0
+	fetchw sp, v0, 0
 	add v0, v0, 2
 	gset v0, 7
 	ggetr v4, v4
@@ -1390,7 +1411,7 @@ ea_index
 	rts
 
 ea_index_deferred
-	readw sp, v0, 0
+	fetchw sp, v0, 0
 	add v0, v0, 2
 	gset v0, 7
 	ggetr v4, v4
@@ -1460,7 +1481,7 @@ move_to_processor_status_merge
 	set sp, $ff10		; preserve upper PSW and the old T bit
 	and v4, v4, sp
 	or v4, v4, v3
-	gset v4, 8
+	pset v4
 	b fetch_far
 
 mark_instruction
@@ -1483,17 +1504,17 @@ move_flags
 	and v4, v4, v2
 	beq move_zero, v3, 0
 	blt move_negative, v3, 0
-	gset v4, 8
+	pset v4
 	b fetch_far
 
 move_zero
 	or v4, v4, 4
-	gset v4, 8
+	pset v4
 	b fetch_far
 
 move_negative
 	or v4, v4, 8
-	gset v4, 8
+	pset v4
 	b fetch_far
 
 arithmetic_shift
@@ -1577,8 +1598,8 @@ arithmetic_shift_carry
 	set v2, $fff0
 	and v1, v1, v2
 	or v1, v1, v0
-	gset v1, 8
-	b fetch_far
+	pset v1
+	far_jump fetch_far
 
 arithmetic_shift_combined
 	; Snapshot the complete R:R|1 pair before resolving the count EA.  v3 is
@@ -1677,7 +1698,7 @@ arithmetic_shift_combined_carry
 	set v2, $fff0
 	and v1, v1, v2
 	or v1, v1, v0
-	gset v1, 8
+	pset v1
 	far_jump fetch_far
 
 divide
@@ -1819,7 +1840,7 @@ divide_merge_flags
 	set v2, $fff0
 	and v1, v1, v2
 	or v1, v1, v0
-	gset v1, 8
+	pset v1
 	far_jump fetch_far
 
 test_and_set_operand
@@ -1861,7 +1882,7 @@ lock_operand_merge_flags
 	set v2, $fff0		; replace NZVC while retaining upper PSW
 	and v1, v1, v2
 	or v1, v1, v0		; V remains clear
-	gset v1, 8
+	pset v1
 	far_jump fetch_far
 
 move_from_previous
@@ -1887,6 +1908,7 @@ move_from_previous_push
 	gget sp, 6
 	sub sp, sp, 2
 	gset sp, 6
+	scheck sp
 	writew v3, sp, 0
 	b move_flags		; set N/Z, clear V, preserve C
 
@@ -1939,3 +1961,5 @@ previous_sp_same_mode
 
 	include j11_memory.asm
 	include j11_peripherals.asm
+	include j11_cpu_io.asm
+	include j11_stack.asm

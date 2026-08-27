@@ -1,0 +1,236 @@
+; DCJ11 processor I/O, entirely in assembly. No cache or MMU is advertised.
+; 21[15:9]=PIRQ requests, 21[7:0]=RBUF; 23[15:8]=CPUERR, 23[7:0]=LTC;
+; 31=CCR. These share existing context words, not new hardware registers.
+cpu_io_decode
+	gget lr, 18
+	shr lr, lr, 4
+	set sp, $ffe4		; 177744 MEMERR: no parity hardware in this board
+	beq memory_zero, v2, sp
+	set sp, $ffe8		; 177750 MAINT: this board's configuration is zero
+	beq memory_zero, v2, sp
+	set sp, $ffe6
+	beq cpu_ccr, v2, sp
+	set sp, $ffea
+	beq cpu_internal_zero, v2, sp ; 177752: no cache => no hit/miss history
+	set sp, $fff6
+	beq cpu_error_register, v2, sp
+	set sp, $fffa
+	beq cpu_pirq, v2, sp
+	set sp, $fffe
+	beq cpu_psw, v2, sp
+	; Deliberately disabled MMU: reads zero, writes ignored. No C-only aliases
+	; for MMR3/STKLIM and no optional implementation-dependent reserved regs.
+	set sp, $ff7a
+	bltu cpu_mmu_banks, v2, sp
+	set sp, $ff7e
+	bleu cpu_internal_zero, v2, sp ; MMR0/1/2 at 177572/4/6
+cpu_mmu_banks
+	set sp, $f54e		; MMR3 at 172516
+	beq cpu_internal_zero, v2, sp
+	set sp, $ff80
+	and sp, v2, sp
+	set lr, $f480
+	beq cpu_internal_zero, sp, lr ; S/K PAR/PDR: 172200..172376
+	set sp, $ffc0
+	and sp, v2, sp
+	set lr, $ff80
+	beq cpu_internal_zero, sp, lr ; U PAR/PDR: 177600..177676
+	gget lr, 18
+	shr lr, lr, 4
+	b memory_raw
+
+cpu_internal_zero
+	gget lr, 18
+	shr lr, lr, 4
+	bmask_set cpu_address_error, lr, 4
+	b memory_zero
+
+cpu_ccr
+	bmask_set cpu_address_error, lr, 4
+	gget v2, 31
+	set sp, 31
+	b cpu_register_access
+
+cpu_psw
+	bmask_set cpu_address_error, lr, 4
+	gget v2, 8
+	set sp, 8
+	b cpu_register_access
+
+cpu_pirq
+	bmask_set cpu_address_error, lr, 4
+	gget v2, 21
+	setl v2, 0
+	set sp, 21
+	bmask_set cpu_register_write, lr, 1
+	shr sp, v2, 9
+	clr v3
+cpu_pirq_priority
+	beq cpu_pirq_visible, sp, 0
+	shr sp, sp, 1
+	inc v3
+	b cpu_pirq_priority
+cpu_pirq_visible
+	shl sp, v3, 5
+	or v2, v2, sp
+	shl sp, v3, 1
+	or v2, v2, sp
+	b cpu_read_value
+
+cpu_register_access
+	bmask_clear cpu_read_value, lr, 1
+cpu_register_write
+	bmask_clear cpu_register_merged, lr, 2
+	seth v3, 0
+	bmask_clear cpu_register_low, v4, 1
+	shl v3, v3, 8
+	seth v2, 0
+	b cpu_register_byte
+cpu_register_low
+	setl v2, 0
+cpu_register_byte
+	or v3, v3, v2
+cpu_register_merged
+	beq cpu_psw_write, sp, 8
+	set v2, 21
+	beq cpu_pirq_write, sp, v2
+	; DCJ11 guide figure 5-1: CCR[15:11] and bit 8 always read zero.
+	set v2, $06ff
+	and v3, v3, v2
+	gset v3, 31
+	b memory_return
+
+cpu_pirq_write
+	set v2, $fe00
+	and v3, v3, v2
+	gget v2, 21
+	seth v2, 0
+	or v3, v3, v2
+	gset v3, 21		; low-byte writes leave all requests unchanged
+	b memory_return
+
+cpu_psw_write
+	gget v2, 8
+	set sp, $10
+	and sp, v2, sp
+	set lr, $ffef
+	and v3, v3, lr
+	or v3, v3, sp		; explicit PSW writes cannot change T
+	shr v2, v2, 14
+	bne cpu_psw_old_mode, v2, 2
+	clr v2
+cpu_psw_old_mode
+	shr v4, v3, 14
+	bne cpu_psw_new_mode, v4, 2
+	clr v4
+cpu_psw_new_mode
+	beq cpu_psw_commit, v2, v4
+	set sp, 16
+	add v2, v2, sp
+	add v4, v4, sp
+	gget sp, 6
+	gsetr sp, v2
+	ggetr sp, v4
+	gset sp, 6
+cpu_psw_commit
+	gset v3, 8
+	gget v2, 14
+	or v2, v2, 8		; suppress the writing instruction's implicit CC
+	gset v2, 14
+	b memory_return
+
+cpu_error_register
+	bmask_set cpu_address_error, lr, 4
+	gget v2, 23
+	bmask_clear cpu_error_read, lr, 1
+	seth v2, 0		; any byte/word write clears all CPUERR bits
+	gset v2, 23
+cpu_error_read
+	shr v2, v2, 8
+cpu_read_value
+	bmask_clear cpu_read_word, lr, 2
+	bmask_clear cpu_read_low, v4, 1
+	shr v2, v2, 8
+cpu_read_low
+	seth v2, 0
+cpu_read_word
+	mov v4, v2
+	b memory_return
+
+; Merge the highest PIR level with the already selected UART/LTC/external
+; request. PIR wins equal BR levels, except the dedicated EVENT/LTC input.
+; Preserve v0, v1 and lr (peripherals_poll's calling convention).
+cpu_interrupt_select
+	gget sp, 21
+	shr sp, sp, 9
+	clr v3
+cpu_interrupt_scan
+	beq cpu_interrupt_found, sp, 0
+	shr sp, sp, 1
+	inc v3
+	b cpu_interrupt_scan
+cpu_interrupt_found
+	beq cpu_interrupt_done, v3, 0
+	shr v4, v2, 8
+	and v4, v4, 7
+	bltu cpu_interrupt_done, v3, v4
+	bne cpu_interrupt_use, v3, v4
+	set sp, $8e40
+	beq cpu_interrupt_done, v2, sp
+cpu_interrupt_use
+	shl v2, v3, 8
+	set sp, $88a0
+	or v2, v2, sp		; vector 240, software IRQ tag, selected PIR level
+cpu_interrupt_done
+	rts
+
+cpu_bus_error
+	set v2, $2000		; CPUERR.NXM: nonexistent memory below the I/O page
+	set sp, $e000
+	bltu cpu_error_trap, v4, sp
+	set v2, $1000		; CPUERR.TMO: nonexistent I/O device
+	b cpu_error_trap
+cpu_address_error
+	set v2, $4000		; CPUERR.ADR: odd word / internal-register fetch
+	b cpu_error_trap
+cpu_illegal_halt
+	set v2, $8000		; CPUERR.HALT: HALT outside kernel mode
+cpu_error_trap
+	gget v3, 23
+	or v3, v3, v2
+	gset v3, 23
+	gget v2, 14
+	bmask_set cpu_red_stack, v2, 4
+	clr v2
+	gset v2, 14		; aborted instructions do not generate TRACE
+	set v2, 1
+	gset v2, 10
+	set sp, 4
+	far_jump trap_entry
+
+; A RED error is an abort while pushing a trap/interrupt frame, NOT a second
+; numerical stack boundary. Restart with SP=4 and the original PC/PSW.
+cpu_red_stack
+	set v3, $20
+	bmask_set cpu_double_abort, v2, v3
+	gget v3, 23
+	set v2, $0400
+	or v3, v3, v2
+	gset v3, 23
+	set v2, $26		; recovery + vector push + yellow recursion inhibit
+	gset v2, 14
+	gget v3, 8
+	shr lr, v3, 14
+	bne cpu_red_mode_ready, lr, 2
+	clr lr
+cpu_red_mode_ready
+	set sp, 4
+	set v4, 4
+	; Keep lr=old CM: the ordinary far_jump macro would overwrite it.
+	set v2, trap_entry_stack_ready
+	mov pc, v2
+cpu_double_abort
+	set v2, 4		; emergency memory unavailable; stop until console exists
+	gset v2, 10
+cpu_double_abort_stopped
+	b cpu_double_abort_stopped

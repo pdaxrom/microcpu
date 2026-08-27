@@ -29,6 +29,7 @@ module tb_j11_execute;
 	wire guest_reset;
 	integer guest_reset_count;
 	integer test_number = 0;
+	time test_started_at = 0;
 
 	j11_microengine #(
 		.UROM_WORDS(`J11_UROM_WORDS),
@@ -96,6 +97,9 @@ module tb_j11_execute;
 	task reset_engine;
 		begin
 			test_number = test_number + 1;
+			test_started_at = $time;
+			if ($test$plusargs("TRACE_TESTS"))
+				$display("J-11 execute case %0d at %0t", test_number, $time);
 			rst = 1;
 			repeat (4) @(negedge clk);
 			rst = 0;
@@ -742,10 +746,16 @@ module tb_j11_execute;
 	end
 
 	initial begin
-		#40000000;
-		$display("FAIL: J-11 execute timeout test=%0d pc=%04x ir=%04x cause=%04x upc=%04x",
-			test_number, debug_guest_pc, debug_guest_ir, debug_cause, debug_upc);
-		$finish_and_return(1);
+		// Bound each program separately; a growing suite must not consume the
+		// final program's timeout merely by passing all preceding programs.
+		forever begin
+			#100000;
+			if ($time - test_started_at > 10000000) begin
+				$display("FAIL: J-11 execute timeout test=%0d pc=%04x ir=%04x cause=%04x upc=%04x",
+					test_number, debug_guest_pc, debug_guest_ir, debug_cause, debug_upc);
+				$finish_and_return(1);
+			end
+		end
 	end
 
 endmodule

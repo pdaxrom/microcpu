@@ -43,6 +43,11 @@ static void export_banks(const regs *r)
            r->sp_mode_init ? r->sp_mode[3] : r->r[6]);
 }
 
+static void export_cpu_io(const regs *r)
+{
+    printf("[%u,%u,%u]", r->J11_CPUERR, r->J11_PIRQ, r->J11_CCR);
+}
+
 static void export_memory(const byte *mem)
 {
     int first = 1;
@@ -86,6 +91,8 @@ static int capture_step(regs *r)
     export_registers(r);
     fputs(",\"banks_before\":", stdout);
     export_banks(r);
+    fputs(",\"cpu_io_before\":", stdout);
+    export_cpu_io(r);
     fputs(",\"memory_before\":", stdout);
     export_memory(r->hwstub_mem);
     printf(",\"wait_before\":%u", r->fWait);
@@ -94,6 +101,8 @@ static int capture_step(regs *r)
     export_registers(r);
     fputs(",\"banks_after\":", stdout);
     export_banks(r);
+    fputs(",\"cpu_io_after\":", stdout);
+    export_cpu_io(r);
     fputs(",\"memory_after\":", stdout);
     export_memory(r->hwstub_mem);
     printf(",\"wait_after\":%u,\"banks_valid\":%u}\n", r->fWait, r->sp_mode_init);
@@ -142,6 +151,13 @@ int main(int argc, char **argv)
     failed += test_dcj11_spl_kernel_sets_priority();
     failed += test_dcj11_spl_user_is_nop();
     failed += test_dcj11_mtps_user_restricts_psw();
+    failed += test_dcj11_explicit_psw_write_preserves_t();
+    failed += test_dcj11_mov_to_psw_keeps_written_cc();
+    failed += test_dcj11_regblock_177752_177766_core_owned();
+    failed += test_dcj11_yellow_stack_trap_autodec_sp();
+    failed += test_dcj11_yellow_stack_trap_on_bpt_push();
+    failed += test_dcj11_stack_limit_boundary_no_trap();
+    failed += test_dcj11_trace_priority_over_yellow_stack();
     if (banks) {
         failed += test_dcj11_mode_stack_banking();
         failed += test_dcj11_mxpi_prev_mode2_uses_user_sp();
