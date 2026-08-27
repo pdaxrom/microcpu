@@ -24,6 +24,8 @@ module tb_j11_microengine;
 	wire [15:0] debug_guest_ir;
 	wire [15:0] debug_cause;
 	wire [15:0] debug_pending_irq;
+	wire guest_reset;
+	integer guest_reset_count;
 
 	j11_microengine #(
 		.UROM_WORDS(1024),
@@ -43,6 +45,7 @@ module tb_j11_microengine;
 		.irq(1'b0),
 		.irq_level(3'b0),
 		.irq_vector(8'b0),
+		.guest_reset(guest_reset),
 		.debug_upc(debug_upc),
 		.debug_guest_r0(debug_guest_r0),
 		.debug_guest_pc(debug_guest_pc),
@@ -81,15 +84,21 @@ module tb_j11_microengine;
 	);
 
 	always #5 clk = !clk;
+	always @(posedge clk) begin
+		if (guest_reset) guest_reset_count = guest_reset_count + 1;
+	end
 
 	initial begin
 		clk = 0;
 		rst = 1;
+		guest_reset_count = 0;
 		repeat (4) @(negedge clk);
 		rst = 0;
 
-		while (debug_guest_r0 != 16'h1234) @(negedge clk);
-		if (debug_guest_pc !== 16'h1234 || debug_cause !== 0 ||
+		while (debug_guest_r0 == 0 && debug_cause == 0) @(negedge clk);
+		if (debug_guest_r0 !== 16'h1234 || debug_guest_pc !== 16'h1234 ||
+				debug_guest_psw !== 0 || debug_guest_ir !== 0 ||
+				debug_cause !== 0 || debug_pending_irq !== 0 || guest_reset_count !== 0 ||
 				fram.memory[17'h02000] !== 8'h34 ||
 				fram.memory[17'h02001] !== 8'h12) begin
 			$display("FAIL: upc=%04x gpc=%04x gr0=%04x cause=%04x mem=%02x%02x",
@@ -98,7 +107,7 @@ module tb_j11_microengine;
 			$finish_and_return(1);
 		end
 
-		$display("PASS: J-11 microengine context and FRAM guest bus");
+		$display("PASS: J-11 microengine 32-word context and FRAM guest bus");
 		$finish_and_return(0);
 	end
 

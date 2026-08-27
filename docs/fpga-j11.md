@@ -36,7 +36,8 @@ architectural reserved-instruction trap path.
 
 ## Guest context
 
-The first implementation provides sixteen 16-bit context words:
+The microengine provides thirty-two 16-bit context words in one synchronous
+context RAM. Immediate and register-indexed accesses both use a five-bit index:
 
 | Index | Meaning |
 |---:|---|
@@ -48,6 +49,7 @@ The first implementation provides sixteen 16-bit context words:
 | 12..13 | reserved microcode scratch/state |
 | 14 | pre-instruction T-bit snapshot used by TRACE/RTI/RTT |
 | 15 | write-only microcode control; bit 0 pulses guest peripheral RESET |
+| 16..31 | extended microcode state; reset to zero, no special-port aliases |
 
 `GGET` and `GSET` are microengine-only aliases for the old `SWS` and `SWU`
 opcode groups. They move values between RISC registers and the guest context.

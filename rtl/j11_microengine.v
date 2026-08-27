@@ -32,13 +32,13 @@ module j11_microengine #(
 	output wire [15:0] debug_pending_irq
 );
 
-	localparam [3:0] CTX_R0      = 4'd0;
-	localparam [3:0] CTX_PC      = 4'd7;
-	localparam [3:0] CTX_PSW     = 4'd8;
-	localparam [3:0] CTX_IR      = 4'd9;
-	localparam [3:0] CTX_CAUSE   = 4'd10;
-	localparam [3:0] CTX_PENDING = 4'd11;
-	localparam [3:0] CTX_CONTROL = 4'd15;
+	localparam [4:0] CTX_R0      = 5'd0;
+	localparam [4:0] CTX_PC      = 5'd7;
+	localparam [4:0] CTX_PSW     = 5'd8;
+	localparam [4:0] CTX_IR      = 5'd9;
+	localparam [4:0] CTX_CAUSE   = 5'd10;
+	localparam [4:0] CTX_PENDING = 5'd11;
+	localparam [4:0] CTX_CONTROL = 5'd15;
 
 	localparam [3:0] ST_CLEAR    = 4'd0;
 	localparam [3:0] ST_FETCH    = 4'd1;
@@ -96,7 +96,7 @@ module j11_microengine #(
 		/* synthesis syn_ramstyle = "block_ram" */;
 	reg [15:0] r [0:7]
 		/* synthesis syn_ramstyle = "block_ram" */;
-	reg [15:0] jctx [0:15]
+	reg [15:0] jctx [0:31]
 		/* synthesis syn_ramstyle = "block_ram" */;
 
 	reg [15:0] uir;
@@ -108,7 +108,7 @@ module j11_microengine #(
 	reg [15:0] operand_dest;
 	reg [3:0] alu_flags;
 	reg [3:0] state;
-	reg [3:0] clear_index;
+	reg [4:0] clear_index;
 
 	reg [1:0] mem_kind;
 	reg [2:0] mem_dest;
@@ -134,7 +134,7 @@ module j11_microengine #(
 	wire [3:0] const4 = uir[12:9];
 	wire is_const4 = uir[8];
 	wire [7:0] immediate8 = uir[15:8];
-	wire [3:0] context_index = uir[11:8];
+	wire [4:0] context_index = uir[12:8];
 	wire [15:0] exec_pc = upc + 1'b1;
 	wire [15:0] next_pc = upc + 2'd2;
 	localparam integer UROM_ADDR_WIDTH = $clog2(UROM_WORDS);
@@ -151,12 +151,12 @@ module j11_microengine #(
 		endcase
 	end
 
-	wire [3:0] dynamic_context_index = operand_a[3:0];
+	wire [4:0] dynamic_context_index = operand_a[4:0];
 	wire context_is_dynamic =
 		kind == INST_GGETR || kind == INST_GSETR;
-	wire [3:0] context_access_index = context_is_dynamic ?
+	wire [4:0] context_access_index = context_is_dynamic ?
 		dynamic_context_index : context_index;
-	wire [3:0] context_read_address = context_access_index;
+	wire [4:0] context_read_address = context_access_index;
 	wire [15:0] context_read_value =
 		context_access_index == CTX_CAUSE ? cause_reg :
 		context_access_index == CTX_PENDING ? pending_irq_reg :
@@ -169,7 +169,7 @@ module j11_microengine #(
 	reg [15:0] host_write_data;
 
 	reg context_write_enable;
-	reg [3:0] context_write_address;
+	reg [4:0] context_write_address;
 	reg [15:0] context_write_data;
 
 	reg [16:0] alu_result;
@@ -429,7 +429,7 @@ module j11_microengine #(
 
 			case (state)
 			ST_CLEAR: begin
-				if (clear_index == 15) begin
+				if (clear_index == 31) begin
 					clear_index <= 0;
 					state <= ST_FETCH;
 				end else begin
