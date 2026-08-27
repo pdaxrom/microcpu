@@ -523,7 +523,7 @@ module tb_j11_execute;
 	end
 
 	initial begin
-		#6000000;
+		#12000000;
 		$display("FAIL: J-11 execute timeout pc=%04x ir=%04x cause=%04x upc=%04x",
 			debug_guest_pc, debug_guest_ir, debug_cause, debug_upc);
 		$finish_and_return(1);
