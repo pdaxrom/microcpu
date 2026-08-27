@@ -29,9 +29,9 @@ to infer 16-bit EBR storage, while guest memory transactions use a separate
 request/ready interface.
 
 The current uROM is 1024 x 16 bits and therefore uses two MachXO2 9-kbit EBRs.
-The assembled microprogram currently occupies 991 words, leaving 33 words for
-resident instructions and shared helpers. Unsupported opcodes retain the
-architectural reserved-instruction trap path.
+The assembled microprogram currently occupies 1021 words, leaving 3 words of
+integration margin. Unsupported opcodes retain the architectural
+reserved-instruction trap path.
 
 ## Guest context
 
@@ -150,7 +150,8 @@ make -C testbench j11-board-ucode
 
 The current hardware microprogram fetches guest words through the FRAM bus,
 stores each opcode in the guest IR context word, and advances guest PC. Its
-resident decoder implements `NOP`, `MOV/MOVB`, `CMP/CMPB`, `BIT/BITB`,
+resident decoder implements `NOP`, `SWAB`, `SXT`, `MOV/MOVB`, `CMP/CMPB`,
+`BIT/BITB`,
 `BIC/BICB`, `BIS/BISB`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`,
 `DEC/DECB`, `NEG/NEGB`, `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`,
 `ASR/ASRB`, `ASL/ASLB`, `TST/TSTB`, all
@@ -174,7 +175,8 @@ The common `ea_resolve` micro-subroutine implements all PDP-11 addressing modes
 0 through 7. It consumes extension words, applies register side effects once,
 uses a one-byte autoincrement/autodecrement step for R0..R5 byte operations,
 and retains the two-byte step for SP, PC, and deferred modes. `MOV`, `MOVB`,
-`CLR`, `CLRB`, `COM`, `COMB`, `INC`, `INCB`, `DEC`, `DECB`, `NEG`, `NEGB`,
+`SWAB`, `SXT`, `CLR`, `CLRB`, `COM`, `COMB`, `INC`, `INCB`, `DEC`, `DECB`,
+`NEG`, `NEGB`,
 `ADC`, `ADCB`, `SBC`, `SBCB`, `ROR`, `RORB`, `ROL`, `ROLB`, `ASR`, `ASRB`,
 `ASL`, `ASLB`, `TST`, `TSTB`, `CMP`, `CMPB`, `BIT`, `BITB`, `BIC`, `BICB`,
 `BIS`, `BISB`, `ADD`, and `SUB` all use this shared resolver.
@@ -190,6 +192,11 @@ explicitly normalizes the
 resolver's working width flag because its opcode has bit 15 set despite being
 word-only. All instruction behavior lives in `ucode/j11.asm`, not in the
 Verilog opcode decoder.
+`SWAB` performs a word read/modify/write through the same resolver, derives
+`N/Z` from the swapped result's low byte, and clears `V/C`.
+`SXT` writes zero or all ones according to the previous `N`, updates `N/Z`,
+clears `V`, and preserves `C`. Its decoder explicitly rejects the adjacent
+`MFPS` opcode, which remains on the reserved-instruction path.
 
 `JMP` and `JSR` also use `ea_resolve`, including indexed and deferred modes.
 Register-direct mode 0 is rejected before applying any side effects: `JMP`
@@ -241,9 +248,8 @@ make -C testbench j11-test
 
 ## Next implementation steps
 
-1. Keep the remaining 33 uROM words as integration margin, or spend them on a
-   compact high-value instruction such as `SWAB` after measuring real images.
-2. Consider a small decoder/helper refactor before adding `SXT` or `XOR`; the
+1. Keep the remaining 3 uROM words as integration margin.
+2. Consider a decoder/helper refactor before adding `XOR`, `MFPS`, or `MTPS`; the
    current 1024-word image no longer has room for another large instruction
    family without trading something out.
 3. Add a short sequential-read buffer so instruction fetches do not start a

@@ -120,6 +120,8 @@ decode
 	beq arithmetic_shift_right_operand, v3, v2	; 0062DD/1062DD: ASR/ASRB
 	setl v2, $33
 	beq arithmetic_shift_left_operand, v3, v2	; 0063DD/1063DD: ASL/ASLB
+	setl v2, $37
+	beq sign_extend_operand, v3, v2	; 0067DD: SXT
 	b reserved_instruction
 
 decode_zero
@@ -130,6 +132,7 @@ decode_zero
 	mov v2, v1
 	shr v2, v2, 6
 	beq jump, v2, 1	; 0001DD: JMP
+	beq swap_bytes_operand, v2, 3	; 0003DD: SWAB
 	mov v2, v1
 	shr v2, v2, 4
 	beq condition_clear, v2, 10	; 000240..000257
@@ -574,7 +577,8 @@ adjust_word_value
 	beq adjust_word_rotate_right, v2, 5
 	beq adjust_word_rotate_left, v2, 6
 	beq adjust_word_shift_right, v2, 7
-	b adjust_word_shift_left
+	beq adjust_word_shift_left, v2, 8
+	b adjust_word_test
 
 adjust_word_increment
 	add v3, v3, 1
@@ -653,6 +657,13 @@ adjust_word_shift_left
 	shl v3, sp, 1
 	b adjust_shift_flags
 
+adjust_word_test
+	add v2, sp, 0		; latch word-width N/Z and clear V/C
+	getf lr
+	and lr, lr, 12
+	set v1, 1
+	b adjust_merge_flags
+
 adjust_word_write
 	gget v2, 13
 	beq adjust_word_register_write, v2, 0
@@ -670,6 +681,7 @@ adjust_byte_value
 	beq adjust_byte_negative, v2, 2
 	beq adjust_byte_add_carry, v2, 3
 	beq adjust_byte_subtract_carry, v2, 4
+	beq adjust_byte_test, v2, 9
 	b adjust_byte_shift
 
 adjust_byte_increment
@@ -715,6 +727,13 @@ adjust_byte_subtract_carry
 
 adjust_byte_without_carry
 	subb v3, sp, 0		; unchanged result with fresh N/Z and clear V/C
+
+adjust_byte_test
+	subb v2, sp, 0		; latch byte-width N/Z and clear V/C
+	getf lr
+	and lr, lr, 12
+	set v1, 1
+	b adjust_merge_flags
 
 adjust_byte_replace_flags
 	getf lr
@@ -817,44 +836,40 @@ adjust_merge_mask_ready
 	gset v4, 8
 	b fetch
 
-test_operand
-	mov v2, v1
-	set sp, $3f
-	and v2, v2, sp
+swap_bytes_operand
+	shl v2, v1, 10
+	shr v2, v2, 10
 	bsr ea_resolve
-	beq test_register, v2, 0
-	blt test_byte_memory, v1, 0
-	ldr v3, v4, 0
-	b test_flags
+	beq swap_bytes_register_load, v2, 0
+	ldr sp, v4, 0
+	b swap_bytes_value
 
-test_byte_memory
-	ldrl v3, v4, 0
-	sxt v3, v3
-	b test_flags
+swap_bytes_register_load
+	ggetr sp, v4
 
-test_register
-	ggetr v3, v4
-	bge test_flags, v1, 0
-	sxt v3, v3
+swap_bytes_value
+	mov v3, sp
+	shr v3, v3, 8
+	shl sp, sp, 8
+	or v3, v3, sp
+	beq swap_bytes_register_write, v2, 0
+	str v3, v4, 0
+	b swap_bytes_flags
 
-test_flags
-	gget v4, 8
-	set v2, $fff0		; TST: clear N/Z/V/C before setting N/Z
-	and v4, v4, v2
-	beq test_zero, v3, 0
-	blt test_negative, v3, 0
-	gset v4, 8
-	b fetch
+swap_bytes_register_write
+	gsetr v3, v4
 
-test_zero
-	or v4, v4, 4
-	gset v4, 8
-	b fetch
+swap_bytes_flags
+	; SWAB derives N/Z from the result low byte and clears V/C.
+	subb v2, v3, 0
+	getf lr
+	and lr, lr, 12
+	set v1, 1
+	b adjust_merge_flags
 
-test_negative
-	or v4, v4, 8
-	gset v4, 8
-	b fetch
+test_operand
+	set v3, 9
+	b adjust_operand
 
 ; Resolve one PDP-11 effective-address specifier.  Input: v2=mode/reg,
 ; v1=IR (bit 15 selects byte width), v0=cached guest PC.  Output: v2=mode
@@ -956,6 +971,27 @@ ea_index_deferred
 	add v4, v4, sp
 	ldr v4, v4, 0
 	rts
+
+sign_extend_operand
+	blt reserved_instruction, v1, 0	; 1067DD is MFPS, not a byte SXT
+	clr v3
+	gget v2, 8
+	and v2, v2, 8
+	beq sign_extend_resolve, v2, 0
+	inv v3, v3
+
+sign_extend_resolve
+	shl v2, v1, 10
+	shr v2, v2, 10
+	bsr ea_resolve
+	beq sign_extend_register, v2, 0
+	str v3, v4, 0
+	b move_flags
+
+sign_extend_register
+	gsetr v3, v4
+	; Fall through: SXT sets N/Z from the full-word result, clears V,
+	; and preserves the old carry through the shared MOV flag path.
 
 move_flags
 	gget v4, 8
