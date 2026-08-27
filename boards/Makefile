@@ -1,15 +1,17 @@
-DIAMOND_VERSION=3.11_x64
-
 ifneq (Microsoft, $(findstring Microsoft, $(shell uname -r)))
-SCUBACMD = /usr/local/diamond/$(DIAMOND_VERSION)/ispfpga/bin/lin64/scuba
-FOUNDRY  = /usr/local/diamond/$(DIAMOND_VERSION)/ispfpga
+DIAMOND_HOME ?= $(HOME)/.local/lscc/diamond/3.14
+DIAMOND_LIBSTDCPP ?= /lib/x86_64-linux-gnu/libstdc++.so.6
+SCUBACMD = $(DIAMOND_HOME)/ispfpga/bin/lin64/scuba
+FOUNDRY  = $(DIAMOND_HOME)/ispfpga
 SCUBA = \
-	export LD_LIBRARY_PATH="/usr/local/diamond/$(DIAMOND_VERSION)/tcltk/lib:/usr/local/diamond/$(DIAMOND_VERSION)/ispfpga/bin/lin64:/usr/local/diamond/$(DIAMOND_VERSION)/bin/lin64:/usr/local/diamond/$(DIAMOND_VERSION)/ispfpga/bin/lin64"; \
+	export LD_PRELOAD="$(DIAMOND_LIBSTDCPP)"; \
+	export LD_LIBRARY_PATH="$(DIAMOND_HOME)/tcltk/lib:$(DIAMOND_HOME)/ispfpga/bin/lin64:$(DIAMOND_HOME)/bin/lin64"; \
 	export FOUNDRY="$(FOUNDRY)"; \
 	$(SCUBACMD)
 else
-SCUBACMD = /mnt/Storage/Games/lscc/diamond/3.10_x64/ispfpga/bin/nt64/scuba.exe
-FOUNDRY  = /mnt/Storage/Games/lscc/diamond/3.10_x64/ispfpga
+DIAMOND_HOME ?= /mnt/Storage/Games/lscc/diamond/3.10_x64
+SCUBACMD = $(DIAMOND_HOME)/ispfpga/bin/nt64/scuba.exe
+FOUNDRY  = $(DIAMOND_HOME)/ispfpga
 SCUBA = \
 	export FOUNDRY="$(FOUNDRY)"; \
 	export WSLENV="$WSLENV:FOUNDRY/l"; \

@@ -21,9 +21,7 @@ microlink: $(MICROLINK_OBJS)
 microdis: $(MICRODIS_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-.SUFFIXES: .bin .asm
-
-.asm.bin: include/devmap.inc include/pseudo.inc
+%.bin: %.asm include/devmap.inc include/pseudo.inc
 	./microasm -binary $< $@
 
 clean:
