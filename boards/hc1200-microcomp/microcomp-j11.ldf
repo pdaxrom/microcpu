@@ -9,6 +9,9 @@
         <Source name="../../rtl/j11_microengine.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
+        <Source name="j11_urom_ebr.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
         <Source name="../../rtl/spi_fram_guest_ram.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
@@ -18,9 +21,9 @@
         <Source name="uart.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
-        <Source name="microcomp.lpf" type="Logic Preference" type_short="LPF">
+        <Source name="j11.lpf" type="Logic Preference" type_short="LPF">
             <Options/>
         </Source>
     </Implementation>
-    <Strategy name="Strategy1" file="microcomp1.sty"/>
+    <Strategy name="Strategy1" file="j11.sty"/>
 </BaliProject>

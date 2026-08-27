@@ -20,14 +20,17 @@ endif
 
 MICROASM ?= ../asm/microasm
 OD ?= od
+PYTHON ?= python3
 include ../ucode/config.mk
 J11_UCODE_ASM = ../ucode/j11.asm
 J11_UCODE_BIN = hc1200-microcomp/j11_ucode.bin
 J11_UCODE_MEM = hc1200-microcomp/j11_ucode.mem
+J11_UCODE_EBR = hc1200-microcomp/j11_urom_ebr.v
 
-.PHONY: all clean j11-ucode
+.PHONY: all clean j11-ucode j11-diamond
+.DELETE_ON_ERROR:
 
-all: hc1200/sram.v hc1200-mcu/sram.v hc1200-mcu/srampages.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v $(J11_UCODE_MEM)
+all: hc1200/sram.v hc1200-mcu/sram.v hc1200-mcu/srampages.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v $(J11_UCODE_MEM) $(J11_UCODE_EBR)
 
 $(MICROASM): ../asm/microasm.c
 	$(MAKE) -C ../asm microasm
@@ -39,7 +42,14 @@ $(J11_UCODE_BIN): $(J11_UCODE_ASM) $(wildcard ../ucode/j11_*.asm ../ucode/j11_*.
 $(J11_UCODE_MEM): $(J11_UCODE_BIN)
 	{ printf '@0000\n'; $(OD) -An -v -tx2 $< | sed 's/[[:space:]]*$$//'; printf '@%04x\n00b0\n' $$(( $(J11_UROM_WORDS) - 1 )); } > $@
 
-j11-ucode: $(J11_UCODE_MEM)
+$(J11_UCODE_EBR): $(J11_UCODE_BIN) ../ucode/make_urom_ebr.py
+	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) > $@
+
+j11-ucode: $(J11_UCODE_MEM) $(J11_UCODE_EBR)
+
+j11-diamond: j11-ucode
+	cd hc1200-microcomp && \
+	LD_PRELOAD="$(DIAMOND_LIBSTDCPP)" "$(DIAMOND_HOME)/bin/lin64/diamondc" build-j11.tcl
 
 .INTERMEDIATE: $(J11_UCODE_BIN)
 
@@ -64,4 +74,4 @@ hc1200-microcomp/srampages.v:
 	$(SCUBA) -w -n srampages -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 12 -data_width 8 -num_words 4096 -cascade -1 -meminit0 -writemode NORMAL
 
 clean:
-	rm -f *.mem $(J11_UCODE_BIN) $(J11_UCODE_MEM) hc1200/sram.v hc1200-mcu/sram.v hc1200-mcu/srampages.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v
+	rm -f *.mem $(J11_UCODE_BIN) $(J11_UCODE_MEM) $(J11_UCODE_EBR) hc1200/sram.v hc1200-mcu/sram.v hc1200-mcu/srampages.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v

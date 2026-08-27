@@ -29,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--asm11", required=True)
     parser.add_argument("--vvp", default="vvp")
+    parser.add_argument("--testbench", default="build/tb_j11_core_reference.vvp")
     parser.add_argument("--banks", action="store_true")
     args = parser.parse_args()
     directory = Path("build/core_reference")
@@ -77,7 +78,7 @@ def main():
                  case["banks_after"] + [case["wait_before"], case["wait_after"]] +
                  case["cpu_io_before"] + case["cpu_io_after"])
         (directory / "state.hex").write_text("\n".join(f"{value:04x}" for value in state) + "\n")
-        cmd = [args.vvp, "build/tb_j11_core_reference.vvp",
+        cmd = [args.vvp, args.testbench,
                f"+FETCH_PC={labels['fetch_instruction']:x}",
                f"+WAIT_PC={labels['wait_instruction']:x}",
                f"+CHECK_BANKS={int(args.banks and bool(case['banks_valid']))}"]

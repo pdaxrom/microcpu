@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 
 module j11_hc1200_microcomp #(
-	parameter integer UROM_WORDS = 3072,
+	parameter integer UROM_WORDS = 3584,
 	parameter UCODE_FILE = "j11_ucode.mem",
 	parameter integer FRAM_CLK_DIV = 2,
 	parameter integer TICK_DIVISOR = 443333

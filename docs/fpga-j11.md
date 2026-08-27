@@ -35,20 +35,25 @@ and FIS only if it fits. MMU and FP11 remain outside the active scope.
                                       `-> raw UART/time service interface
 ```
 
-Microcode instruction fetches never use the guest bus. The uROM is intended
-to infer 16-bit EBR storage, while guest memory transactions use a separate
-request/ready interface.
+Microcode instruction fetches never use the guest bus. The current uROM is
+**3584 x 16 bits**, with **3002 words occupied and 582 free**. `ucode/config.mk`
+supplies the image size to both Makefiles; the engine and board defaults agree.
+Guest memory transactions use a separate request/ready interface.
 
-The current uROM is 3072 x 16 bits, with 3002 words occupied and
-70 free after CPU I/O and fixed-limit stack protection. `ucode/config.mk` supplies the image
-size to both Makefiles; the board top-level parameter has the same default.
-This enlarged image has been simulated on the Mac, not synthesized or placed
-in Diamond. Actual FPGA resource use and timing remain unverified for this
-revision. The previous register-file mapping used three EBRs (two for the
-byte-enabled host registers, one for guest context). Together with six EBRs
-for the enlarged ROM this exceeds the HC1200's seven blocks. This checkpoint
-is simulation-only until those small arrays are remapped to distributed RAM.
-Unsupported opcodes retain the reserved-instruction trap path.
+The 8x16 host and 32x16 guest-context arrays now use distributed RAM. Diamond
+otherwise spent three EBRs on just 80 bytes. Automatic ROM inference rounded
+3584 words up to eight EBRs, so `ucode/make_urom_ebr.py` instead packs the
+assembled binary into seven explicit PDPW8KC banks in 512x18 mode, using
+16 data bits per location. This uses all seven HC1200 EBRs without changing
+the instruction format or adding fetch cycles. The generated INITVAL strings
+and the primitive's swapped 9-bit read halves are checked against the official
+Lattice simulation model. Normal Icarus tests retain the portable array model;
+Diamond (`SYNTHESIS`) and `j11-ebr-test` select the same generated hardware ROM.
+
+The native ADD/SUB/SUBB operations share one arithmetic datapath to fit the
+device; byte borrow is derived from the low-byte result. J-11 instructions,
+registers and peripheral semantics still live exclusively in assembly.
+Unsupported guest opcodes retain the reserved-instruction trap path.
 
 ## Guest context
 
@@ -223,11 +228,12 @@ PIRQ and CCR as well as R0..R7, PSW, inactive SP banks and guest RAM:
 
 ### FIS budget decision
 
-All four FIS instructions remain **unimplemented**. After SP/CPU I/O work,
-3002 of 3072 uROM words are occupied. The remaining 70 words are insufficient
-for operand unpacking, exponent alignment, signed mantissa arithmetic,
-normalization, rounding and overflow/underflow/divide-by-zero handling for
-FADD/FSUB/FMUL/FDIV. No uROM enlargement solely for FIS has been made.
+All four FIS instructions remain **unimplemented**. The CPU I/O checkpoint had
+only 70 free words in a simulated 3072-word ROM. The approved HC1200 memory
+repacking now fits 3584 words in Diamond, leaving **582 words**. A full
+FADD/FSUB/FMUL/FDIV implementation including normalization, rounding and
+overflow/underflow/divide-by-zero handling must be assessed against that budget;
+its fit is not yet claimed.
 `fis_unavailable.asm` verifies that all four assembled opcodes enter reserved
 vector `010` without reading operands. This is a missing-feature test, not a
 FIS arithmetic test. FIS is distinct from FP11; ODT remains a later task.
@@ -295,8 +301,10 @@ Words are stored little-endian.
 ## HC1200-microcomp configuration
 
 Open `boards/hc1200-microcomp/microcomp-j11.ldf` in Diamond. It targets the
-same `LCMXO2-1200HC-4SG32C` device and reuses `microcomp.lpf`, so all package
-pin assignments stay identical to the existing board project.
+same `LCMXO2-1200HC-4SG32C` device. Its dedicated `j11.lpf` preserves the
+existing active package pin assignments, omits constraints for unused GPIO
+ports, and constrains the internal clock to 26.6 MHz. `j11.sty` is tracked
+source, independent of the ordinary project's generated `microcomp1.sty`.
 
 In this configuration `gpio_mosi`, `gpio_miso`, `gpio_msck`, and `gpio_mcs`
 are no longer software GPIO. They are wired directly to
@@ -306,12 +314,50 @@ as the DL11 console. The four generic GPIO pins are high impedance, and the
 display is blanked until their PDP-11 I/O-page mappings are implemented.
 
 Production microcode source is maintained only as assembler in
-`ucode/j11.asm`. `boards/hc1200-microcomp/j11_ucode.mem` is generated from it; it
-must not be edited by hand. Rebuild the Diamond image with:
+`ucode/j11.asm`. Both `boards/hc1200-microcomp/j11_ucode.mem` and
+`j11_urom_ebr.v` are generated from the assembled binary by `boards/Makefile`;
+neither is edited by hand or committed. Regenerate before opening Diamond:
 
 ```sh
 make -C boards j11-ucode
 ```
+
+On Linux, synthesize, place, route, check setup/hold and export a JED with:
+
+```sh
+make -C boards j11-diamond DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
+```
+
+`build-j11.tcl` rejects nonzero cumulative negative slack before exporting.
+It never programs a device. The result is
+`boards/hc1200-microcomp/impl1-j11/microcomp-j11_impl1.jed`.
+
+### HC1200 resource checkpoint (2026-08-28)
+
+Diamond 3.14 / Synplify, MachXO2-1200HC-4SG32C, completed synthesis, MAP, PAR,
+TRACE and JED export in an isolated Ubuntu checkout:
+
+| Resource | Used | Available | Free |
+|---|---:|---:|---:|
+| LUT4 | 1279 | 1280 | 1 |
+| Slices | 640 | 640 | 0 |
+| EBR | 7 | 7 | 0 |
+| Registers (PFU + PIO) | 462 | 1346 | 884 |
+| Microcode words | 3002 | 3584 | 582 |
+
+The LUT total includes 72 distributed-RAM LUTs. The existing 7 EBRs already
+reserve the full ROM capacity; changing their contents does not require more
+EBRs. There is essentially no remaining fabric budget for additional RTL.
+At 26.6 MHz, setup slack is +4.746 ns and hold slack +0.289 ns, with zero
+timing errors. TRACE reports an internal-clock maximum of 30.443 MHz.
+External I/O delays remain unconstrained (three input and five output paths);
+this is internal timing closure, not physical UART/FRAM board validation.
+
+The seven-bank initialization emits a warning about the six-pattern limit
+in **CFG_EBRUFM** mode. This project explicitly uses **CFG**, not CFG_EBRUFM;
+the configuration report confirms CFG, with no UFM pages used. The existing
+JTAG/GPIO multiplexing policy is unchanged; programming requires the board's
+normal JTAGENB arrangement. No FPGA or FRAM programming was performed.
 
 The current hardware microprogram fetches guest words through the FRAM bus,
 stores each opcode in the guest IR context word, and advances guest PC. Its
@@ -448,15 +494,30 @@ hand in the Verilog tests. The default sibling checkout can be overridden:
 make -C testbench j11-test MICROASM11_DIR=/path/to/microasm11
 ```
 
-The board-level RTL path is covered by Icarus Verilog. A Diamond synthesis
-and place-and-route run is still required to record final LUT, EBR, timing,
-and SPI-clock margins on the physical MachXO2-1200 target.
+The board-level RTL path is covered by Icarus Verilog, and the Diamond
+resource/internal-timing result is recorded above. Physical UART/FRAM timing
+and board operation remain unverified.
 
 Run the new tests with:
 
 ```sh
 make -C testbench j11-test
 ```
+
+The native ALU unit test checks 82,163 result/NZVC combinations, including all
+65,536 byte subtractions; three Python tests verify EBR packing and bounds.
+To verify the generated hardware ROM using the installed vendor models:
+
+```sh
+make -C testbench j11-ebr-test LATTICE_SIM_DIR=/path/to/diamond/cae_library/simulation/verilog/machxo2
+```
+
+This checks all 3584 words, bank boundaries and clock-enable holds, then runs
+the assembled guest instruction/CPU-I/O suites and the 201 no-MMU core
+snapshots through that same hardware ROM. Vendor library files remain
+external dependencies and are not copied into the repository.
+The final hardware-ROM run passed all word checks, guest suites and 201/201
+reference snapshots (including 29 EIS), as did the portable-ROM regression.
 
 ## Deferred follow-up candidates
 

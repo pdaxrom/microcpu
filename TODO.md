@@ -126,9 +126,10 @@ needed for this acceptance step. Deferred work below remains deferred.
     Full FIS with normalization, rounding and arithmetic errors does not fit
     this remainder. It is not implemented; no partial arithmetic is claimed.
     `fis_unavailable.asm` checks all four opcodes still trap through `010`.
-    The user now approved checking a larger uROM via distributed register RAM
-    and Diamond. Reassess FIS after that fit check; ODT remains deferred.
-- [ ] Move the 8x16 host and 32x16 context arrays to distributed RAM; check
+  - [x] Approved uROM expansion fits Diamond: **3002/3584 words, 582 free**.
+  - [ ] Reassess all four FIS instructions against the recovered 582 words;
+    their arithmetic/rounding/error handling is not implemented yet.
+- [x] Move the 8x16 host and 32x16 context arrays to distributed RAM; check
   3584x16 uROM packing, total LUT/EBR use and timing on HC1200 in Diamond.
 - [x] Full local regression and source-only checkpoint for CPU I/O/stack work.
 
@@ -158,6 +159,20 @@ suites and 201/201 reference snapshots (29 EIS). Board/testbench uROM images
 match. Legacy PSW/privileged/MARK test stacks were moved or restored above
 0400; explicit stack-fault tests still exercise the protected region.
 
+HC1200 uROM fit check (2026-08-28): the generated ROM uses seven explicit
+512x18 EBRs, and both small register arrays use distributed RAM. A shared
+native ADD/SUB/SUBB datapath saves the final 20 LUTs without adding an opcode
+or changing microinstruction cycles. Diamond 3.14 completes PAR and JED:
+1279/1280 LUTs, 640/640 slices, 7/7 EBRs, 462/1346 registers. Internal timing
+passes at 26.6 MHz (30.443 MHz reported maximum, setup +4.746 ns, hold +0.289 ns).
+The 3584-word uROM has 582 words free, but fabric is effectively full.
+No board programming was performed; external I/O delays remain unverified.
+Final Mac verification passes all ten simulation suites plus three ROM-packer
+unit tests, 82,163 native ALU checks and 201/201 C-core snapshots (29 EIS).
+The generated EBR ROM also passes all 3584 word/enable checks, the assembled
+instruction and CPU-I/O suites, and the same 201/201 C-core snapshots using
+Lattice's simulation models.
+
 ### Deferred: not part of the active follow-up
 
 - [ ] Full `MFPI`, `MTPI`, `MFPD`, `MTPD` previous-mode/space semantics.
@@ -172,8 +187,8 @@ match. Legacy PSW/privileged/MARK test stacks were moved or restored above
 - [ ] CIS.
 - [ ] SPI sequential-read buffering and broader randomized differential tests:
   future candidates beyond the requested existing core tests.
-- [ ] Diamond synthesis/place-and-route and physical-board verification:
-  wait for a separate request.
+- [ ] Physical-board UART/FRAM verification and external I/O timing constraints:
+  wait for a separate request; Diamond resource/internal-timing checks are done.
 
 The earlier PSW privilege work (`d2373b6`) and 32-word context expansion
 (`ba424e8`) remain committed. They do not expand the active plan; do not roll

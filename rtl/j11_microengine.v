@@ -1,7 +1,13 @@
 `timescale 1ns/1ps
 
+// Diamond uses the generated, explicitly packed MachXO2 ROM. The same path
+// can be selected in Icarus with -DJ11_EBR_UROM and Lattice's EBR models.
+`ifdef SYNTHESIS
+`define J11_EBR_UROM
+`endif
+
 module j11_microengine #(
-	parameter integer UROM_WORDS = 2048,
+	parameter integer UROM_WORDS = 3584,
 	parameter UCODE_FILE = "",
 	parameter [15:0] BUS_ERROR_PC = 16'h0002
 ) (
@@ -89,17 +95,15 @@ module j11_microengine #(
 	localparam [2:0] CMP_GEU = 3'd7;
 
 	/*
-	 * The microcode ROM and both register files deliberately use EBRs. One
-	 * synchronous read port is enough because operand fetch is serialized.
+	 * Reserve EBRs for microcode. The 80-byte register/context state belongs
+	 * in distributed RAM; synchronous reads keep the serialized operand ABI.
 	 */
-	reg [15:0] urom [0:UROM_WORDS-1]
-		/* synthesis syn_ramstyle = "block_ram" */;
 	reg [15:0] r [0:7]
-		/* synthesis syn_ramstyle = "block_ram" */;
+		/* synthesis syn_ramstyle = "distributed" */;
 	reg [15:0] jctx [0:31]
-		/* synthesis syn_ramstyle = "block_ram" */;
+		/* synthesis syn_ramstyle = "distributed" */;
 
-	reg [15:0] uir;
+	wire [15:0] uir;
 	reg [15:0] upc;
 	reg [15:0] host_read_data;
 	reg [15:0] context_read_data;
@@ -118,7 +122,7 @@ module j11_microengine #(
 	reg [4:0] shift_count;
 	reg shift_left;
 
-	/* Fixed debug mirrors avoid asynchronous ports on the context EBR. */
+	/* Fixed debug mirrors avoid extra read ports on the context RAM. */
 	reg [15:0] guest_r0_mirror;
 	reg [15:0] guest_pc_mirror;
 	reg [15:0] guest_psw_mirror;
@@ -174,6 +178,15 @@ module j11_microengine #(
 
 	reg [16:0] alu_result;
 	reg [8:0] alu_byte_result;
+	// Shared add/subtract datapath serves word operations and byte SUBB.
+	// Invert the extended B operand for subtraction so bit 16 stays borrow,
+	// matching the native ALU ABI (rather than the adder's not-borrow carry).
+	wire arithmetic_subtract = kind != ALU_ADD;
+	wire [16:0] arithmetic_result = {1'b0, operand_a} +
+		{arithmetic_subtract, operand_b ^ {16{arithmetic_subtract}}} +
+		arithmetic_subtract;
+	wire byte_borrow = (!operand_a[7] && operand_b[7]) ||
+		((!operand_a[7] || operand_b[7]) && arithmetic_result[7]);
 	wire flag_z = alu_result[15:0] == 0;
 	wire flag_c = alu_result[16];
 	wire flag_n = alu_result[15];
@@ -192,6 +205,15 @@ module j11_microengine #(
 		{shift_value[14:0], 1'b0} : {1'b0, shift_value[15:1]};
 	wire shift_carry = shift_left && shift_value[15];
 
+	`ifdef J11_EBR_UROM
+	wire [11:0] ebr_address = urom_address;
+	j11_urom_ebr #(.WORDS(UROM_WORDS)) microcode_rom (
+		.clk(clk), .rst(rst), .enable(state == ST_FETCH && !rst),
+		.address(ebr_address), .data(uir)
+	);
+	`else
+	reg [15:0] urom [0:UROM_WORDS-1];
+	reg [15:0] urom_data;
 	integer i;
 	initial begin
 		for (i = 0; i < UROM_WORDS; i = i + 1) begin
@@ -201,6 +223,12 @@ module j11_microengine #(
 			$readmemh(UCODE_FILE, urom);
 		end
 	end
+	always @(posedge clk) begin
+		if (rst) urom_data <= 0;
+		else if (state == ST_FETCH) urom_data <= urom[urom_address];
+	end
+	assign uir = urom_data;
+	`endif
 
 	function compare_true;
 		input [2:0] condition;
@@ -225,13 +253,12 @@ module j11_microengine #(
 		case (kind)
 		ALU_SEXT: alu_result = {1'b0, {8{operand_a[7]}}, operand_a[7:0]};
 		ALU_SUBB: begin
-			alu_byte_result = {1'b0, operand_a[7:0]} -
-				{1'b0, operand_b[7:0]};
+			alu_byte_result = {byte_borrow, arithmetic_result[7:0]};
 			alu_result = {9'b0, alu_byte_result[7:0]};
 		end
-		ALU_ADD:  alu_result = {1'b0, operand_a} + {1'b0, operand_b};
+		ALU_ADD,
 		ALU_CMP,
-		ALU_SUB:  alu_result = {1'b0, operand_a} - {1'b0, operand_b};
+		ALU_SUB:  alu_result = arithmetic_result;
 		ALU_BIT,
 		ALU_AND:  alu_result = {1'b0, operand_a & operand_b};
 		ALU_OR:   alu_result = {1'b0, operand_a | operand_b};
@@ -277,7 +304,7 @@ module j11_microengine #(
 		end
 	end
 
-	/* Centralized write ports keep both arrays inferable as EBRs. */
+	/* Centralized write ports keep both arrays inferable as memories. */
 	always @* begin
 		host_write_enable = 0;
 		host_write_low = 0;
@@ -394,7 +421,6 @@ module j11_microengine #(
 
 	always @(posedge clk) begin
 		if (rst) begin
-			uir <= 0;
 			upc <= 0;
 			state <= ST_CLEAR;
 			clear_index <= 0;
@@ -438,7 +464,6 @@ module j11_microengine #(
 			end
 
 			ST_FETCH: begin
-				uir <= urom[urom_address];
 				state <= ST_READ_A;
 			end
 
