@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BaliProject version="3.2" title="microcomp-j11" device="LCMXO2-1200HC-4SG32C" default_implementation="impl1">
+    <Options/>
+    <Implementation title="impl1" dir="impl1-j11" description="J-11 microengine with SPI FRAM guest RAM" synthesis="synplify" default_strategy="Strategy1">
+        <Options def_top="j11_hc1200_microcomp"/>
+        <Source name="j11_microcomp.v" type="Verilog" type_short="Verilog">
+            <Options top_module="j11_hc1200_microcomp"/>
+        </Source>
+        <Source name="../../rtl/j11_microengine.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="../../rtl/spi_fram_guest_ram.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="j11_guest_bus.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="uart.v" type="Verilog" type_short="Verilog">
+            <Options/>
+        </Source>
+        <Source name="microcomp.lpf" type="Logic Preference" type_short="LPF">
+            <Options/>
+        </Source>
+    </Implementation>
+    <Strategy name="Strategy1" file="microcomp1.sty"/>
+</BaliProject>

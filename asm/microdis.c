@@ -289,10 +289,18 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         snprintf(buf, size, "mov %s, %s", regs[arg1], regs[arg2]);
         break;
     case 0x12:
-        snprintf(buf, size, "sws");
+        if (arg1 == 0 && hi == 0) {
+            snprintf(buf, size, "sws");
+        } else {
+            snprintf(buf, size, "gget %s, $%X", regs[arg1], hi & 0x0f);
+        }
         break;
     case 0x14:
-        snprintf(buf, size, "swu");
+        if (arg1 == 0 && hi == 0) {
+            snprintf(buf, size, "swu");
+        } else {
+            snprintf(buf, size, "gset %s, $%X", regs[arg1], hi & 0x0f);
+        }
         break;
     case 0x16: {
         int rel = (arg1 << 8) | (arg2 << 5) | arg3;
@@ -303,10 +311,21 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         break;
     }
     case 0x18:
-        snprintf(buf, size, "setp %s", regs[arg1]);
+        if (arg2 == 0) {
+            snprintf(buf, size, "setp %s", regs[arg1]);
+        } else {
+            snprintf(buf, size, "ggetr %s, %s", regs[arg1], regs[arg2]);
+        }
         break;
     case 0x1a:
-        snprintf(buf, size, "getp %s", regs[arg1]);
+        if (arg2 == 0) {
+            snprintf(buf, size, "getp %s", regs[arg1]);
+        } else {
+            snprintf(buf, size, "gsetr %s, %s", regs[arg1], regs[arg2]);
+        }
+        break;
+    case 0x1c:
+        snprintf(buf, size, "getf %s", regs[arg1]);
         break;
     case 0x01: {
         static const char *ext[] = {
@@ -326,6 +345,10 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         break;
     case 0x09:
         snprintf(buf, size, "sxt %s, %s", regs[arg1], regs[arg2]);
+        break;
+    case 0x0b:
+        snprintf(buf, size, "subb %s, %s, %s", regs[arg1], regs[arg2],
+                 reg_or_imm(arg3, tmp, sizeof(tmp)));
         break;
     case 0x11:
         snprintf(buf, size, "add %s, %s, %s", regs[arg1], regs[arg2],

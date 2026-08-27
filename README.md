@@ -25,6 +25,7 @@
 * [Lattice Diamond programmer and ftdi jtag dual channel board](#lattice-diamond-programmer-and-ftdi-jtag-dual-channel-board)
 * [Microcontroller with Lattice MachXO2-1200 microboard](docs/hc1200-mcu.md)
 * [Microcomputer with Lattice MachXO2-1200](docs/hc1200-microcomp.md)
+* [FPGA J-11 microengine](docs/fpga-j11.md)
 
 ## Registers
 

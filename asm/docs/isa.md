@@ -126,6 +126,11 @@ All instructions are 1 word (2 bytes). Operand forms are written using:
 | `b` | `REL11` | 1 | Control Flow | relative branch |
 | `setp` | `R` | 1 | CPU/Mode Control | set user PC |
 | `getp` | `R` | 1 | CPU/Mode Control | get user PC |
+| `gget` | `R, I8` | 1 | J-11 Microengine | read guest context word |
+| `gset` | `R, I8` | 1 | J-11 Microengine | write guest context word |
+| `ggetr` | `R, R` | 1 | J-11 Microengine | indexed guest context read |
+| `gsetr` | `R, R` | 1 | J-11 Microengine | indexed guest context write |
+| `getf` | `R` | 1 | J-11 Microengine | read the last data-ALU NZVC flags |
 | `eq` | `R, R` or `R, I4` | 1 | Control Flow | skip if equal |
 | `ne` | `R, R` or `R, I4` | 1 | Control Flow | skip if not equal |
 | `mi` | `R, R` or `R, I4` | 1 | Control Flow | skip if negative |
@@ -139,6 +144,7 @@ All instructions are 1 word (2 bytes). Operand forms are written using:
 | `sxt` | `R, R` | 1 | Arithmetic/Logic | sign-extend low byte |
 | `add` | `R, R, R` or `R, R, I4` | 1 | Arithmetic/Logic | add |
 | `sub` | `R, R, R` or `R, R, I4` | 1 | Arithmetic/Logic | subtract |
+| `subb` | `R, R, R` or `R, R, I4` | 1 | J-11 Microengine | subtract low bytes and latch byte NZVC |
 | `shl` | `R, R, R` or `R, R, I4` | 1 | Arithmetic/Logic | shift left |
 | `shr` | `R, R, R` or `R, R, I4` | 1 | Arithmetic/Logic | shift right |
 | `and` | `R, R, R` or `R, R, I4` | 1 | Arithmetic/Logic | bitwise and |
@@ -166,11 +172,12 @@ Operand-to-arg mappings:
   - arg2 = source register
   - arg3 = 0
 
-- op_reg (`setp`, `getp`):
+- op_reg (`setp`, `getp`, `getf`):
   - arg1 = register
   - arg2 = arg3 = 0
 
-- op_reg_reg_reg (`ldrl`, `strl`, `ldr`, `str`, `add`, `sub`, `shl`, `shr`, `and`, `or`, `xor`):
+- op_reg_reg_reg (`ldrl`, `strl`, `ldr`, `str`, `add`, `sub`, `subb`,
+  `shl`, `shr`, `and`, `or`, `xor`):
   - arg1 = destination register
   - arg2 = source register
   - arg3 = either:
@@ -293,6 +300,14 @@ Operand-to-arg mappings:
   - `sub v0, v1, v2`
   - `sub v0, v1, 6`
 - Notes: I4 immediate must be <= 16 (16 wraps to 0 in hardware)
+
+#### subb
+- Syntax: `subb R, R, R` or `subb R, R, I4`
+- Encoding: op = 0x0B, op_reg_reg_reg
+- Microengine semantics: subtract the low bytes, zero-extend the result into
+  `R[dest]`, and latch byte-width NZVC for a following `getf`.
+- This opcode is implemented only by `rtl/j11_microengine.v`; the original
+  `rtl/cpu.v` is unchanged.
 
 #### shl
 - Syntax: `shl R, R, R` or `shl R, R, I4`
@@ -459,6 +474,41 @@ Operand-to-arg mappings:
 - Notes: skip is `PC += 2` (bytes)
 
 ### CPU / Mode Control
+
+`gget` and `gset` are aliases used only by `rtl/j11_microengine.v`. They reuse
+the `sws` and `swu` opcode groups respectively; the original `rtl/cpu.v`
+continues to interpret those groups as mode-control instructions.
+
+#### gget
+- Syntax: `gget R, I8`
+- Encoding: op = 0x12, op_reg_const
+- Microengine semantics: `R[dest] = JCTX[I8 & 0x0f]`
+
+#### gset
+- Syntax: `gset R, I8`
+- Encoding: op = 0x14, op_reg_const
+- Microengine semantics: `JCTX[I8 & 0x0f] = R[src]`
+
+#### ggetr
+- Syntax: `ggetr Rdest, Rindex`
+- Encoding: op = 0x18, op_reg_reg
+- Microengine semantics: `Rdest = JCTX[Rindex & 0x0f]`
+- The original `cpu.v` continues to use this opcode group for `setp`.
+
+#### gsetr
+- Syntax: `gsetr Rsrc, Rindex`
+- Encoding: op = 0x1a, op_reg_reg
+- Microengine semantics: `JCTX[Rindex & 0x0f] = Rsrc`
+- The original `cpu.v` continues to use this opcode group for `getp`.
+
+#### getf
+- Syntax: `getf R`
+- Encoding: op = 0x1C, op_reg
+- Microengine semantics: `R[dest] = {12'b0, NZVC}` from the most recent
+  data-producing ALU operation. Compare/bit-test skip operations do not replace
+  the saved flags, so microcode can branch between an ALU operation and `getf`.
+- This opcode is implemented only by `rtl/j11_microengine.v`; the original
+  `rtl/cpu.v` is unchanged.
 
 #### sws
 - Syntax: `sws`

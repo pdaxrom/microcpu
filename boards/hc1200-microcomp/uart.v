@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 module uart(
 	input wire clk,
 	input wire reset,
@@ -7,7 +9,9 @@ module uart(
 	input wire rnw,
 	input wire cs,
 	input wire rxd,
-	output wire txd
+	output wire txd,
+	output wire rx_ready,
+	output wire tx_ready
 	);
 
 	// CLKSPEED is the main clock speed
@@ -42,6 +46,8 @@ module uart(
 	wire rx_full = !rx_shift_reg[0]; 
 	wire tx_busy = tx_shift_reg != 11'b1;
 	assign txd = tx_shift_reg[0];
+	assign rx_ready = rx_full;
+	assign tx_ready = !tx_busy;
 	assign dout = a0 ? rx_shift_reg[9:2] : { 6'b0, tx_busy, rx_full };
 
 	// UART Receiver

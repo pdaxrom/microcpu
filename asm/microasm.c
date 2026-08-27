@@ -103,6 +103,12 @@ static OpCode opcode_table[] = {
 
     { "sws", op_noargs, 0x12, 0x0  },
     { "swu", op_noargs, 0x14, 0x0  },
+    /* J-11 microengine aliases; these opcodes replace SWS/SWU in ucode. */
+    { "gget", op_reg_const, 0x12, 0x0  },
+    { "gset", op_reg_const, 0x14, 0x0  },
+    { "ggetr", op_reg_reg, 0x18, 0x0  },
+    { "gsetr", op_reg_reg, 0x1a, 0x0  },
+    { "getf", op_reg, 0x1c, 0x0  },
 
     { "b", op_rel, 0x16, 0x0  },
     { "setp", op_reg, 0x18, 0x0  },
@@ -121,6 +127,7 @@ static OpCode opcode_table[] = {
     { "bts", op_ext_reg_reg, 0x03, 0x1  },
 
     { "sxt", op_reg_reg, 0x09, 0x0  },
+    { "subb", op_reg_reg_reg, 0x0b, 0x0  },
 
     { "add", op_reg_reg_reg, 0x11, 0x0  },
     { "sub", op_reg_reg_reg, 0x13, 0x0  },
