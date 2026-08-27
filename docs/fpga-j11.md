@@ -145,7 +145,7 @@ Production microcode source is maintained only as assembler in
 must not be edited by hand. Rebuild the Diamond image with:
 
 ```sh
-make -C testbench j11-board-ucode
+make -C boards j11-ucode
 ```
 
 The current hardware microprogram fetches guest words through the FRAM bus,

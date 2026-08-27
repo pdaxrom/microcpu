@@ -23,7 +23,6 @@ J11_BOARD_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_r
 J11_BOARD_EXECUTE_VSRC = $(BOARD_STUBS) ../rtl/j11_microengine.v ../rtl/spi_fram_guest_ram.v ../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v ../boards/hc1200-microcomp/j11_microcomp.v spi_fram_model.v board/tb_board_j11_execute.v
 J11_ENGINE_ASM = ucode/j11_microengine_smoke.asm
 J11_UCODE_ASM = ../ucode/j11.asm
-J11_BOARD_UCODE = ../boards/hc1200-microcomp/j11_ucode.mem
 J11_UROM_WORDS = 1024
 J11_GUEST_PROGRAMS = $(wildcard j11_programs/*.asm)
 J11_GUEST_HEXES = $(patsubst j11_programs/%.asm,build/guest_%.hex,$(J11_GUEST_PROGRAMS))
@@ -152,10 +151,8 @@ build/guest_%.bin: j11_programs/%.asm | build check-microasm11
 $(J11_GUEST_HEXES): build/guest_%.hex: build/guest_%.bin
 	{ printf '@0000\n'; $(OD) -An -tx1 -v $<; } > $@
 
-$(J11_BOARD_UCODE): build/j11_ucode.words
-	cp $< $@
-
-j11-board-ucode: $(J11_BOARD_UCODE)
+j11-board-ucode:
+	$(MAKE) -C ../boards j11-ucode
 
 build/tb_j11_fetch.vvp: $(J11_FETCH_VSRC) | build
 	$(IVERILOG) -g2012 -Wall -s tb_j11_fetch -o $@ $(J11_FETCH_VSRC)
