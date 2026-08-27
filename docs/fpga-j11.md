@@ -12,7 +12,13 @@ traps, and interrupts will be implemented by replaceable microcode.
 - one J-11 register set
 - guest RAM backed by the board's 128 KiB SPI FRAM
 - integer instruction set first
-- FP11, CIS, and memory management deferred
+- FIS, FP11, CIS, and memory management deferred
+
+The agreed priority instruction checklist and active acceptance work are in
+[`TODO.md`](../TODO.md#j-11-v1-active-plan-no-mmu). That plan governs V1:
+banked stack pointers and floating point are not current implementation tasks.
+Existing simplified previous-space and PSW-mode support does not change this
+boundary.
 
 ## Data paths
 
@@ -294,7 +300,10 @@ Run the new tests with:
 make -C testbench j11-test
 ```
 
-## Next implementation steps
+## Deferred follow-up candidates
+
+These are not part of the active V1 instruction plan in `TODO.md` and are not
+to be started automatically after its acceptance checks pass.
 
 1. Add a short sequential-read buffer so instruction fetches do not start a
    new SPI command and address phase for every word.
