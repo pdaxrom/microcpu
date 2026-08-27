@@ -26,6 +26,8 @@ module tb_j11_execute;
 	wire [15:0] debug_guest_ir;
 	wire [15:0] debug_cause;
 	wire [15:0] debug_pending_irq;
+	wire guest_reset;
+	integer guest_reset_count;
 
 	j11_microengine #(
 		.UROM_WORDS(2048),
@@ -45,6 +47,7 @@ module tb_j11_execute;
 		.irq(irq),
 		.irq_level(irq_level),
 		.irq_vector(irq_vector),
+		.guest_reset(guest_reset),
 		.debug_upc(debug_upc),
 		.debug_guest_r0(debug_guest_r0),
 		.debug_guest_pc(debug_guest_pc),
@@ -83,6 +86,11 @@ module tb_j11_execute;
 	);
 
 	always #5 clk = !clk;
+	always @(posedge clk) begin
+		if (guest_reset) begin
+			guest_reset_count = guest_reset_count + 1;
+		end
+	end
 
 	task reset_engine;
 		begin
@@ -124,6 +132,7 @@ module tb_j11_execute;
 		irq = 0;
 		irq_level = 0;
 		irq_vector = 0;
+		guest_reset_count = 0;
 
 		#1;
 		$readmemh("build/guest_basic.hex", fram.memory);
@@ -588,7 +597,25 @@ module tb_j11_execute;
 			$finish_and_return(1);
 		end
 
-		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, WAIT, MFPT, SPL, JMP/JSR/RTS, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
+		$readmemh("build/guest_reset_rtt.hex", fram.memory);
+		guest_reset_count = 0;
+		reset_engine();
+		irq_level = 3'd0;
+		irq_vector = 8'o060;
+		irq = 1;
+		repeat (2) @(negedge clk);
+		irq = 0;
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 16'o000001 ||
+				guest_reset_count !== 1 || debug_pending_irq !== 0) begin
+			$display("FAIL: J-11 RESET/RTT pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o reset_count=%0d pending=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[1], debug_guest_psw, guest_reset_count,
+				debug_pending_irq, debug_cause);
+			$finish_and_return(1);
+		end
+
+		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, RESET/RTT/TRACE, WAIT, MFPT, SPL, JMP/JSR/RTS, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
 		$finish_and_return(0);
 	end
 

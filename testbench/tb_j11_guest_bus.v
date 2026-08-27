@@ -3,6 +3,7 @@
 module tb_j11_guest_bus;
 	reg clk;
 	reg rst;
+	reg guest_reset;
 	reg req;
 	reg write;
 	reg byte_access;
@@ -29,6 +30,7 @@ module tb_j11_guest_bus;
 	) dut (
 		.clk(clk),
 		.rst(rst),
+		.guest_reset(guest_reset),
 		.req(req),
 		.write(write),
 		.byte_access(byte_access),
@@ -113,6 +115,7 @@ module tb_j11_guest_bus;
 	initial begin
 		clk = 0;
 		rst = 1;
+		guest_reset = 0;
 		req = 0;
 		write = 0;
 		byte_access = 0;
@@ -140,6 +143,15 @@ module tb_j11_guest_bus;
 				irq, irq_level, irq_vector);
 			$finish_and_return(1);
 		end
+		guest_reset = 1;
+		@(negedge clk);
+		guest_reset = 0;
+		@(negedge clk);
+		if (irq || dut.rx_ie !== 0 || dut.tx_ie !== 0) begin
+			$display("FAIL: guest RESET did not clear DL11 interrupt enables");
+			$finish_and_return(1);
+		end
+		bus_write(0, 1, 16'hff74, 16'h0040, 0);
 
 		bus_write(0, 1, 16'hff76, 16'h0041, 0);
 		if (uart_tx !== 0 || irq) begin

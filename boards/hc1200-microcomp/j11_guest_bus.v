@@ -5,6 +5,7 @@ module j11_hc1200_guest_bus #(
 ) (
 	input  wire        clk,
 	input  wire        rst,
+	input  wire        guest_reset,
 
 	input  wire        req,
 	input  wire        write,
@@ -79,7 +80,7 @@ module j11_hc1200_guest_bus #(
 
 	uart console (
 		.clk(clk),
-		.reset(rst),
+		.reset(rst || guest_reset),
 		.a0(uart_a0),
 		.din(wdata[7:0]),
 		.dout(uart_dout),
@@ -101,7 +102,7 @@ module j11_hc1200_guest_bus #(
 	assign irq_vector = (rx_ie && uart_rx_ready) ? 8'o60 : 8'o64;
 
 	always @(posedge clk) begin
-		if (rst) begin
+		if (rst || guest_reset) begin
 			io_rdata <= 0;
 			io_ready <= 0;
 			io_error <= 0;

@@ -45,7 +45,9 @@ The first implementation provides sixteen 16-bit context words:
 | 9 | current J-11 instruction word |
 | 10 | latched cause: `1` bus/address error, `2` reserved instruction, `3` HALT |
 | 11 | pending IRQ: bit 15 valid, bits 10..8 level, bits 7..0 vector |
-| 12..15 | reserved microcode scratch/state |
+| 12..13 | reserved microcode scratch/state |
+| 14 | pre-instruction T-bit snapshot used by TRACE/RTI/RTT |
+| 15 | write-only microcode control; bit 0 pulses guest peripheral RESET |
 
 `GGET` and `GSET` are microengine-only aliases for the old `SWS` and `SWU`
 opcode groups. They move values between RISC registers and the guest context.
@@ -164,11 +166,16 @@ provide subroutine and loop control flow. `BPT`, `IOT`, `EMT`, and `TRAP` enter
 their architectural vectors through the common trap path, and `HALT` enters
 the stopped path. `WAIT` stalls until an interrupt request is latched, `MFPT`
 reports DCJ11 processor type 5 in R0, and `SPL` updates only `PSW[7:5]` in the
-current single-mode configuration.
+current single-mode configuration. Kernel-mode `RESET` clears the latched IRQ
+and resets the DL11 state without erasing or resetting the FRAM; RESET in a
+non-kernel current mode is a NOP.
 Reserved instructions enter PDP-11 vector `010`, save the post-instruction PC
-and old PSW on the guest stack, and can return with `RTI`. Version 1 currently
-uses this only as the architectural invalid-instruction path; no guest
-instruction emulator is installed.
+and old PSW on the guest stack, and can return with `RTI` or `RTT`. The engine
+snapshots T when it fetches each guest instruction, gives TRACE vector `014`
+priority at the following instruction boundary, traces immediately when RTI
+restores T, and implements RTT's one-instruction trace suppression. Version 1
+currently uses the reserved-instruction path only as an architectural trap; no
+guest instruction emulator is installed.
 Latched external interrupts are accepted at guest instruction boundaries and
 enter the supplied even vector through the same stack-frame path. The engine
 latches the three-bit BR level with the vector and accepts it only when that
@@ -257,8 +264,7 @@ make -C testbench j11-test
 
 ## Next implementation steps
 
-1. Add the remaining non-MMU system instructions (`RESET` and `RTT`) before the
-   larger EIS arithmetic group.
+1. Add the EIS arithmetic group (`MUL`, `DIV`, `ASH`, and `ASHC`).
 2. Add a short sequential-read buffer so instruction fetches do not start a
    new SPI command and address phase for every word.
 3. Differentially compare each guest step with the existing C J-11 core.

@@ -38,6 +38,7 @@ module j11_hc1200_microcomp #(
 	wire        guest_ready;
 	wire        guest_error;
 	wire        guest_busy;
+	wire        guest_reset;
 	wire        guest_irq;
 	wire [2:0]  guest_irq_level;
 	wire [7:0]  guest_irq_vector;
@@ -71,6 +72,7 @@ module j11_hc1200_microcomp #(
 	) guest_bus (
 		.clk(clk),
 		.rst(reset),
+		.guest_reset(guest_reset),
 		.req(guest_req),
 		.write(guest_write),
 		.byte_access(guest_byte),
@@ -110,6 +112,7 @@ module j11_hc1200_microcomp #(
 		.irq(guest_irq),
 		.irq_level(guest_irq_level),
 		.irq_vector(guest_irq_vector),
+		.guest_reset(guest_reset),
 		.debug_upc(debug_upc),
 		.debug_guest_r0(debug_guest_r0),
 		.debug_guest_pc(debug_guest_pc),

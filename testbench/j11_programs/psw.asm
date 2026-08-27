@@ -1,6 +1,13 @@
 	cpu dcj-11
 	org 0
 
+	br start
+
+	org 014
+	dw trace_handler
+	dw 0
+
+	org 040
 start
 	; Seed H and T through RTI.  MTPS must preserve both bits.
 	mov #return_frame, sp
@@ -62,6 +69,10 @@ fail
 return_frame
 	dw after_rti
 	dw 0420			; H and T
+
+	org 0700
+trace_handler
+	rtt			; keep T set and allow one guest instruction
 
 	org 01000
 byte_target

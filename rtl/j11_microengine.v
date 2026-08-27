@@ -21,6 +21,7 @@ module j11_microengine #(
 	input  wire        irq,
 	input  wire [2:0]  irq_level,
 	input  wire [7:0]  irq_vector,
+	output reg         guest_reset,
 
 	output wire [15:0] debug_upc,
 	output wire [15:0] debug_guest_r0,
@@ -37,6 +38,7 @@ module j11_microengine #(
 	localparam [3:0] CTX_IR      = 4'd9;
 	localparam [3:0] CTX_CAUSE   = 4'd10;
 	localparam [3:0] CTX_PENDING = 4'd11;
+	localparam [3:0] CTX_CONTROL = 4'd15;
 
 	localparam [3:0] ST_CLEAR    = 4'd0;
 	localparam [3:0] ST_FETCH    = 4'd1;
@@ -374,7 +376,8 @@ module j11_microengine #(
 		end else if (state == ST_EXEC && !op[0] &&
 				(kind == INST_GSET || kind == INST_GSETR) &&
 				context_access_index != CTX_CAUSE &&
-				context_access_index != CTX_PENDING) begin
+				context_access_index != CTX_PENDING &&
+				context_access_index != CTX_CONTROL) begin
 			context_write_enable = 1;
 			context_write_address = context_access_index;
 			context_write_data = operand_dest;
@@ -417,7 +420,9 @@ module j11_microengine #(
 			guest_ir_mirror <= 0;
 			cause_reg <= 0;
 			pending_irq_reg <= 0;
+			guest_reset <= 0;
 		end else begin
+			guest_reset <= 0;
 			if (irq) begin
 				pending_irq_reg <= {1'b1, 4'b0, irq_level, irq_vector};
 			end
@@ -525,6 +530,12 @@ module j11_microengine #(
 						CTX_IR: guest_ir_mirror <= operand_dest;
 						CTX_CAUSE: cause_reg <= operand_dest;
 						CTX_PENDING: pending_irq_reg <= operand_dest;
+						CTX_CONTROL: begin
+							if (operand_dest[0]) begin
+								guest_reset <= 1;
+								pending_irq_reg <= 0;
+							end
+						end
 						default: begin end
 						endcase
 						upc <= next_pc;

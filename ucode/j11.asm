@@ -8,16 +8,22 @@ reset_entry
 ; Fixed microengine ABI entry: rtl/j11_microengine.v redirects failed guest
 ; transactions to byte address 0002.  Trap mechanics remain in microcode.
 bus_error_entry
+	clr v2
+	gset v2, 14		; failed instructions do not produce a trace trap
 	set v2, 1
 	gset v2, 10
 	set sp, 4		; PDP-11 bus/address-error vector 004
 	b trap_entry
 
 wait_instruction
+	gget v2, 14
+	bne trace_entry, v2, 0
 	gget v2, 11
 	bge wait_instruction, v2, 0
 
 fetch
+	gget v2, 14		; TRACE has priority over device interrupts
+	bne trace_entry, v2, 0
 	gget v0, 7		; v0 <- guest PC
 	gget v2, 11		; take a latched device interrupt at an instruction boundary
 	blt interrupt_priority, v2, 0
@@ -26,6 +32,10 @@ fetch_instruction
 	gset v1, 9		; guest IR <- fetched word
 	add v0, v0, 2		; PC advances by one PDP-11 word
 	gset v0, 7		; guest PC <- PC + 2
+	gget v2, 8		; remember T from before instruction execution
+	set v3, $10
+	and v2, v2, v3
+	gset v2, 14
 	b decode
 
 interrupt_priority
@@ -44,6 +54,8 @@ decode
 	beq return_interrupt, v1, 2	; 000002: RTI
 	beq breakpoint_trap, v1, 3	; 000003: BPT
 	beq io_trap, v1, 4		; 000004: IOT
+	beq reset_instruction, v1, 5	; 000005: RESET
+	beq return_from_trace, v1, 6	; 000006: RTT
 	beq move_from_processor_type, v1, 7	; 000007: MFPT
 	mov v2, v1
 	shr v2, v2, 8
@@ -134,6 +146,64 @@ decode_zero
 	beq condition_set, v2, 11	; 000260..000277
 	b reserved_instruction
 
+; Every conditional branch is encoded as an adjacent even/odd pair.  Keep the
+; shared evaluator next to the decoder so its relative branches remain in range
+; as the production uROM grows beyond 1024 words.
+branch_low
+	and lr, v2, 1		; required predicate value
+	shr v2, v2, 1		; 0=BR, 1=Z, 2=N xor V, 3=Z or (N xor V)
+	beq branch_taken, v2, 0
+	gget v3, 8
+	beq branch_low_zero, v2, 1
+	mov v4, v3
+	shr v4, v4, 2
+	xor v4, v4, v3
+	and v4, v4, 2
+	beq branch_low_signed, v2, 2
+	and v3, v3, 4
+	or v4, v4, v3
+	b branch_boolean
+
+branch_low_zero
+	shr v4, v3, 2
+	and v4, v4, 1
+	b branch_compare
+
+branch_low_signed
+	shr v4, v4, 1
+	b branch_compare
+
+branch_high
+	and lr, v2, 1		; required predicate value
+	and v2, v2, 6		; 0=N, 2=C or Z, 4=V, 6=C
+	gget v3, 8
+	beq branch_high_carry_zero, v2, 2
+	shr v2, v2, 1
+	xor v2, v2, 3		; N/V/C selectors become shifts 3/1/0
+	shr v4, v3, v2
+	and v4, v4, 1
+	b branch_compare
+
+branch_high_carry_zero
+	and v4, v3, 5
+	b branch_boolean
+
+branch_compare
+	beq branch_taken, v4, lr
+	b fetch
+
+branch_boolean
+	beq branch_compare, v4, 0
+	setl v4, 1
+	b branch_compare
+
+branch_taken
+	sxt v1, v1		; sign extend IR low byte
+	shl v1, v1, 1		; PDP-11 branch displacement is in words
+	add v0, v0, v1		; v0 still contains post-fetch guest PC
+	gset v0, 7
+	b fetch
+
 condition_clear
 	gget v3, 8
 	and v1, v1, 15
@@ -162,6 +232,15 @@ set_priority
 	and v3, v3, sp
 	or v3, v3, v1
 	gset v3, 8
+	b fetch
+
+reset_instruction
+	gget v2, 8
+	set v3, $c000
+	and v2, v2, v3
+	bne fetch, v2, 0	; user/supervisor RESET is a NOP on DCJ11
+	set v2, 1
+	gset v2, 15		; pulse the board peripheral-reset control
 	b fetch
 
 breakpoint_trap
@@ -487,6 +566,9 @@ clear_flags
 	or v4, v4, 4
 	gset v4, 8
 	b fetch
+
+fetch_far
+	b fetch			; relay for tail handlers beyond direct branch range
 
 complement_operand
 	mov v2, v1
@@ -1064,6 +1146,14 @@ move_negative
 	gset v4, 8
 	b fetch
 
+trace_entry
+	clr v2
+	gset v2, 14
+	gset v2, 10
+	gget v0, 7
+	set sp, $0c		; PDP-11 trace/BPT vector 014
+	b trap_entry
+
 reserved_instruction
 	set v2, 2
 	gset v2, 10		; cause 2: reserved instruction
@@ -1072,7 +1162,7 @@ reserved_instruction
 
 ; Enter a PDP-11 vector.  sp holds the vector address and v0 is the PC after
 ; the trapping instruction.  The stack frame has old PC at (SP) and old PSW at
-; 2(SP), ready for a later RTI implementation.
+; 2(SP), ready for RTI or RTT.
 trap_entry
 	gget v4, 6
 	gget v3, 8
@@ -1088,6 +1178,13 @@ trap_entry
 	b fetch
 
 return_interrupt
+	set lr, $10		; RTI traces immediately when the restored T bit is set
+	b return_common
+
+return_from_trace
+	clr lr			; RTT suppresses its own trace boundary
+
+return_common
 	gget v4, 6
 	ldr v0, v4, 0
 	add v4, v4, 2
@@ -1096,68 +1193,11 @@ return_interrupt
 	gset v4, 6
 	gset v0, 7
 	gset v3, 8
+	and v3, v3, lr
+	gset v3, 14
 	clr v2
 	gset v2, 10
-	b fetch
-
-; Every conditional branch is encoded as an adjacent even/odd pair.  The low
-; bit selects false/true for a normalized predicate, so one evaluator replaces
-; the former instruction-by-instruction branch handlers.
-branch_low
-	and lr, v2, 1		; required predicate value
-	shr v2, v2, 1		; 0=BR, 1=Z, 2=N xor V, 3=Z or (N xor V)
-	beq branch_taken, v2, 0
-	gget v3, 8
-	beq branch_low_zero, v2, 1
-	mov v4, v3
-	shr v4, v4, 2
-	xor v4, v4, v3
-	and v4, v4, 2
-	beq branch_low_signed, v2, 2
-	and v3, v3, 4
-	or v4, v4, v3
-	b branch_boolean
-
-branch_low_zero
-	shr v4, v3, 2
-	and v4, v4, 1
-	b branch_compare
-
-branch_low_signed
-	shr v4, v4, 1
-	b branch_compare
-
-branch_high
-	and lr, v2, 1		; required predicate value
-	and v2, v2, 6		; 0=N, 2=C or Z, 4=V, 6=C
-	gget v3, 8
-	beq branch_high_carry_zero, v2, 2
-	shr v2, v2, 1
-	xor v2, v2, 3		; N/V/C selectors become shifts 3/1/0
-	shr v4, v3, v2
-	and v4, v4, 1
-	b branch_compare
-
-branch_high_carry_zero
-	and v4, v3, 5
-	b branch_boolean
-
-branch_compare
-	beq branch_taken, v4, lr
-	b fetch
-
-branch_boolean
-	beq branch_compare, v4, 0
-	setl v4, 1
-	b branch_compare
-
-branch_taken
-	sxt v1, v1		; sign extend IR low byte
-	shl v1, v1, 1		; PDP-11 branch displacement is in words
-	add v0, v0, v1		; v0 still contains post-fetch guest PC
-	gset v0, 7
-	b fetch
-
+	b fetch_far
 interrupt_entry
 	mov sp, v2
 	set v3, $ff
