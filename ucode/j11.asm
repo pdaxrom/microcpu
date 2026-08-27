@@ -88,6 +88,8 @@ decode
 	beq multiply, v3, sp		; 070RSS: MUL
 	add sp, sp, 2
 	beq arithmetic_shift_relay, v3, sp	; 072RSS: ASH
+	inc sp
+	beq arithmetic_shift_combined_relay, v3, sp	; 073RSS: ASHC
 	set sp, $3f
 	beq subtract_one_branch, v3, sp	; 077RNN: SOB
 	sub sp, sp, 3
@@ -689,6 +691,9 @@ fetch_far
 
 arithmetic_shift_relay
 	b arithmetic_shift		; second leg for the tail EIS handler
+
+arithmetic_shift_combined_relay
+	b arithmetic_shift_combined
 
 ; Keep the common control-flow handlers near the center of the image.  The
 ; microengine branch encoding has a +/-2047-byte range, so this placement stays
@@ -1414,6 +1419,106 @@ arithmetic_shift_carry
 	or v0, v0, v2
 	gget v2, 12
 	gsetr v3, v2
+	gget v1, 8
+	set v2, $fff0
+	and v1, v1, v2
+	or v1, v1, v0
+	gset v1, 8
+	b fetch_far
+
+arithmetic_shift_combined
+	; Snapshot the complete R:R|1 pair before resolving the count EA.  v3 is
+	; preserved by ea_resolve, so it carries the low word without consuming
+	; another guest-context scratch slot.
+	mov v2, v1
+	shr v2, v2, 6
+	and v2, v2, 7
+	gset v2, 12		; high register number
+	ggetr v3, v2
+	gset v3, 13		; pre-EA high word
+	or v2, v2, 1
+	ggetr v3, v2		; pre-EA low word
+
+	mov v2, v1
+	set sp, $3f
+	and v2, v2, sp
+	bsr ea_resolve
+	beq arithmetic_shift_combined_count_register, v2, 0
+	ldr v4, v4, 0
+	b arithmetic_shift_combined_count_ready
+
+arithmetic_shift_combined_count_register
+	ggetr v4, v4
+
+arithmetic_shift_combined_count_ready
+	mov v1, v4
+	set sp, 63
+	and v1, v1, sp		; six-bit signed shift count
+	mov v4, v3		; working low word
+	gget v3, 13		; working high word
+	clr v0			; accumulated overflow predicate
+	clr v2			; outgoing carry, including count zero
+	beq arithmetic_shift_combined_flags, v1, 0
+	set sp, 32
+	bgeu arithmetic_shift_combined_right_count, v1, sp
+	mov lr, v1
+
+arithmetic_shift_combined_left_loop
+	mov sp, v3
+	shr sp, sp, 15		; outgoing pair sign is this step's carry
+	mov v2, v4
+	shr v2, v2, 15
+	shl v3, v3, 1
+	or v3, v3, v2
+	shl v4, v4, 1
+	mov v2, v3
+	shr v2, v2, 15
+	xor v2, v2, sp
+	or v0, v0, v2		; any pair-sign transition means overflow
+	mov v2, sp
+	dec lr
+	bne arithmetic_shift_combined_left_loop, lr, 0
+	b arithmetic_shift_combined_flags
+
+arithmetic_shift_combined_right_count
+	set lr, 64
+	sub lr, lr, v1		; 040..077 encode arithmetic right 32..1
+
+arithmetic_shift_combined_right_loop
+	and v2, v4, 1
+	and sp, v3, 1
+	shr v4, v4, 1
+	shl sp, sp, 15
+	or v4, v4, sp
+	mov sp, v3
+	shr sp, sp, 15
+	shr v3, v3, 1
+	shl sp, sp, 15
+	or v3, v3, sp
+	dec lr
+	bne arithmetic_shift_combined_right_loop, lr, 0
+
+arithmetic_shift_combined_flags
+	shl v0, v0, 1		; accumulated overflow becomes PSW V
+	blt arithmetic_shift_combined_negative, v3, 0
+	or v1, v3, v4
+	beq arithmetic_shift_combined_zero, v1, 0
+	b arithmetic_shift_combined_carry
+
+arithmetic_shift_combined_negative
+	or v0, v0, 8
+	b arithmetic_shift_combined_carry
+
+arithmetic_shift_combined_zero
+	or v0, v0, 4
+
+arithmetic_shift_combined_carry
+	and v2, v2, 1
+	or v0, v0, v2
+	gget v2, 12
+	gsetr v3, v2		; high word
+	or v2, v2, 1
+	gsetr v4, v2		; odd R selects the low word twice, like DCJ11
 	gget v1, 8
 	set v2, $fff0
 	and v1, v1, v2
