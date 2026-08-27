@@ -56,8 +56,9 @@ and `srampages`.
   modes for `MOV` and `MOVB`, `CMP/CMPB`, `BIT/BITB`, `BIC/BICB`, `BIS/BISB`,
   `XOR`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`, `DEC/DECB`, `NEG/NEGB`,
   `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`, `ASR/ASRB`, `ASL/ASLB`,
-  `TST/TSTB`, `SWAB`, `SXT`, `MFPS`, `MTPS`, `MFPT`, `SPL`, `WAIT`, `SOB`, the software-trap
-  group, and an assembled guest write to the physical DL11 UART. The
+  `TST/TSTB`, `SWAB`, `SXT`, `MFPS`, `MTPS`, `MFPT`, `SPL`, `WAIT`, `RESET`,
+  `RTT`, `MARK`, `TSTSET`, `WRTLCK`, `MUL`, `DIV`, `ASH`, `ASHC`, `SOB`, the
+  software-trap group, and an assembled guest write to the physical DL11 UART. The
   double-operand test includes borrow, carry,
   signed-overflow, byte-width, and
   memory-destination/autoincrement cases. `bic_bis.asm` additionally verifies
@@ -85,3 +86,17 @@ and `srampages`.
   `system.asm` checks that `MFPT` preserves NZVC, `SPL` replaces only priority,
   and `WAIT` holds execution until a real BR4 request enters vector `060` and
   returns through `RTI`.
+  `reset_rtt.asm` checks RESET flag preservation, the reset pulse and pending
+  interrupt clearing, plus RTT trace deferral. `trace_return.asm` verifies the
+  stacked PC and executed-instruction count: RTI restoring T traces before the
+  next instruction, whereas RTT allows exactly one instruction first.
+  `mark_lock.asm` covers `MARK 2`, lock operations and register-direct lock
+  traps; `mark_edges.asm` adds NN=0 and NN=63 (`MARK 077`), checking R5, SP,
+  control flow and unchanged NZVC. `lock_edges.asm` checks already-locked
+  positive/negative words, zero/negative WRTLCK results with both carry states,
+  word autodecrement and TSTSET's R0/address-register overlap.
+  `mul.asm`, `div.asm`, `ash.asm` and `ashc.asm` cover signed arithmetic,
+  shifts, register-pair behavior and boundary flags. `previous_space.asm`
+  exercises the existing simplified unified-space moves, and `privileged.asm`
+  checks PSW restrictions without banked stack pointers. The active no-MMU V1
+  scope and deferred work are recorded in [TODO.md](../TODO.md).

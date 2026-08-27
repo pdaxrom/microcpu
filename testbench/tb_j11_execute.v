@@ -669,6 +669,36 @@ module tb_j11_execute;
 			$finish_and_return(1);
 		end
 
+		$readmemh("build/guest_mark_edges.hex", fram.memory);
+		reset_engine();
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345) begin
+			$display("FAIL: J-11 MARK NN boundaries pc=%06o ir=%06o r0=%06o r5=%06o sp=%06o psw=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[5], dut.jctx[6], debug_guest_psw, debug_cause);
+			$finish_and_return(1);
+		end
+
+		$readmemh("build/guest_lock_edges.hex", fram.memory);
+		reset_engine();
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345) begin
+			$display("FAIL: J-11 lock flag boundaries pc=%06o ir=%06o r0=%06o r3=%06o psw=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[3], debug_guest_psw, debug_cause);
+			$finish_and_return(1);
+		end
+
+		$readmemh("build/guest_trace_return.hex", fram.memory);
+		reset_engine();
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 2 || dut.jctx[2] !== 2) begin
+			$display("FAIL: J-11 RTI/RTT trace boundaries pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o sp=%06o psw=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[1], dut.jctx[2], dut.jctx[6], debug_guest_psw, debug_cause);
+			$finish_and_return(1);
+		end
+
 		$readmemh("build/guest_previous_space.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);

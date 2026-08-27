@@ -23,7 +23,12 @@ trace_failed
 	org 0200
 start
 	mov #02000, sp
+	scc
 	reset
+	bpl reset_failed
+	bne reset_failed
+	bvc reset_failed
+	bcc reset_failed
 	clr r0
 	clr r1
 	mov #after_rtt, (sp)
@@ -32,4 +37,8 @@ start
 
 after_rtt
 	inc r1			; RTT must allow exactly this instruction first
+	halt
+
+reset_failed
+	clr r0
 	halt

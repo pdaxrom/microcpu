@@ -26,10 +26,11 @@ again or interpret this checklist as authorization to add floating point.
 - [x] 2. `MFPS`, `MTPS` — `8bc9c9e`; `testbench/j11_programs/psw.asm`.
 - [x] 3. `MFPT`, `SPL` — `ad1064a`; `testbench/j11_programs/system.asm`.
 - [x] 4. `WAIT`, `RESET`, `RTT` — `ad1064a`, `afb4e6e`;
-  `testbench/j11_programs/system.asm`, `testbench/j11_programs/reset_rtt.asm`.
-- [x] 5. `MARK` — `00097ce`; `testbench/j11_programs/mark_lock.asm`.
+  `testbench/j11_programs/{system,reset_rtt,trace_return}.asm`.
+- [x] 5. `MARK` — `00097ce`;
+  `testbench/j11_programs/{mark_lock,mark_edges}.asm`.
 - [x] 6. `TSTSET`, `WRTLCK` — `00097ce`;
-  `testbench/j11_programs/mark_lock.asm`.
+  `testbench/j11_programs/{mark_lock,lock_edges}.asm`.
 - [x] 7. `MUL`, `DIV`, `ASH`, `ASHC` — `dbca9b8`, `af1b7c4`, `ed95350`,
   `85d8930`; `testbench/j11_programs/{mul,div,ash,ashc}.asm`.
 
@@ -37,16 +38,23 @@ again or interpret this checklist as authorization to add floating point.
 
 - [x] Audit the seven groups against the resident decoder, handlers, tests,
   and commit history.
-- [ ] Add MARK boundary tests for NN=0 and NN=63 (`MARK 077` in octal),
+- [x] Add MARK boundary tests for NN=0 and NN=63 (`MARK 077` in octal),
   including R5, SP, control flow, and unchanged NZVC.
-- [ ] Add lock-operation edge tests: TSTSET with an already-set low bit,
+- [x] Add lock-operation edge tests: TSTSET with an already-set low bit,
   WRTLCK zero/negative results and both carry states.
-- [ ] Explicitly test RESET flag preservation and the TRACE boundary after
+- [x] Explicitly test RESET flag preservation and the TRACE boundary after
   RTI versus RTT.
-- [ ] Run `make -C testbench -B j11-test` on the Mac and fix any regressions
+- [x] Run `make -C testbench -B j11-test` on the Mac and fix any regressions
   within this scope.
-- [ ] Check the uROM size and compare the generated board and testbench images.
-- [ ] Update this checklist with results and commit only the source changes.
+- [x] Check the uROM size and compare the generated board and testbench images.
+- [x] Update this checklist with results and commit only the source changes.
+
+Verification on 2026-08-27: `make -C testbench -B j11-test` passed all seven
+simulation suites on the Mac, including the new assembly boundary tests.
+Microcode remains 3280 bytes (1640 of 2048 words; 408 words free).
+`testbench/build/j11_ucode.words` and the board's generated `j11_ucode.mem`
+match byte for byte. No production RTL/microcode changes or Diamond runs were
+needed for this acceptance step. Deferred work below remains deferred.
 
 ### Deferred: not part of V1 acceptance
 
