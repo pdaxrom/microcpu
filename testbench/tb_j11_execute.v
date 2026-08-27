@@ -565,7 +565,30 @@ module tb_j11_execute;
 		expect_fram_byte(17'o001000, 8'o221);
 		expect_fram_byte(17'o001001, 8'o125);
 
-		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, JMP/JSR/RTS, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
+		$readmemh("build/guest_system.hex", fram.memory);
+		reset_engine();
+		while (debug_guest_r0 != 16'o000001) @(negedge clk);
+		repeat (100) @(negedge clk);
+		if (debug_guest_r0 !== 16'o000001 || debug_cause !== 0) begin
+			$display("FAIL: J-11 WAIT did not hold pc=%06o ir=%06o r0=%06o psw=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				debug_guest_psw, debug_cause);
+			$finish_and_return(1);
+		end
+		irq_level = 3'd4;
+		irq_vector = 8'o060;
+		irq = 1;
+		repeat (2) @(negedge clk);
+		irq = 0;
+		while (debug_cause != 16'h0003) @(negedge clk);
+		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 16'o000001) begin
+			$display("FAIL: J-11 MFPT/SPL/WAIT pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o cause=%04x",
+				debug_guest_pc, debug_guest_ir, debug_guest_r0,
+				dut.jctx[1], debug_guest_psw, debug_cause);
+			$finish_and_return(1);
+		end
+
+		$display("PASS: microasm11 guests execute traps, priority IRQ/RTI, WAIT, MFPT, SPL, JMP/JSR/RTS, SOB, software traps, branches, CC, MOV/B, CMP/B, BIT/B, BIC/B, BIS/B, XOR, ADD, SUB, CLR/B, COM/B, INC/B, DEC/B, NEG/B, ADC/B, SBC/B, ROR/B, ROL/B, ASR/B, ASL/B, SWAB, SXT, MFPS, MTPS, TST/B and DCJ11 EA timing");
 		$finish_and_return(0);
 	end
 

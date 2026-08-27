@@ -13,6 +13,10 @@ bus_error_entry
 	set sp, 4		; PDP-11 bus/address-error vector 004
 	b trap_entry
 
+wait_instruction
+	gget v2, 11
+	bge wait_instruction, v2, 0
+
 fetch
 	gget v0, 7		; v0 <- guest PC
 	gget v2, 11		; take a latched device interrupt at an instruction boundary
@@ -36,9 +40,11 @@ interrupt_priority
 
 decode
 	beq halt, v1, 0		; 000000: HALT
+	beq wait_instruction, v1, 1	; 000001: WAIT
 	beq return_interrupt, v1, 2	; 000002: RTI
 	beq breakpoint_trap, v1, 3	; 000003: BPT
 	beq io_trap, v1, 4		; 000004: IOT
+	beq move_from_processor_type, v1, 7	; 000007: MFPT
 	mov v2, v1
 	shr v2, v2, 8
 	beq decode_zero, v2, 0
@@ -116,6 +122,8 @@ decode_zero
 	shr v2, v2, 3
 	set v3, $10
 	beq return_subroutine, v2, v3	; 00020R: RTS
+	add v3, v3, 3
+	beq set_priority, v2, v3	; 00023N: SPL
 	mov v2, v1
 	shr v2, v2, 6
 	beq jump, v2, 1	; 0001DD: JMP
@@ -137,6 +145,21 @@ condition_clear
 condition_set
 	gget v3, 8
 	and v1, v1, 15
+	or v3, v3, v1
+	gset v3, 8
+	b fetch
+
+move_from_processor_type
+	sub v2, v1, 2		; DCJ11 MFPT result is 5
+	gset v2, 0
+	b fetch
+
+set_priority
+	and v1, v1, 7
+	shl v1, v1, 5
+	gget v3, 8
+	set sp, $ff1f		; replace PSW priority, preserve all other bits
+	and v3, v3, sp
 	or v3, v3, v1
 	gset v3, 8
 	b fetch
@@ -1108,24 +1131,16 @@ branch_high
 	and lr, v2, 1		; required predicate value
 	and v2, v2, 6		; 0=N, 2=C or Z, 4=V, 6=C
 	gget v3, 8
-	beq branch_high_negative, v2, 0
 	beq branch_high_carry_zero, v2, 2
-	beq branch_high_overflow, v2, 4
-	and v4, v3, 1
-	b branch_compare
-
-branch_high_negative
-	shr v4, v3, 3
+	shr v2, v2, 1
+	xor v2, v2, 3		; N/V/C selectors become shifts 3/1/0
+	shr v4, v3, v2
 	and v4, v4, 1
 	b branch_compare
 
 branch_high_carry_zero
 	and v4, v3, 5
 	b branch_boolean
-
-branch_high_overflow
-	shr v4, v3, 1
-	and v4, v4, 1
 
 branch_compare
 	beq branch_taken, v4, lr

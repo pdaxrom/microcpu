@@ -56,7 +56,7 @@ and `srampages`.
   modes for `MOV` and `MOVB`, `CMP/CMPB`, `BIT/BITB`, `BIC/BICB`, `BIS/BISB`,
   `XOR`, `ADD`, `SUB`, `CLR/CLRB`, `COM/COMB`, `INC/INCB`, `DEC/DECB`, `NEG/NEGB`,
   `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`, `ASR/ASRB`, `ASL/ASLB`,
-  `TST/TSTB`, `SWAB`, `SXT`, `MFPS`, `MTPS`, `SOB`, the software-trap
+  `TST/TSTB`, `SWAB`, `SXT`, `MFPS`, `MTPS`, `MFPT`, `SPL`, `WAIT`, `SOB`, the software-trap
   group, and an assembled guest write to the physical DL11 UART. The
   double-operand test includes borrow, carry,
   signed-overflow, byte-width, and
@@ -82,3 +82,6 @@ and `srampages`.
   externally supplied interrupt vector `060`. `irq_priority.asm` verifies that
   BR4 is deferred at PSW
   priority 4 while BR5 preempts it, and that a masked request remains latched.
+  `system.asm` checks that `MFPT` preserves NZVC, `SPL` replaces only priority,
+  and `WAIT` holds execution until a real BR4 request enters vector `060` and
+  returns through `RTI`.

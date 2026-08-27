@@ -29,9 +29,10 @@ to infer 16-bit EBR storage, while guest memory transactions use a separate
 request/ready interface.
 
 The current uROM is 1024 x 16 bits and therefore uses two MachXO2 9-kbit EBRs.
-The assembled microprogram currently occupies 1008 words, leaving 16 words of
-integration margin. Unsupported opcodes retain the architectural
-reserved-instruction trap path.
+The assembled microprogram currently occupies all 1024 words. Unsupported
+opcodes retain the architectural reserved-instruction trap path. The next
+instruction family will require a deeper uROM rather than weaker guest
+semantics.
 
 ## Guest context
 
@@ -161,7 +162,9 @@ conditions (`BR`, `BNE`, `BEQ`, `BGE`, `BLT`, `BGT`, `BLE`, `BPL`, `BMI`,
 `CLC/CLV/CLZ/CLN/CCC/SEC/SEV/SEZ/SEN/SCC`. `JMP`, `JSR`, `RTS`, and `SOB`
 provide subroutine and loop control flow. `BPT`, `IOT`, `EMT`, and `TRAP` enter
 their architectural vectors through the common trap path, and `HALT` enters
-the stopped path.
+the stopped path. `WAIT` stalls until an interrupt request is latched, `MFPT`
+reports DCJ11 processor type 5 in R0, and `SPL` updates only `PSW[7:5]` in the
+current single-mode configuration.
 Reserved instructions enter PDP-11 vector `010`, save the post-instruction PC
 and old PSW on the guest stack, and can return with `RTI`. Version 1 currently
 uses this only as the architectural invalid-instruction path; no guest
@@ -254,11 +257,10 @@ make -C testbench j11-test
 
 ## Next implementation steps
 
-1. Keep the remaining 16 uROM words as integration margin. Increase the uROM
-   depth when the next instruction family no longer fits; do not weaken guest
+1. Increase the uROM depth before adding more instructions; do not weaken guest
    semantics merely to remain at 1024 words.
-2. Add the remaining non-MMU system instructions (`MFPT`, `SPL`, `WAIT`,
-   `RESET`, and `RTT`) before the larger EIS arithmetic group.
+2. Add the remaining non-MMU system instructions (`RESET` and `RTT`) before the
+   larger EIS arithmetic group.
 3. Add a short sequential-read buffer so instruction fetches do not start a
    new SPI command and address phase for every word.
 4. Differentially compare each guest step with the existing C J-11 core.
