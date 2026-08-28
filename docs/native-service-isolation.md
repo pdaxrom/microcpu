@@ -96,7 +96,23 @@ The board ROM is byte-identical to the tested autoboot ROM:
 
 ## Hardware qualification
 
-Simulation acceptance is separate from a new Diamond build and programming.
+Source **45a1b6859922874575888f7346c85b1c7d01dd5a** passed the full isolated
+Diamond **3.14.0.75.2** / Synplify **V-2023.09L-2 Build 349R** flow. Resources
+remain 1095 LUT4, 548 slices, 431 registers and 7 EBRs. TRACE maximum is
+37.627 MHz at the 26.6-MHz constraint; setup/hold errors, cumulative negative
+slack and unrouted connections are zero.
+
+JED **60FA**, SHA-256
+`d878e1927fa3996499b4ae391df12fa6897f8ed70d1d33fe52fa96bce7206879`, passed
+`FLASH Verify ID` and **FLASH Erase,Program,Verify** on the HC1200. Programming
+exited zero in 20 seconds with 940-ms erase, using FT2232 A / FTUSB-0 at
+200 kHz. UART B and the user's open terminal were left connected.
+Artifacts and actual XCF/logs are on both hosts under
+`boards/hc1200-microcomp/impl1-sdboot/native-isolation-45a1b68/`.
+
+Physical UART boot confirmation for this new JED is still pending; do not
+equate FLASH verify with a captured hardware RT-11 boot. The complete RT-11
+console transcript above is from simulation.
 The exact previous programmed JED remains archived under
 `impl1-sdboot/kdj11a-a985039/`; do not overwrite that recovery copy.
 

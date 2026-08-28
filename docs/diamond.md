@@ -92,6 +92,11 @@ through JED export. The hardware-tested baseline is source `a985039`,
 **Diamond 3.14.0.75.2**, JED checksum `5C98`; later rebuilds must be verified
 on their own. The project name and make target have not been renamed.
 
+The later native-service isolation update **45a1b68 / JED 60FA** has passed
+full RT-11 simulation, this Diamond flow and hardware FLASH program/verify.
+Its separate archive and physical UART confirmation status are recorded in
+[the versioned acceptance report](hc1200-sd-diamond.md).
+
 ```sh
 make -C boards/hc1200-microcomp diamond \
   DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14

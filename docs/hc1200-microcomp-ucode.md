@@ -7,6 +7,19 @@ These are FPGA configurations of the existing microcomp PCB, all using
 `rtl/ucode_cpu.v` and native `--cpu ucode` firmware. They are not new CPU
 profiles or new board revisions.
 
+## Current programmed update: native-service isolation
+
+On 2026-08-29, source **45a1b68** was built with Diamond **3.14.0.75.2** and
+programmed successfully (FLASH erase/program/verify). Exact new JED:
+`impl1-sdboot/native-isolation-45a1b68/microcomp_impl1.jed`, checksum **60FA**.
+It retains FIS/SD autoboot and fixes guest access to raw SD services in ASM;
+uROM is now **3504 code + 64 context + 16 free**. Full RT-11 simulation and
+regressions passed. Physical UART boot confirmation for this update is still
+pending. The hardware-confirmed `a985039` baseline below is preserved as a
+separate recovery image, not the currently programmed JED. See
+[new build/programming evidence](hc1200-sd-diamond.md) and
+[isolation regression](native-service-isolation.md).
+
 ## Stable J11 / RT-11 SD boot
 
 **The configuration programmed into the board and confirmed working is
@@ -109,7 +122,7 @@ exports only after TRACE reports zero cumulative negative slack. Commit
 `a985039` passed the full Diamond build through JED: 1095 LUT4, 548 slices,
 7 EBRs, zero setup/hold errors at 26.6 MHz (TRACE maximum 37.627 MHz).
 See [the build report, implemented pins and warnings](hc1200-sd-diamond.md).
-The latest JED passed FLASH program/verify, then the user confirmed RT-11
+The `a985039` JED passed FLASH program/verify, then the user confirmed RT-11
 boot and `SHOW CONFIGURATION` with `PDP 11/73A Processor`. Earlier board runs
 also passed native SD/FRAM diagnostics and the NOFIS boot trace. External
 SPI timing margins are still not characterized. See the [Diamond guide](diamond.md)
@@ -186,6 +199,9 @@ and all seven EBRs. The shared uROM/context allocation is
 **3501 code + 64 context + 19 free = 3584 words**. Guest stacks and RAM are in
 the external FRAM, not in uROM. A 512-byte disk-sector cache uses the second
 FRAM bank; no EBR is allocated to it.
+
+The `45a1b68` isolation update keeps those hardware resource counts and uses
+three additional code words: **3504 + 64 + 16 = 3584**.
 
 On physical hardware, normal guest disk writes modify the SD card. This is
 different from the simulator's read-only source image plus volatile overlay.

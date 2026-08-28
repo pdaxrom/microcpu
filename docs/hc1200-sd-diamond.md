@@ -1,8 +1,59 @@
 # HC1200 SD autoboot: Diamond acceptance
 
+## Native-service isolation update: `45a1b68` (2026-08-29)
+
+Source **`45a1b6859922874575888f7346c85b1c7d01dd5a`** fixes guest access to
+the private SD SPI/bank services in ASM. Full RT-11 simulation, 108 isolation
+faults, 209 core snapshots, 4040 FIS cases, board UART/clock/cold-boot and EBR
+tests passed before this build; see [the regression report](native-service-isolation.md).
+
+The exact source archive was built in
+`/tmp/microcpu-native-isolation.Z5QueJ` on Ubuntu, without modifying its dirty
+checkout. Synthesis, Translate, MAP, PAR, setup/hold TRACE and JED export all
+exited zero. Project/top/device remain `microcomp.ldf`, `ucode_sd_microcomp`,
+**LCMXO2-1200HC-4SG32C**; FIS and SD autoboot are enabled.
+
+| Metric | Result |
+|---|---|
+| Diamond / BITGEN / TRACE / Programmer | **64-bit 3.14.0.75.2** |
+| Synplify | **V-2023.09L-2, Build 349R**, Sep 17 2024 |
+| Host / strategy | Ubuntu 24.04.4 LTS x86-64 / `Strategy1` from `j11.sty` |
+| LUT4 / slices / registers | 1095/1280, 548/640, 431/1346 |
+| EBR / pins | 7/7; 17 PIO + JTAGENB / 22 |
+| uROM | **3504 code + 64 context + 16 free = 3584 words** |
+| Clock / TRACE maximum | 26.6 MHz / 37.627 MHz |
+| Setup / hold / negative slack / unrouted | 0 / 0 / 0 / 0 |
+| JED checksum | **`60FA`** |
+| JED SHA-256 | `d878e1927fa3996499b4ae391df12fa6897f8ed70d1d33fe52fa96bce7206879` |
+
+The JED header records **Sat Aug 29 00:51:58 2026**. The generated ROM/EBR
+hashes match the Mac files in the regression report. Pins and pulls remain
+unchanged; the existing unused-keyboard/configuration/EBR warnings remain.
+This is not a warning-free or externally characterized timing signoff.
+
+**This JED was programmed into the board.** First `FLASH Verify ID` passed
+for `0x012BA043`, then `FLASH Erase,Program,Verify` exited zero in **20 seconds**
+(erase 940 ms), reporting `Operation Done. No errors.` and
+`Operation: successful.`. Cable FT2232 A, FTUSB-0, TCK delay 30 produced
+**200000 Hz**. Channel B remained bound to `ftdi_sio`; the existing
+`picocom -b 115200 /dev/ttyUSB1` was not closed, detached or read concurrently.
+
+Programmer warned that the file had been modified since its recorded check:
+the XCF recorded the JED header time, while copying the archive set its file
+mtime to 00:53:32. The JED SHA-256 was checked before **and after** programming
+and was unchanged. The archived XCF and log preserve the actual invocation.
+
+The exact JED, ROM/EBR, reports, `diamond-build.log`, `verify-id.xcf/.log` and
+`program.xcf/.log` are archived on Mac and Ubuntu under
+`boards/hc1200-microcomp/impl1-sdboot/native-isolation-45a1b68/`.
+The previous `kdj11a-a985039/` recovery copy retains its original hash.
+**Physical UART boot confirmation for 45a1b68 is still pending**: full RT-11
+boot is verified in simulation, while FLASH verification is hardware evidence.
+Do not substitute the older hardware transcript below for a new one.
+
 ## Stable J11 / RT-11 SD boot: `a985039` (2026-08-28)
 
-This is the stable configuration actually programmed into the HC1200:
+This is the earlier hardware-confirmed stable baseline, retained for recovery:
 `microcomp.ldf`, implementation `impl1` in directory `impl1-sdboot`.
 
 Source **`a985039cbc407746ed2ad38eb44c76b28821eb7c`**, including KDJ11-A
