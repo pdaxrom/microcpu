@@ -159,12 +159,67 @@ does not change permissions of an existing device node. Group changes also
 need a new login session. The earlier `MODE="0666"` workaround grants all
 local users access; it is not required if group/ACL access is correct.
 
-Check `lsusb -t` and the sysfs interface bindings. On this setup channel A
-is JTAG and channel B is the terminal UART. If `ftdi_sio` has claimed A,
-release **only the identified A interface**, keeping B attached. Do not
-globally `rmmod ftdi_sio`, unload USB-serial drivers or rewrite FTDI EEPROM
-as a generic detection fix. Physical USB/sysfs paths are machine-specific.
-Close only another application that actually owns the programming channel.
+On this setup channel **A is JTAG**, and channel **B is the terminal UART**.
+The first-connection procedure below intentionally unloads `ftdi_sio` before
+Programmer detects the cable, then restores the serial driver and releases
+only A. This is different from repeated use with B already running.
+
+### First connection: detect JTAG, then restore UART
+
+The board owner confirmed this sequence. It replaces the overly broad
+"never unload ftdi_sio" advice previously added to these docs.
+
+Prepare the repository's helper on Linux if it is not built:
+
+```sh
+make -C ft2232d-util
+```
+
+It includes `usb.h` and links with `-lusb`, so it needs the **legacy
+libusb-0.1 development headers/library**, not just libusb-1.0. Build the helper
+before interrupting the terminal connection.
+
+1. Close applications using FTDI serial ports, including the UART terminal.
+   Before starting Programmer, run:
+
+   ```sh
+   sudo rmmod ftdi_sio
+   ```
+
+   This temporarily disconnects **all** FTDI serial ports using that module.
+   If it is still in use, find and close the relevant users; do not force
+   removal or unload the entire USB-serial stack.
+2. Start Diamond Programmer and use **Detect Cable**. Wait until it finds
+   the FTDI JTAG cable; keep the selected cable configuration.
+3. Unplug/replug the USB adapter. The serial driver should attach again.
+   If it did not reload, restore it with `sudo modprobe ftdi_sio`, then check
+   `lsusb -t` and the current `/dev/ttyUSB*` devices.
+4. From the repository root, run:
+
+   ```sh
+   ./ft2232d-util/ft2232d-ctl
+   ```
+
+   The helper calls `usb_detach_kernel_driver_np(..., 0)`: it detaches kernel
+   ownership of **interface A (0)** only. It does not disconnect the USB device
+   or detach **B (1)**, which stays available for UART traffic.
+5. Verify that A is not bound to `ftdi_sio` and B is. Then open channel B's
+   current serial node at 115200 8N1. USB/device numbers may have changed;
+   do not assume the previous `/dev/ttyUSB1` or bus/device path is still valid.
+
+The helper selects the **first** device with VID/PID `0403:6010`; it has no
+serial-number selector. With several matching adapters connected, resolve
+the intended target before running it. It prints errors but currently returns
+zero even on failure: check its output and interface bindings, not exit status
+alone. No FTDI EEPROM rewrite is involved in this procedure.
+
+### Repeated use with UART already working
+
+If Programmer can use A and B is already attached to the terminal, do not
+repeat the global module unload. After a later replug, the kernel may reclaim
+A; rerun the helper for the intended adapter if needed, keeping B attached.
+Check `lsusb -t` and sysfs rather than hard-coding a previous USB path. Close
+only a conflicting application that actually owns the programming channel.
 
 ### Programmer configuration
 

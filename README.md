@@ -444,9 +444,21 @@ It is not the J-11 SD bootstrap or a PDP-11 ODT console.
 
 ## Lattice Diamond programmer and ftdi jtag dual channel board
 
-See the [Diamond/FTDI guide](docs/diamond.md#programming-with-ft2232).
-USB access permissions, the JTAG channel and the UART channel are separate.
-Do not unload `ftdi_sio` globally: that also disconnects the UART. If the
-kernel owns JTAG channel A, release only that verified interface; preserve B.
+For the **first connection** on this FT2232/Programmer setup, use the board
+owner's working sequence:
+
+1. Close FTDI serial terminals and other users of the driver. Before starting
+   Programmer, unload the FTDI driver: `sudo rmmod ftdi_sio`.
+2. Start Programmer and let it detect the FTDI JTAG cable.
+3. Unplug/replug the USB adapter so the kernel serial interfaces return.
+4. From the repository root, run `./ft2232d-util/ft2232d-ctl`. This detaches
+   only interface **A (0)** from the kernel; **B (1)** remains the UART.
+5. Check the resulting interfaces, then reopen the terminal on channel B.
+
+Build the helper with `make -C ft2232d-util` if necessary; it needs the legacy
+libusb-0.1 development headers/library. The initial module unload affects
+**all** FTDI serial ports, so it is not a step to repeat while using the UART.
+If A is already free and B works, leave that state intact. See
+[first-connection details and repeat use](docs/diamond.md#first-connection-detect-jtag-then-restore-uart).
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
