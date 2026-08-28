@@ -16,6 +16,20 @@ MachXO2 tools and configure the license required by the selected Synplify Pro
 synthesis flow. Build tools also require make, a C compiler and Python 3.
 The examples below run from the repository root.
 
+For the stable J11 / RT-11 baseline, the bundled synthesis tool was
+**Synplify Pro V-2023.09L-2, Build 349R** on **Ubuntu 24.04.4 LTS x86-64**,
+using `Strategy1` from `j11.sty`. The full Diamond version is
+**3.14.0.75.2**; the installation directory name `3.14` alone is not an
+exact version identifier. Check the JED/BITGEN/TRACE headers and synthesis
+`.srr` when recording a build.
+
+Another tool version or strategy can generate a different configuration,
+timing result and JED hash from unchanged sources. Full-file SHA-256 also
+covers the JED header, including its creation timestamp, so even the same
+toolchain does not guarantee an identical file hash. The published checksum
+and SHA-256 identify the archived, physically tested JED; qualify new builds
+separately. See [stable build identity](hc1200-sd-diamond.md).
+
 `boards/Makefile` defaults to:
 
 ```text
@@ -74,9 +88,9 @@ warnings are a reason to stop and check project selection.
 ## Command-line builds
 
 The command below builds the **stable J11 / RT-11 SD-boot configuration**
-through JED export. The hardware-tested
-baseline is source `a985039`, JED checksum `5C98`; later rebuilds must be
-verified on their own. The project name and make target have not been renamed.
+through JED export. The hardware-tested baseline is source `a985039`,
+**Diamond 3.14.0.75.2**, JED checksum `5C98`; later rebuilds must be verified
+on their own. The project name and make target have not been renamed.
 
 ```sh
 make -C boards/hc1200-microcomp diamond \

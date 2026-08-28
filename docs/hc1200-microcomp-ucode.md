@@ -17,6 +17,9 @@ no-disk `microcomp-ucode.ldf`, or either diagnostic project.
 | Stable baseline | Value |
 |---|---|
 | Source commit | `a985039cbc407746ed2ad38eb44c76b28821eb7c` |
+| Diamond | **64-bit 3.14.0.75.2** |
+| Synthesis tool | **Synplify Pro V-2023.09L-2, Build 349R** (bundled with Diamond) |
+| Build host / strategy | Ubuntu 24.04.4 LTS, x86-64 / `Strategy1` from `j11.sty` |
 | Native CPU / top | `ucode` / `ucode_sd_microcomp` |
 | Firmware | `ucode/v2/j11.asm` + `ucode/experimental/rh11_sd.asm` |
 | Build features | `J11_DISK_PROTOTYPE`, `J11_SD_AUTOBOOT`; FIS enabled |
@@ -31,6 +34,14 @@ The stable designation identifies this tested board/image baseline, not full
 J-11 hardware equivalence or every SD card. Existing limitations remain below.
 The exact JED SHA-256, successful FLASH verify and hardware boot evidence are
 in [the acceptance report](hc1200-sd-diamond.md).
+
+The recorded checksum and SHA-256 identify the **archived, flashed JED made
+with this toolchain**, not every rebuild of the same source commit. Another
+Diamond/Synplify version or changed strategy can produce different placement,
+timing and configuration data. Even with the same tools, the JED header's
+creation timestamp can change the full-file SHA-256. A new build must be
+verified separately; an identical source commit alone does not identify the
+accepted binary.
 
 ## Configuration map
 

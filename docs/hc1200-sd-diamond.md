@@ -15,6 +15,9 @@ Synthesis, Translate, MAP, PAR, setup/hold TRACE and JED export exited zero:
 
 | Metric | Result |
 |---|---|
+| Diamond / BITGEN / TRACE | **64-bit 3.14.0.75.2** |
+| Synthesis tool | **Synplify Pro V-2023.09L-2, Build 349R**, Sep 17 2024 |
+| Build host / strategy | Ubuntu 24.04.4 LTS, x86-64 / `Strategy1` from `j11.sty` |
 | LUT4 / slices / registers | 1095/1280, 548/640, 431/1346 |
 | EBR | 7/7 |
 | Pins | 17 PIO + JTAGENB / 22 |
@@ -31,6 +34,20 @@ ROM also matches the full RT-11 testbench's autoboot image.
 | `j11_sd.mem` | `486059bae5ee65f89711de00d553445f555c0a310c3c72682eec0ea9da2abc60` |
 | `sd_urom_ebr.v` | `5ce3af688c1bd734fdf08d5ef50cf120b7d31913778888fbfdf79fe34e4c62d5` |
 | `microcomp_impl1.jed` | `9fe90319139a8e91b6fa19f7bc55d98b8ad327bd3af56c076815ea41b58593d3` |
+
+These hashes identify the saved artifacts of **this specific build**. The
+Diamond version is confirmed by the JED header and BITGEN/TRACE reports;
+the Synplify version and Ubuntu release come from `microcomp_impl1.srr`.
+The JED header records `Fri Aug 28 23:18:17 2026` as its creation time.
+
+Changing Diamond/Synplify versions or implementation settings can change the
+configuration, resource use, timing and JED checksum. Matching source code
+does not imply a byte-identical JED. Even a same-version rebuild may have a
+different full-file SHA-256 because the header contains a creation timestamp;
+a hash difference alone does not prove different configuration bits. Preserve
+the accepted JED for exact identity, and record versions, reports and hashes
+again when qualifying a rebuilt image. The portable uROM is assembled/packed
+before Diamond and has its own separate hash above.
 
 Artifacts were saved separately on Mac and Ubuntu under
 `boards/hc1200-microcomp/impl1-sdboot/kdj11a-a985039/`: the JED, ROM/EBR files,
