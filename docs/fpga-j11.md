@@ -254,20 +254,30 @@ at instruction boundaries or while WAIT is active.
 
 The architectural reference is DEC's
 [DCJ11 User's Guide, sections 1.4, 1.7, 1.8 and 5.1](https://www.bitsavers.org/pdf/dec/pdp11/1173/EK-DCJ11-UG-PRE_J11ug_Oct83.pdf).
-`ucode/j11_cpu_io.asm` implements the following map. The existing C core is
-used for matching no-MMU fixtures, not as authority over the manual.
+`ucode/j11_cpu_io.asm` and `ucode/v2/j11_cpu_io.asm` implement the following
+map. The existing C core is used for matching no-MMU fixtures, not as authority
+over the manual.
 
 | Octal address | Register | Implemented behavior |
 |---:|---|---|
 | `177744` | MEMERR | Zero: this board has no parity-error source; writes ignored |
 | `177746` | CCR | Read/write bits 10:0 except bit 8; no physical cache |
-| `177750` | MAINT | Read-only zero for this board profile |
+| `177750` | MAINT | Read-only: `000020` in specialized `ucode`; zero in preserved `j11` |
 | `177752` | HITMISS | Read-only zero; no cache activity |
 | `177766` | CPUERR | Read mask `000374`; any write clears |
 | `177772` | PIRQ | Request bits 15..9, encoded highest priority; vector `240` |
 | `177776` | PSW | Preserve T; CM selects SP, RS selects R0..R5 |
 
 MEMERR/MAINT are board-profile registers, not extra devices inside the DCJ11.
+The specialized profile's MAINT[7:4]=1 identifies a KDJ11-A-compatible module,
+as defined in the [KDJ11-A CPU Module User's Guide, section 2.4](https://ftpmirror.your.org/pub/misc/bitsavers/www.computer.museum.uq.edu.au/pdf/EK-KDJ1A-UG-001%20KDJ11-A%20CPU%20Module%20User%27s%20Guide.pdf).
+MAINT[8] remains zero (no FPA), and the other bits keep their prior zero value.
+Word and byte writes are ignored; the high byte reads zero. MFPT still returns
+5. This is an identification profile, not a claim to implement the real
+KDJ11-A's MMU, FP11, cache, power-up options or console ROM. FIS is independent.
+The constant and read handler live entirely in assembly, with no context-word
+or RTL register added; the preserved `j11` firmware is unchanged.
+
 Byte lanes are implemented for CCR, PIRQ and PSW. Any CPUERR byte/word write
 clears the entire register; RESET preserves CPUERR/CCR but clears PIRQ.
 Explicit PSW writes preserve T and suppress that instruction's automatic NZVC

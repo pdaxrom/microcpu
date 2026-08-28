@@ -1,13 +1,17 @@
 ; DCJ11 processor I/O, entirely in assembly. No cache or MMU is advertised.
 ; 21[15:9]=PIRQ requests, 21[7:0]=RBUF; 23[15:8]=CPUERR, 23[7:0]=LTC;
 ; 31=CCR. These share existing context words, not new hardware registers.
+; KDJ11-A-compatible identification only, not a complete KDJ11-A board.
+; MAINT[7:4]=1; FPA[8] and all other profile bits retain their zero value.
+J11_MAINT_VALUE equ $0010
+
 cpu_io_decode
 	gget lr, 18
 	shr lr, lr, 4
 	set sp, $ffe4		; 177744 MEMERR: no parity hardware in this board
 	beq memory_zero, v2, sp
-	set sp, $ffe8		; 177750 MAINT: this board's configuration is zero
-	beq memory_zero, v2, sp
+	set sp, $ffe8		; 177750 MAINT: read-only module identification
+	beq cpu_maint, v2, sp
 	set sp, $ffe6
 	beq cpu_ccr, v2, sp
 	set sp, $ffea
@@ -23,6 +27,11 @@ cpu_io_decode
 	; Zero/ignore stubs fool RT-11's bus-trap probe into using MMU mappings and
 	; hang its extended-memory sizing loop. No translation is emulated here.
 	b memory_raw
+
+cpu_maint
+	bmask_set memory_return, lr, 1 ; ignore word and either byte-lane writes
+	ldi8 v2, J11_MAINT_VALUE
+	b cpu_read_value
 
 cpu_internal_zero
 	gget lr, 18

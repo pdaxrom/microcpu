@@ -1,4 +1,7 @@
 	cpu dcj-11
+	ifndef EXPECTED_MAINT
+EXPECTED_MAINT equ 0
+	endif
 	macro check
 	cmp #1, #2
 	beq *+6
@@ -14,19 +17,39 @@ start
 	mov #010000, sp
 	mov #1, r5
 	spl 7
+	mfpt
+	check #5, r0
 	check #0, @#0177744
 	check #0, @#0177746
-	check #0, @#0177750
+	check #EXPECTED_MAINT, @#0177750
+	movb @#0177750, r0
+	check #EXPECTED_MAINT, r0
+	movb @#0177751, r0
+	check #0, r0
 	check #0, @#0177752
 	check #0, @#0177766
 	check #0, @#0177772
 	mov #0177777, @#0177744
 	mov #0177777, @#0177750
+	check #EXPECTED_MAINT, @#0177750
+	movb #0377, @#0177750
+	check #EXPECTED_MAINT, @#0177750
 	movb #0377, @#0177751
+	check #EXPECTED_MAINT, @#0177750
+	clrb @#0177750
+	check #EXPECTED_MAINT, @#0177750
+	clrb @#0177751
+	check #EXPECTED_MAINT, @#0177750
+	clr @#0177750
+	check #EXPECTED_MAINT, @#0177750
+	movb @#0177750, r0
+	check #EXPECTED_MAINT, r0
+	movb @#0177751, r0
+	check #0, r0
 	mov #0177777, @#0177752
 	movb #0377, @#0177753
 	check #0, @#0177744
-	check #0, @#0177750
+	check #EXPECTED_MAINT, @#0177750
 	check #0, @#0177752
 
 	; CCR implemented bits are 10:0 except bit 8; RESET leaves them alone.
@@ -45,6 +68,7 @@ start
 	check #03125, @#0177746
 	reset
 	check #03125, @#0177746
+	check #EXPECTED_MAINT, @#0177750
 
 	; Disabled-MMU stubs never become guest RAM or enable translation.
 	; Preserved j11 profile only; specialized ucode tests absent MMU separately.

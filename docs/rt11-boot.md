@@ -44,7 +44,8 @@ Logs are under `testbench/build/rt11-verilator/`, `rt11-icarus/` or
 `rt11-bootstrap/`: raw UART `console.log`, progress `simulation.log`, optional
 guest-instruction `trace.log`, and `result.json` with input hashes and checks.
 The complete test requires the RT-11FB V05.03 banner, the response to
-`SHOW CONFIGURATION` (DM0:RT11FB, 56 KB), and the `RT11FB.SYS` directory entry.
+`SHOW CONFIGURATION` (DM0:RT11FB, PDP 11/73A, 56 KB), and the `RT11FB.SYS`
+directory entry.
 Reaching `$finish` or printing an initial banner alone is not success.
 
 Cold-boot / 50-Hz acceptance on 2026-08-28: **1,574,968,301 clocks**, **232
@@ -98,11 +99,61 @@ JED SHA-256:
 a1e29e7aacd392c8a234b110626d2280c34223baddd9aa8ad7ec8e825dff7e2d
 ```
 
-The maintenance register currently reads zero. Thus MAINT[8] correctly says
-that no optional FPA accelerator is installed, while module-ID bits 7:4 also
-read zero and make RT-11 print `Unknown Processor`. RT-11's separate
+At that source revision the maintenance register read zero. Thus MAINT[8]
+correctly said that no optional FPA accelerator was installed, while module-ID
+bits 7:4 also read zero and made RT-11 print `Unknown Processor`. RT-11's separate
 `Floating Point Microcode` line is its no-FPA description; it does not mean
 that FP11 has been implemented. FIS is detected and printed separately.
+
+### KDJ11-A-compatible identification (simulation, 2026-08-28)
+
+The specialized `ucode` profile now returns octal `000020` from MAINT
+(`177750`): module-ID bits 7:4 are 1, while the FPA bit and all other bits
+remain zero. MFPT still returns 5. Word and byte writes are ignored and RESET
+preserves the constant. This identifies a compatible module; it does not add
+the real KDJ11-A's MMU, FP11, cache, power-up options or console ROM. The old
+`j11` profile still returns zero and its firmware is unchanged.
+
+The full wire-level RT-11 test on the Mac, using the same unmodified input
+image, prints the following actual UART output:
+
+```text
+PDP 11/73A Processor
+56KB of memory
+Floating Point Microcode
+Extended Instruction Set (EIS)
+Floating Instruction Set (FIS)
+Cache Memory
+50 Cycle System Clock
+```
+
+The runner now requires `PDP 11/73A Processor`, in addition to its previous
+boot/console/directory checks. Logs are in `testbench/build/rt11-kdj11a/`.
+All **8/8 checks passed**: **1,577,603,541 clocks**, 232 sector reads, 6 writes
+to 5 dirty overlay sectors, all 43 command bytes received, and a fresh KMON
+prompt after both commands. `DIRECTORY SY:RT11FB.SYS` reported 103 blocks and
+51455 free blocks. The source-image SHA-256 above was unchanged.
+
+Regressions also passed: the new and preserved MAINT word/byte tests,
+**600 absent-MMU accesses** on the complete SD/FRAM bus, **209/209 core
+snapshots** including 29 EIS cases, the ordinary guest/peripheral/HALT/FIS
+suites, and the no-FIS trap test. The actual board-top simulation passed
+UART TX/RX, guest RESET and two 50-Hz WAIT interrupts. All 14 board/diagnostic
+project and MEM/EBR consistency checks passed; native SD/FRAM diagnostic
+firmware is byte-identical to its prior accepted version.
+
+Only the assembled microcode changed: four additional code words, no extra
+context words or RTL changes. The normal SD+FIS image is now
+**3501 code + 64 context + 19 free = 3584** words. Its MEM SHA-256, also matching
+the testbench's autoboot image, is:
+
+```text
+486059bae5ee65f89711de00d553445f555c0a310c3c72682eec0ea9da2abc60
+```
+
+The hardware and Diamond results above belong to the earlier zero-MAINT
+image. No Diamond build or physical-board test was performed for this
+identification change; regenerate the JED before testing it on the board.
 
 ### Other simulation coverage
 
@@ -131,7 +182,7 @@ For the cold-boot follow-up, ordinary guest/peripheral/FIS/HALT/CPU-I/O tests,
 both 209-snapshot core configurations, all 22 disk scenarios, image/overlay
 tests and the 600 absent-MMU accesses were rerun successfully. The exhaustive
 4040-case FIS sweep above belongs to the preceding commit; FIS arithmetic has
-not changed. The current board and cold-boot test ROM SHA-256 agrees:
+not changed. That revision's board and cold-boot test ROM SHA-256 agreed:
 
 ```
 988397799b643e75985317c53b59b0f5f6e87479cf58acb6856bc97b32f23a41
@@ -230,8 +281,8 @@ there is no new J-11 register or exception logic in Verilog.
 `cpu_mmu_absent.asm` checks 100 addresses × six word/byte read/write forms,
 600 traps in total. Existing processor-register tests still run; the preserved
 `j11` profile separately retains its historical zero/ignore tests. Removing the
-misleading stubs saves 30 code words; adding autoboot spends 26. The resulting
-disk+FIS image is **3497 code + 64 context + 23 free = 3584**. The subsequent
+misleading stubs saves 30 code words; adding autoboot spends 26. That revision's
+disk+FIS image was **3497 code + 64 context + 23 free = 3584**. The subsequent
 [Diamond run of `6668a85`](hc1200-sd-diamond.md) builds this exact ROM with
 the new reset/divider and corrected board constraints through JED export:
 1095 LUT4, 7 EBRs, zero internal timing errors at 26.6 MHz. Physical-board

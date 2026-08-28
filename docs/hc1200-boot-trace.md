@@ -12,8 +12,10 @@ top, `sd.lpf` and `j11.sty`; only the EBR contents differ. Code and diagnostic
 text are assembly in `ucode/diagnostics/boot_trace.asm`, with conditional
 hooks in `ucode/v2` and `ucode/experimental/rh11_sd.asm`.
 
-The trace occupies **3439 code words + 64 context words** in the existing
-3584-word uROM, leaving 81 words unused. FIS was removed only to free code
+The trace occupies **3443 code words + 64 context words** in the existing
+3584-word uROM, leaving 77 words unused. This includes the four-word MAINT
+identification handler added after the original `4007f49` acceptance below.
+FIS was removed only to free code
 space for this diagnostic image. All generated files remain untracked.
 
 ## Build and select the correct JED
@@ -176,7 +178,7 @@ report. That string is its description of a J-11 without the optional FPA
 accelerator: MAINT[8] is clear. It is not a FIS indicator. The functional
 `FADD`/vector-010 check verifies that FIS is disabled in this diagnostic build.
 
-### Diamond result (2026-08-28)
+### Diamond result for `4007f49` (2026-08-28)
 
 Fresh isolated build on Ubuntu with Diamond 3.14, `LCMXO2-1200HC-4SG32C`:
 1095/1280 LUT4, 548/640 slices, 431 registers, 7/7 EBR, 17 PIO + JTAGENB.
@@ -188,7 +190,9 @@ this build uses ordinary `CFG`, with zero initialized UFM pages. The existing
 preloaded-EBR wake-up advisory and configuration-port warning also remain;
 configuration/JTAG settings have not been changed.
 
-Generated MEM and EBR contents match the Mac assembly byte for byte:
+That commit's generated MEM and EBR contents matched the Mac assembly byte
+for byte. These hashes describe the earlier zero-MAINT image, not the newer
+KDJ11-A-identification uROM:
 
 ```text
 MEM SHA256 a5b3ad539eb717bd71be7a3af767fcfdf0527ae3fd2f413d1489a3d1e3a6a86f

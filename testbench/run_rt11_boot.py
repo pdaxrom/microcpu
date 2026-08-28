@@ -69,6 +69,7 @@ def main():
         "image_unchanged": before == after,
         "rt11fb_banner": "RT-11FB (S) V05.03" in console,
         "show_configuration": "Booted from DM0:RT11FB" in console,
+        "processor_identification": "PDP 11/73A Processor" in console,
         "no_mmu_memory": "56KB of memory" in console,
         "directory": re.search(r"RT11FB\s*\.SYS\s+103P?(?:\s|$)", console) is not None,
         "no_guest_errors": re.search(r"\?(?:BOOT|KMON|MON|PIP|DIR|DUP|RESORC)-[FE]-", console) is None,
