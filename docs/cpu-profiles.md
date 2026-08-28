@@ -270,3 +270,40 @@ Native tests retain the six-clock ABI and memory wait/error behavior.
 The retained variant passes all guest/peripheral/HALT/no-FIS tests and
 209/209 core snapshots. Its assembler and firmware images match stage 2;
 only native PC storage and the corresponding test fixture injection change.
+
+## Reproducible acceptance (stage 4)
+
+From the repository root, with Icarus, C compiler, Python and the sibling
+`k1801vm1` reference/microasm11 available:
+
+```sh
+make -C testbench profile-acceptance FIS_JOBS=4
+make -C testbench profile-acceptance-ebr FIS_JOBS=4 LATTICE_SIM_DIR=/path/to/machxo2/models
+# Ubuntu with Diamond, in an isolated copy; never programs a board:
+make -C boards j11-v2-diamond DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
+```
+
+The second target includes the first. The ordered sub-makes avoid shared
+fixture-directory races. `FIS_JOBS` controls arithmetic-test parallelism,
+not simulated hardware timing. `check_preserved_profiles.py` rejects any
+change to the nine original/preserved RTL and assembly files from `d4dabf1`.
+
+All component suites passed on 2026-08-28: original native ISA, bootloader
+and board tests; preserved and new J-11 guest/peripheral/HALT tests, no-FIS
+profiles, **209/209 core snapshots and 4040/4040 exact FIS cases for each
+engine**; both full actual-EBR suites, including the same 209 core snapshots.
+New native tests also pass 163840 PC checks and 115255 ALU/address checks.
+The final independent Diamond build reproduces **959 LUT4, 482 slices,
+381 registers, seven EBRs, 45.708 MHz**, without timing violations at 26.6 MHz.
+
+`make -C testbench ucode-benchmark-test` runs the same `benchmark.asm` image
+through the same deterministic fast bus: MOV/MOVB, memory EA, arithmetic,
+JSR/RTS and SOB loops. Preserved engine: **903548** clocks; new engine:
+**814640** clocks, **9.84% fewer**. Counts include reset and test checks.
+This isolates firmware overhead; it is not a physical-FRAM throughput claim.
+
+Final RTL SHA-256: `2e97f310709b7d36709798226d589a0fb7970d7cd1e5917b55732d4260508686`.
+Final ROM SHA-256: `0ea83148ca9328b9a5afa4a42026e124724e07948874412457c4ab44d3b33f20`.
+Mac/Ubuntu hashes agree. Reports and JED files are ignored build artifacts.
+SD/RK experiments are separate from this accepted configuration; production
+pin assignments and physical I/O remain unverified.

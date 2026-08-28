@@ -292,8 +292,12 @@ after verification; never commit generated images or program the board.
   7 EBRs, TRACE 45.708 MHz; 163840 PC boundary/target checks. ADC/SBC measured
   independently and rejected: +57 LUTs for only 14 code words, TRACE 42.385 MHz.
   Guest ADC/SBC and FIS software carry chains remain intact.
-- [ ] 4. Full preserved/new CPU, guest/core/FIS and actual-EBR regression;
-  isolated Diamond measurements and reproducible acceptance checks. Commit.
+- [x] 4. Full original/preserved/new regression; both J-11 profiles pass
+  209/209 core snapshots, 4040/4040 exact FIS cases and actual-EBR suites.
+  Added profile-acceptance[-ebr], source-preservation check and a common
+  assembled benchmark: 903548 -> 814640 clocks (-9.84%, fast test bus).
+  Final isolated Diamond confirms 959 LUTs, 482 slices, 381 registers,
+  7 EBRs and 45.708 MHz. Source/ROM hashes match both hosts; no programming.
 - [ ] 5. Isolated SD/FRAM disk prototype for the already selected RK611/RH11
   controller at octal 0177440, using `k1801vm1/lsi11/dev_rh11.c` as reference.
   Measure complete-board fit, test reads/writes, transfer arbitration and

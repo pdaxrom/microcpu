@@ -7,6 +7,7 @@ MICROASM11_DIR ?= ../../../PROJECTS/k1801vm1/microasm11
 ASM11    ?= $(MICROASM11_DIR)/microasm11
 CORE_DIR ?= ../../../PROJECTS/k1801vm1
 PYTHON   ?= python3
+FIS_JOBS ?= 4
 VSRC     = ../rtl/cpu.v tb.v
 PROGRAMS = $(wildcard programs/*.asm)
 TESTS    = $(patsubst programs/%.asm,%,$(PROGRAMS))
@@ -204,7 +205,7 @@ j11-fis-test: build/tb_j11_cpu_io.vvp build/tb_j11_fis.vvp build/j11_ucode.words
 
 # Larger arithmetic corpus is separate from the quick regression target.
 j11-fis-reference-test: build/tb_j11_fis.vvp build/j11_ucode.words check-microasm11
-	$(PYTHON) run_fis_reference.py --asm11 $(ASM11) --vvp $(VVP)
+	$(PYTHON) run_fis_reference.py --asm11 $(ASM11) --vvp $(VVP) --jobs $(FIS_JOBS)
 
 # Optional strict profile keeps FIS opcodes reserved; never overwrites the
 # production ROM or the generated board image.
@@ -406,7 +407,7 @@ ucode-core-test: build/core_reference_export build/ucode_j11_core_reference.vvp 
 	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP) --banks --testbench build/ucode_j11_core_reference.vvp --listing build/j11_ucode_v2.lst --work-dir build/ucode_core_reference
 
 ucode-fis-reference-test: build/ucode_j11_fis.vvp build/j11_ucode_v2.words check-microasm11
-	$(PYTHON) run_fis_reference.py --asm11 $(ASM11) --vvp $(VVP) --testbench build/ucode_j11_fis.vvp --work-dir build/ucode_fis_reference
+	$(PYTHON) run_fis_reference.py --asm11 $(ASM11) --vvp $(VVP) --testbench build/ucode_j11_fis.vvp --work-dir build/ucode_fis_reference --jobs $(FIS_JOBS)
 
 build/j11_v2_nofis.bin: ../ucode/v2/j11.asm $(J11_V2_DEPS) $(ASM) | build
 	$(ASM) --cpu ucode -D J11_DISABLE_FIS -binary $< $@ > build/j11_v2_nofis.asm.log 2>&1 || { cat build/j11_v2_nofis.asm.log; exit 1; }
@@ -421,6 +422,25 @@ ucode-nofis-test: build/ucode_nofis.vvp build/j11_v2_nofis.words build/guest_fis
 	$(VVP) build/ucode_nofis.vvp +PROGRAM=build/guest_fis_unavailable.hex
 
 ucode-test: ucode-native-test ucode-j11-test ucode-nofis-test
+
+# Identical guest image and bus latency, deterministic native-clock counts.
+.PHONY: ucode-benchmark-test profile-acceptance profile-acceptance-ebr
+ucode-benchmark-test: build/tb_j11_fis.vvp build/ucode_j11_fis.vvp build/j11_ucode.words build/j11_ucode_v2.words build/guest_benchmark.hex
+	$(VVP) build/tb_j11_fis.vvp +PROGRAM=build/guest_benchmark.hex
+	$(VVP) build/ucode_j11_fis.vvp +PROGRAM=build/guest_benchmark.hex
+
+# Sub-makes are deliberately sequential: shared core fixture directories
+# must not be regenerated while a different suite is reading them.
+profile-acceptance:
+	$(PYTHON) check_preserved_profiles.py
+	$(MAKE) -C ../asm test
+	$(MAKE) test j11-core-banks-test j11-nofis-test
+	$(MAKE) ucode-test ucode-core-test ucode-benchmark-test
+	$(MAKE) j11-fis-reference-test ucode-fis-reference-test
+
+profile-acceptance-ebr: profile-acceptance
+	$(MAKE) j11-ebr-test
+	$(MAKE) ucode-ebr-test
 
 # Optional exact EBR simulation on the Mac; this does not run Diamond.
 J11_V2_EBR = ../boards/hc1200-microcomp/ucode_urom_ebr.v
