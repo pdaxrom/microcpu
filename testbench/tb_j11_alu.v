@@ -19,9 +19,9 @@ module tb_j11_alu;
 		begin
 			dut.operand_a = left;
 			dut.operand_b = right;
-			dut.urom_data = 0;
-			dut.urom_data[7:4] = operation;
-			dut.urom_data[3] = 1; // native ALU encoding, not a load/store
+			dut.uir = 0;
+			dut.uir[7:4] = operation;
+			dut.uir[3] = 1; // native ALU encoding, not a load/store
 			if (operation == dut.ALU_SUBB) begin
 				byte_result = {1'b0, left[7:0]} - {1'b0, right[7:0]};
 				result = {9'b0, byte_result[7:0]};
@@ -52,7 +52,7 @@ module tb_j11_alu;
 			dut.operand_b = right;
 			expected = left + right;
 			for (memory_kind = 0; memory_kind < 4; memory_kind = memory_kind + 1) begin
-				dut.urom_data = memory_kind << 4;
+				dut.uir = memory_kind << 4;
 				#1;
 				if (dut.arithmetic_result[15:0] !== expected)
 					$fatal(1, "Address op=%h A=%h B=%h got=%h expected=%h",

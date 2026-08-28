@@ -479,6 +479,13 @@ Operand-to-arg mappings:
 the `sws` and `swu` opcode groups respectively; the original `rtl/cpu.v`
 continues to interpret those groups as mode-control instructions.
 
+`JCTX` below is an address-space convention, not a separate RTL register
+array. On the HC1200 microengine its 64 words occupy the tail of the shared
+microcode EBR RAM (`UROM_WORDS - 64` through `UROM_WORDS - 1`). Native accesses
+cannot write the code region. Cause/IRQ/control indexes 10/11/15 remain
+service ports; architectural register layout and bank switching are firmware.
+Context accesses retain the ordinary six-clock instruction timing.
+
 #### gget
 - Syntax: `gget R, I8`
 - Encoding: op = 0x12, op_reg_const

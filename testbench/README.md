@@ -146,4 +146,27 @@ driver for the private microcode console mailbox, and `halt_privileged.asm`
 through SPI FRAM. It covers saved PC/PSW/banks, no bus/reset activity during
 HALT, pending IRQs, Proceed, held-request single-step, user WAIT, TRACE and
 illegal HALT in S/U with either RS. It adds no guest I/O address or board pin.
-The same programs run in `j11-ebr-test` against Lattice's actual ROM model.
+The same programs run in `j11-ebr-test` against Lattice's actual EBR model.
+
+### Shared microcode/context memory
+
+`make -C testbench j11-context-test` assembles
+`ucode/j11_context_memory.asm` with the native `microasm`. It checks all
+ordinary context indexes with distinct patterns, reset clearing, high-index
+masking, overlapping source/index registers and native PC reads/writes. Its
+last instruction is immediately before the reserved 64-word context region.
+Two full runs plus an aborted-store reset verify 35,808 instructions at the
+unchanged six clocks per instruction. No context is deposited by this test.
+
+`j11-ebr-test` runs that same program through a separate, generated EBR test
+image, without overwriting production microcode. The primitive-port test
+checks all 3584 words, 1152 context write/read pairs, simultaneous code reads
+and context writes, independent enables, reset write suppression and unchanged
+code. The production guest/core suites then run against the production image.
+`test_urom_ebr.py` verifies both output formats and rejects code that crosses
+into the last 64 words (including the one-word-over boundary).
+
+`include/j11_context_probe.vh` observes actual behavioral/vendor RAM, rather
+than keeping a shadow context in the engine. Its only deposits are the existing
+C-fixture seeding and private HALT/Proceed stimulus. Guest instruction and
+peripheral semantics continue to be tested by `microasm11` programs.

@@ -240,9 +240,37 @@ no board programming was performed.
   The extra HALT vector-priority test also passes on that ROM. Diamond/local
   ROM words agree (only `od` whitespace differs); commit source files only.
 
-Current microcode: **3463/3584 words, 121 free**, including FIS. The two sets
+At that checkpoint: **3463/3584 words, 121 free**, including FIS. The two sets
 and console groundwork use 72 words beyond the FIS checkpoint. Fabric has
 67 LUTs free; this is not a guarantee that a full SD controller will fit.
+
+### Shared microcode/context RAM (requested 2026-08-28)
+
+- [x] Preserve the register-set/HALT baseline (`895ec88`) before changing
+  storage. Leave unrelated untracked and generated files out of commits.
+- [x] Move the 64-word context into the last 64 words of the same seven EBRs
+  as microcode; keep only eight native working registers in distributed RAM.
+  Keep register banks, PSW, stack and HALT behavior in assembly. Guest stack
+  contents stay in SPI FRAM; SP values and fixed helper frames live in context.
+- [x] Restrict the hardware write port to context; latch uIR while reading
+  native operand A, then reuse the read port for context. No added opcode or
+  instruction cycle: ordinary native instructions still take six clocks.
+- [x] Reserve 64 words in both Makefiles and the common image packer. Reject
+  overlapping code, initialize context to zero and clear only context on reset.
+  Current layout: **3463 code + 64 context + 57 free = 3584 words**.
+- [x] Add an assembled native memory test (35,808 six-clock instructions),
+  index/PC/boundary/reset checks, and real EBR write/read/enable tests. Observe
+  actual shared memory in guest tests rather than retaining a shadow in RTL.
+- [x] Diamond 3.14 in an isolated copy: **1085/1280 LUTs**, 544/640 slices,
+  378/1346 registers, 7/7 EBR. Saves **128 LUTs / 65 slices** versus `895ec88`;
+  distributed RAM drops 120 -> 24 LUTs, total free fabric is **195 LUTs**.
+  Internal 26.6 MHz timing passes: maximum 34.204 MHz, setup +8.358 ns,
+  hold +0.289 ns. RTL and `.mem` hashes match Mac; no board programming.
+- [x] Full Mac `j11-test`, `j11-core-banks-test` and `j11-nofis-test` pass;
+  **209/209** no-MMU snapshots (29 EIS) and **4040/4040** exact FIS cases.
+  `j11-ebr-test` passes the port/reset and native boundary tests, all selected
+  guest/CPU/FIS/RS/HALT programs, and the same **209/209** snapshots. Record
+  the measured result and commit only source files; generated images ignored.
 
 ### Deferred: not part of the active follow-up
 

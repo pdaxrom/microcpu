@@ -33,6 +33,8 @@ module tb_j11_cpu_io;
 		.spi_cs_n(cs), .spi_sck(sck), .spi_mosi(mosi), .spi_miso(miso)
 	);
 	spi_fram_model fram (.cs_n(cs), .sck(sck), .mosi(mosi), .miso(miso));
+	`define J11_CONTEXT_ENGINE engine
+	`include "include/j11_context_probe.vh"
 	always #5 clk = !clk;
 	always @(posedge clk) if (!rst && req && ready) begin
 		case (address & 16'hfffe)
@@ -56,16 +58,16 @@ module tb_j11_cpu_io;
 		rst = 0;
 		for (cycles = 0; cycles < max_cycles && engine.cause_reg < 3; cycles = cycles + 1)
 			@(negedge clk);
-		if (engine.cause_reg != expected_cause || engine.jctx[0] !== 16'o012345 ||
-				(expected_cpuerr >= 0 && (engine.jctx[23] >> 8) !== expected_cpuerr)) begin
+		if (engine.cause_reg != expected_cause || context_words[0] !== 16'o012345 ||
+				(expected_cpuerr >= 0 && (context_words[23] >> 8) !== expected_cpuerr)) begin
 			$display("R3=%06o R4=%06o frame PC=%06o PSW=%06o",
-				engine.jctx[3], engine.jctx[4],
-				{fram.memory[engine.jctx[6]+1], fram.memory[engine.jctx[6]]},
-				{fram.memory[engine.jctx[6]+3], fram.memory[engine.jctx[6]+2]});
+				context_words[3], context_words[4],
+				{fram.memory[context_words[6]+1], fram.memory[context_words[6]]},
+				{fram.memory[context_words[6]+3], fram.memory[context_words[6]+2]});
 			$fatal(1, "CPU I/O: %0s stage=%0d PC=%06o IR=%06o uPC=%04h PSW=%06o CPUERR=%03o R0=%06o R1=%06o R2=%06o SP=%06o",
-				program_file, engine.jctx[5], engine.jctx[7], engine.jctx[9],
-				engine.upc, engine.jctx[8], engine.jctx[23] >> 8,
-				engine.jctx[0], engine.jctx[1], engine.jctx[2], engine.jctx[6]);
+				program_file, context_words[5], context_words[7], context_words[9],
+				engine.upc, context_words[8], context_words[23] >> 8,
+				context_words[0], context_words[1], context_words[2], context_words[6]);
 		end
 		$display("PASS: %0s", program_file);
 		$finish;

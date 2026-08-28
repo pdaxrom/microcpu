@@ -37,12 +37,12 @@ $(MICROASM): ../asm/microasm.c
 
 $(J11_UCODE_BIN): $(J11_UCODE_ASM) $(wildcard ../ucode/j11_*.asm ../ucode/j11_*.inc) ../ucode/config.mk ../asm/include/pseudo.inc $(MICROASM)
 	$(MICROASM) -binary $(J11_UCODE_ASM) $@
-	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UROM_WORDS))) || { echo "J-11 microcode is $$size bytes; limit is $$((2 * $(J11_UROM_WORDS)))"; exit 1; }
+	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UCODE_WORDS))) || { echo "J-11 microcode is $$size bytes; code limit is $$((2 * $(J11_UCODE_WORDS))) (64 words reserved for context)"; exit 1; }
 
-$(J11_UCODE_MEM): $(J11_UCODE_BIN)
-	{ printf '@0000\n'; $(OD) -An -v -tx2 $< | sed 's/[[:space:]]*$$//'; printf '@%04x\n00b0\n' $$(( $(J11_UROM_WORDS) - 1 )); } > $@
+$(J11_UCODE_MEM): $(J11_UCODE_BIN) ../ucode/make_urom_ebr.py ../ucode/config.mk
+	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
 
-$(J11_UCODE_EBR): $(J11_UCODE_BIN) ../ucode/make_urom_ebr.py
+$(J11_UCODE_EBR): $(J11_UCODE_BIN) ../ucode/make_urom_ebr.py ../ucode/config.mk
 	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) > $@
 
 j11-ucode: $(J11_UCODE_MEM) $(J11_UCODE_EBR)

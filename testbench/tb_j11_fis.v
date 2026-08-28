@@ -19,6 +19,8 @@ module tb_j11_fis;
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),
 		.guest_error(error), .irq(1'b0), .irq_level(3'b0), .irq_vector(8'b0)
 	);
+	`define J11_CONTEXT_ENGINE dut
+	`include "include/j11_context_probe.vh"
 	always #5 clk = !clk;
 	always @(posedge clk) begin
 		ready <= 0;
@@ -46,16 +48,16 @@ module tb_j11_fis;
 		rst = 0;
 		for (cycles = 0; cycles < max_cycles && dut.cause_reg < 3; cycles = cycles + 1)
 			@(negedge clk);
-		if (dut.cause_reg != 3 || dut.jctx[0] !== 16'o012345) begin
+		if (dut.cause_reg != 3 || context_words[0] !== 16'o012345) begin
 			$display("R4=%06o CPUERR=%06o frame PC=%06o PSW=%06o data=%06o %06o %06o %06o",
-				dut.jctx[4], dut.jctx[23] >> 8,
-				{memory[dut.jctx[6]+1], memory[dut.jctx[6]]},
-				{memory[dut.jctx[6]+3], memory[dut.jctx[6]+2]},
+				context_words[4], context_words[23] >> 8,
+				{memory[context_words[6]+1], memory[context_words[6]]},
+				{memory[context_words[6]+3], memory[context_words[6]+2]},
 				{memory[16'o6001], memory[16'o6000]}, {memory[16'o6003], memory[16'o6002]},
 				{memory[16'o6005], memory[16'o6004]}, {memory[16'o6007], memory[16'o6006]});
 			$fatal(1, "FIS: %0s case=%0d PC=%06o IR=%06o uPC=%04h PSW=%06o R0=%06o R1=%06o R2=%06o R3=%06o SP=%06o",
-				program_file, dut.jctx[5], dut.jctx[7], dut.jctx[9], dut.upc,
-				dut.jctx[8], dut.jctx[0], dut.jctx[1], dut.jctx[2], dut.jctx[3], dut.jctx[6]);
+				program_file, context_words[5], context_words[7], context_words[9], dut.upc,
+				context_words[8], context_words[0], context_words[1], context_words[2], context_words[3], context_words[6]);
 		end
 		$display("PASS: %0s (%0d cycles)", program_file, cycles);
 		$finish;

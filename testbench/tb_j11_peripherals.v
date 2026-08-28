@@ -32,6 +32,8 @@ module tb_j11_peripherals;
 		.spi_cs_n(cs), .spi_sck(sck), .spi_mosi(mosi), .spi_miso(miso)
 	);
 	spi_fram_model fram (.cs_n(cs), .sck(sck), .mosi(mosi), .miso(miso));
+	`define J11_CONTEXT_ENGINE engine
+	`include "include/j11_context_probe.vh"
 	always #5 clk = !clk;
 	always @(posedge clk) if (!rst && req && ready) begin
 		if (address >= 16'hff60 && address < 16'hff80)
@@ -63,16 +65,16 @@ module tb_j11_peripherals;
 	endtask
 	task expect_wait;
 		begin
-			while (engine.jctx[9] !== 16'd1) @(negedge clk);
+			while (context_words[9] !== 16'd1) @(negedge clk);
 			repeat (400) @(negedge clk);
-			waiting_pc = engine.jctx[7];
+			waiting_pc = context_words[7];
 			repeat (400) begin
 				@(negedge clk);
-				if (engine.jctx[7] != waiting_pc ||
+				if (context_words[7] != waiting_pc ||
 					(req && address == waiting_pc))
 					$fatal(1, "WAIT fetched another guest instruction: stage=%0d PC=%06o saved=%06o address=%06o req=%b IR=%06o cause=%0d",
-						engine.jctx[5], engine.jctx[7], waiting_pc, address, req,
-						engine.jctx[9], engine.cause_reg);
+						context_words[5], context_words[7], waiting_pc, address, req,
+						context_words[9], engine.cause_reg);
 			end
 		end
 	endtask
@@ -87,23 +89,23 @@ module tb_j11_peripherals;
 		repeat (4) @(negedge clk);
 		rst = 0;
 		while (engine.state !== engine.ST_FETCH) @(negedge clk);
-		while (engine.jctx[5] != 3 && engine.cause_reg != 3) @(negedge clk);
-		if (engine.cause_reg == 3) $fatal(1, "Peripheral stage %0d", engine.jctx[0]);
+		while (context_words[5] != 3 && engine.cause_reg != 3) @(negedge clk);
+		if (engine.cause_reg == 3) $fatal(1, "Peripheral stage %0d", context_words[0]);
 		tick_to(16'hffff);
-		while (engine.jctx[5] != 4 && engine.cause_reg != 3) @(negedge clk);
+		while (context_words[5] != 4 && engine.cause_reg != 3) @(negedge clk);
 		previous_reads = native_reads;
-		while (engine.jctx[5] != 5 && engine.cause_reg != 3) @(negedge clk);
+		while (context_words[5] != 5 && engine.cause_reg != 3) @(negedge clk);
 		if (native_reads != previous_reads)
 			$fatal(1, "Idle UART was polled without a native event");
 		expect_wait();
 		tick_to(0); // 16-bit time sequence wrap
-		while (engine.jctx[5] != 6 && engine.cause_reg != 3) @(negedge clk);
+		while (context_words[5] != 6 && engine.cause_reg != 3) @(negedge clk);
 		expect_wait();
 		tick_to(1);
 		while (engine.cause_reg != 3) @(negedge clk);
-		if (engine.jctx[0] !== 16'o012345 || tx_count != 4 || services.ticks != 1)
+		if (context_words[0] !== 16'o012345 || tx_count != 4 || services.ticks != 1)
 			$fatal(1, "Peripheral result r0=%06o PC=%06o IR=%06o stage=%0d TX=%0d",
-				engine.jctx[0], engine.jctx[7], engine.jctx[9], engine.jctx[5], tx_count);
+				context_words[0], context_words[7], context_words[9], context_words[5], tx_count);
 
 		rst = 1;
 		repeat (4) @(negedge clk);
@@ -113,8 +115,8 @@ module tb_j11_peripherals;
 		expect_wait();
 		tick_to(1);
 		repeat (2000) @(negedge clk);
-		if (engine.jctx[0] !== 1 || engine.jctx[7] !== waiting_pc ||
-			engine.jctx[23] !== 16'hc0 || engine.cause_reg == 3)
+		if (context_words[0] !== 1 || context_words[7] !== waiting_pc ||
+			context_words[23] !== 16'hc0 || engine.cause_reg == 3)
 			$fatal(1, "Masked WAIT accepted BR6 or lost the tick");
 		$display("PASS: microcoded DL11/LTC, ODT polling, serial bytes, IRQ priorities/latches, WAIT, RESET, time wrap, private/odd I/O");
 		$finish;
@@ -122,7 +124,7 @@ module tb_j11_peripherals;
 	initial begin
 		#20000000;
 		$fatal(1, "Peripheral timeout PC=%06o IR=%06o uPC=%04h stage=%0d cause=%0d RCSR=%04h XCSR=%04h LTC=%04h",
-			engine.jctx[7], engine.jctx[9], engine.upc, engine.jctx[5],
-			engine.cause_reg, engine.jctx[20], engine.jctx[22], engine.jctx[23]);
+			context_words[7], context_words[9], engine.upc, context_words[5],
+			engine.cause_reg, context_words[20], context_words[22], context_words[23]);
 	end
 endmodule

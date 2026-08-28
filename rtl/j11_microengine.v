@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-// Diamond uses the generated, explicitly packed MachXO2 ROM. The same path
+// Diamond uses the generated, explicitly packed MachXO2 code/context RAM. The same path
 // can be selected in Icarus with -DJ11_EBR_UROM and Lattice's EBR models.
 `ifdef SYNTHESIS
 `define J11_EBR_UROM
@@ -94,19 +94,15 @@ module j11_microengine #(
 	localparam [2:0] CMP_LTU = 3'd6;
 	localparam [2:0] CMP_GEU = 3'd7;
 
-	/*
-	 * Reserve EBRs for microcode. The 144-byte register/context state belongs
-	 * in distributed RAM; synchronous reads keep the serialized operand ABI.
-	 */
+	// Only the eight native working registers use distributed RAM. The generic
+	// 64-word context occupies the tail of the same EBRs as the microcode.
 	reg [15:0] r [0:7]
 		/* synthesis syn_ramstyle = "distributed" */;
-	reg [15:0] jctx [0:63]
-		/* synthesis syn_ramstyle = "distributed" */;
 
-	wire [15:0] uir;
+	reg [15:0] uir;
+	wire [15:0] memory_read_data;
 	reg [15:0] upc;
 	reg [15:0] host_read_data;
-	reg [15:0] context_read_data;
 	reg [15:0] operand_a;
 	reg [15:0] operand_b;
 	reg [3:0] alu_flags;
@@ -146,13 +142,16 @@ module j11_microengine #(
 			{flag_n, flag_z, flag_v_sub, flag_c}) ? 16'd4 : 16'd2);
 	wire [15:0] next_pc = upc + pc_step;
 	localparam integer UROM_ADDR_WIDTH = $clog2(UROM_WORDS);
-	wire [UROM_ADDR_WIDTH-1:0] urom_address =
+	localparam integer CONTEXT_BASE = UROM_WORDS - 64;
+	wire [UROM_ADDR_WIDTH-1:0] fetch_address =
 		upc[UROM_ADDR_WIDTH:1];
 
 	reg [2:0] host_read_address;
 	always @* begin
 		case (state)
-		ST_READ_A: host_read_address = arg1;
+		// Fetch has just completed; read A from that word while latching uIR.
+		// Later context reads may overwrite memory_read_data, but not uIR.
+		ST_READ_A: host_read_address = memory_read_data[15:13];
 		ST_READ_B: host_read_address = arg2;
 		default:   host_read_address = dest;
 		endcase
@@ -165,11 +164,15 @@ module j11_microengine #(
 		kind == INST_GGETR || kind == INST_GSETR;
 	wire [5:0] context_access_index = context_is_dynamic ?
 		dynamic_context_index : {1'b0, context_index};
-	wire [5:0] context_read_address = context_access_index;
+	wire context_read_enable = state == ST_READ_D && !op[0] &&
+		(kind == INST_GGET || kind == INST_GGETR);
+	wire memory_read_enable = !rst && (state == ST_FETCH || context_read_enable);
+	wire [UROM_ADDR_WIDTH-1:0] memory_read_address = state == ST_FETCH ?
+		fetch_address : (CONTEXT_BASE | context_access_index);
 	wire [15:0] context_read_value =
 		context_access_index == CTX_CAUSE ? cause_reg :
 		context_access_index == CTX_PENDING ? pending_irq_reg :
-		context_read_data;
+		memory_read_data;
 
 	reg host_write_enable;
 	reg host_write_low;
@@ -213,10 +216,12 @@ module j11_microengine #(
 	wire shift_carry = shift_left && operand_a[15];
 
 	`ifdef J11_EBR_UROM
-	wire [11:0] ebr_address = urom_address;
+	wire [11:0] ebr_address = memory_read_address;
 	j11_urom_ebr #(.WORDS(UROM_WORDS)) microcode_rom (
-		.clk(clk), .rst(rst), .enable(state == ST_FETCH && !rst),
-		.address(ebr_address), .data(uir)
+		.clk(clk), .rst(rst), .enable(memory_read_enable),
+		.address(ebr_address), .data(memory_read_data),
+		.write_enable(context_write_enable && !rst),
+		.write_address(context_write_address), .write_data(context_write_data)
 	);
 	`else
 	reg [15:0] urom [0:UROM_WORDS-1];
@@ -224,7 +229,7 @@ module j11_microengine #(
 	integer i;
 	initial begin
 		for (i = 0; i < UROM_WORDS; i = i + 1) begin
-			urom[i] = 16'h00b0;
+			urom[i] = i < CONTEXT_BASE ? 16'h00b0 : 16'h0000;
 		end
 		if (UCODE_FILE != "") begin
 			$readmemh(UCODE_FILE, urom);
@@ -232,9 +237,12 @@ module j11_microengine #(
 	end
 	always @(posedge clk) begin
 		if (rst) urom_data <= 0;
-		else if (state == ST_FETCH) urom_data <= urom[urom_address];
+		else if (memory_read_enable) urom_data <= urom[memory_read_address];
+		// The write address cannot reach code, including during reset clearing.
+		if (!rst && context_write_enable)
+			urom[CONTEXT_BASE | context_write_address] <= context_write_data;
 	end
-	assign uir = urom_data;
+	assign memory_read_data = urom_data;
 	`endif
 
 	function compare_true;
@@ -304,15 +312,7 @@ module j11_microengine #(
 		end
 	end
 
-	/* The context file has separate synchronous read and write ports. */
-	always @(posedge clk) begin
-		context_read_data <= jctx[context_read_address];
-		if (context_write_enable) begin
-			jctx[context_write_address] <= context_write_data;
-		end
-	end
-
-	/* Centralized write ports keep both arrays inferable as memories. */
+	/* Centralized native-register and shared-memory write ports. */
 	always @* begin
 		host_write_enable = 0;
 		host_write_low = 0;
@@ -428,6 +428,7 @@ module j11_microengine #(
 	always @(posedge clk) begin
 		if (rst) begin
 			upc <= 0;
+			uir <= 0;
 			state <= ST_CLEAR;
 			clear_index <= 0;
 			guest_req <= 0;
@@ -468,6 +469,7 @@ module j11_microengine #(
 			end
 
 			ST_READ_A: begin
+				uir <= memory_read_data;
 				state <= ST_READ_B;
 			end
 

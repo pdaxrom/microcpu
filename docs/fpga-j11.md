@@ -29,28 +29,41 @@ MMU and FP11 remain outside the active scope.
 ## Data paths
 
 ```text
-16-bit uROM -> microengine RISC ALU -> guest context
-                         |
-                         +-> microcoded memory/DL11/LTC dispatcher
+shared 16-bit EBR memory (microcode + context) <-> microengine RISC ALU
+                                                      |
+                         microcoded memory/DL11/LTC dispatcher
                                       |-> transactional SPI FRAM
                                       `-> raw UART/time service interface
 ```
 
-Microcode instruction fetches never use the guest bus. The current uROM is
-**3584 x 16 bits**, with **3463 words occupied and 121 free**. `ucode/config.mk`
-supplies the image size to both Makefiles; the engine and board defaults agree.
+Microcode instruction fetches and context accesses never use the guest bus.
+The shared memory is **3584 x 16 bits**: **3463 code words + 64 context words**,
+with **57 words free** for code growth. `ucode/config.mk` supplies the total
+and usable code sizes to both Makefiles; the engine and board defaults agree.
 Guest memory transactions use a separate request/ready interface.
 
-The 8x16 host and 64x16 guest-context arrays use distributed RAM. Diamond
-previously spent three EBRs on just 80 bytes in the smaller 32-word-context
-configuration. Automatic ROM inference rounded
-3584 words up to eight EBRs, so `ucode/make_urom_ebr.py` instead packs the
-assembled binary into seven explicit PDPW8KC banks in 512x18 mode, using
-16 data bits per location. This uses all seven HC1200 EBRs without changing
-the instruction format or adding fetch cycles. The generated INITVAL strings
-and the primitive's swapped 9-bit read halves are checked against the official
-Lattice simulation model. Normal Icarus tests retain the portable array model;
-Diamond (`SYNTHESIS`) and `j11-ebr-test` select the same generated hardware ROM.
+Only the 8x16 native register file uses distributed RAM. The context is in
+the final 64 words of the same EBR allocation as the code, not a separate
+LUT RAM. `ucode/make_urom_ebr.py` explicitly packs seven PDPW8KC banks in
+512x18 mode, using 16 data bits per location; automatic inference previously
+rounded 3584 words up to eight EBRs. The final bank's write port has only a
+six-bit address and fixed upper address bits, so it cannot modify code.
+The other banks have their write ports disabled.
+
+The common read port fetches an instruction in `ST_FETCH`. `ST_READ_A` uses
+that word's source-register field and latches uIR, leaving the port free for
+a context read in `ST_READ_D`. uIR remains stable through execution, shifts
+and guest-bus waits. Ordinary native instructions, including GGET/GSET,
+still take **six clocks**; this change adds no instruction or wait state.
+
+Both the portable `.mem` image and EBR INITVALs come from the same packer.
+It fills unused code with native `b *`, initializes context to zero and
+rejects code beyond **3520 words / 7040 bytes**. Reset explicitly clears only
+the 64 context words; primitive reset does not reload or erase code. Writes
+are disabled while reset is asserted. The generated packing, read-half
+ordering and runtime writes are checked against Lattice's official model.
+Normal Icarus tests use a portable shared array; Diamond (`SYNTHESIS`) and
+`j11-ebr-test` use the generated hardware RAM.
 
 The native ADD/SUB/SUBB operations share one arithmetic datapath to fit the
 device; byte borrow is derived from the low-byte result. J-11 instructions,
@@ -59,9 +72,12 @@ Unsupported guest opcodes retain the reserved-instruction trap path.
 
 ## Guest context
 
-The microengine provides sixty-four 16-bit context words in synchronous
-distributed RAM. Immediate accesses retain a five-bit index (0..31);
-register-indexed accesses use six bits (0..63). Reset clears every word.
+The microengine provides sixty-four 16-bit context words in shared EBR,
+at word offsets **3520..3583** (native byte offsets **0x1b80..0x1bfe**).
+Immediate accesses retain a five-bit index (0..31); register-indexed accesses
+use six bits (0..63). Reset clears every word. The cause, pending-IRQ and
+control indexes remain native service ports, as before; their RAM slots
+are reserved, not used as authoritative service state.
 
 | Index | Meaning |
 |---:|---|
@@ -90,6 +106,17 @@ register-indexed accesses use six bits (0..63). Reset clears every word.
 `GGET` and `GSET` are microengine-only aliases for the old `SWS` and `SWU`
 opcode groups. They move values between RISC registers and the guest context.
 The original `cpu.v` behavior is unchanged.
+
+The existing R0/PC/PSW/IR debug outputs are write mirrors for observation,
+not storage read by the microcode. They do not implement register banking or
+PSW behavior and are unused by the board outputs. Native cause/IRQ/control
+latches remain part of the microengine interface, separate from guest state.
+
+Guest stack contents (including JSR return data and trap PC/PSW frames) remain
+in guest RAM on SPI FRAM. Only active SP and inactive KSP/SSP/USP values live
+in this context. The microcode itself uses `lr` and fixed non-reentrant
+scratch/return slots rather than a growing call stack. The native register
+named `sp` is a working register, not the guest R6.
 
 ### Register sets and console HALT
 
@@ -284,7 +311,9 @@ PIRQ and CCR as well as R0..R7, PSW, inactive SP banks and guest RAM:
 The user-requested FIS compatibility extension is resident in
 `ucode/j11_fis.asm`: **FADD, FSUB, FMUL, FDIV**. It adds **389 words** to the
 3002-word baseline: the FIS-only checkpoint used **3391/3584 words**. The
-subsequent RS/HALT work uses 72 more, for **3463 words / 121 free**. FIS needed no
+subsequent RS/HALT work uses 72 more, for **3463 words / 121 free** at that
+checkpoint. Sharing the memory with context reserves 64 of those words,
+leaving **57 free**, with no microcode changes. FIS needed no
 uROM enlargement, new native opcode, RTL arithmetic unit, or additional EBR.
 Memory-helper scratch is reused only while no memory call is active; native
 v0 is restored to the guest PC before calls so bus faults save the proper PC.
@@ -371,7 +400,7 @@ Words are stored little-endian.
 
 ## Current implementation
 
-- `rtl/j11_microengine.v`: separate uROM, original RISC ALU/control subset,
+- `rtl/j11_microengine.v`: shared microcode/context RAM, RISC ALU/control subset,
   guest context, IRQ latch, and stalled guest-memory operations
 - `rtl/spi_fram_guest_ram.v`: byte/word SPI FRAM transaction engine
 - `boards/hc1200-microcomp/j11_microcomp.v`: HC1200 board top-level with the
@@ -449,7 +478,7 @@ TRACE and JED export in an isolated Ubuntu checkout:
 | Microcode words | 3002 | 3584 | 582 |
 
 This is the historical **Diamond checkpoint before FIS and register sets**.
-The current RS/HALT result is recorded below.
+The subsequent RS/HALT and shared-memory results are recorded below.
 
 The previous checkpoint (`0522437`) used 1279 LUTs and 462 registers. The
 follow-up saves **141 LUTs and 85 registers**, without changing the native ISA,
@@ -483,6 +512,8 @@ normal JTAGENB arrangement. No FPGA or FRAM programming was performed.
 
 ### HC1200 register-set/HALT checkpoint (2026-08-28)
 
+This is the historical checkpoint with a separate 64-word LUT context RAM.
+
 Diamond 3.14 completed synthesis, MAP, PAR, TRACE and JED export in an isolated
 Ubuntu copy, with the same RTL and ROM contents used by Mac tests:
 
@@ -500,6 +531,39 @@ register selection or HALT state machine was added to RTL. Internal timing
 passes at 26.6 MHz: maximum 27.715 MHz, setup +1.513 ns, hold +0.289 ns.
 External I/O timing remains unconstrained; no board was programmed.
 
+### HC1200 shared code/context RAM checkpoint (2026-08-28)
+
+Diamond 3.14 completed synthesis, MAP, PAR, TRACE and JED export in an isolated
+Ubuntu copy. Production microcode is unchanged, including FIS, RS and HALT.
+
+| Resource | Used | Available | Free |
+|---|---:|---:|---:|
+| LUT4 | 1085 | 1280 | 195 |
+| Slices | 544 | 640 | 96 |
+| EBR | 7 | 7 | 0 |
+| Registers (PFU + PIO) | 378 | 1346 | 968 |
+| Code words | 3463 | 3520 | 57 |
+| Context words in that same memory | 64 | 64 | 0 |
+
+Compared with `895ec88`, this saves **128 LUTs and 65 slices**. Distributed RAM
+drops from **120 to 24 LUTs**: only native working registers remain there.
+The new uIR latch and memory-port scheduling preserve the six-clock native
+instruction timing. At the unchanged 26.6 MHz clock, internal setup slack is
+**+8.358 ns**, hold **+0.289 ns**, with zero errors; TRACE reports a maximum of
+**34.204 MHz**. This is not a change to the board clock or physical I/O timing
+validation. The previous JTAG/GPIO warnings remain; no board was programmed.
+
+The synthesized RTL and generated `.mem` have identical SHA-256 hashes on
+Mac and Ubuntu. The common Python packer also makes the board/testbench
+images byte-identical across hosts, without host-endian `od` conversion.
+
+Final Mac verification passes `j11-test`, `j11-core-banks-test` and
+`j11-nofis-test`: **209/209** no-MMU core snapshots (29 EIS), plus
+**4040/4040** exact-reference FIS cases. The actual EBR path passes all memory
+port/reset and native boundary tests, guest/CPU/FIS/RS/HALT suites, and the
+same **209/209** core snapshots. No production microcode or ordinary `cpu.v`
+changes were needed for the storage migration.
+
 ### SD-backed disk: feasibility, not an implemented device
 
 The user requested saving logic for a future Verilog disk controller backed by
@@ -508,8 +572,9 @@ no disk registers, DMA, card initialization, or disk-image handling are present.
 
 SDHC/SDXC transfers use 512-byte blocks; see the SD Association's
 [Physical Layer specification, section 7](https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver5.10.pdf).
-All EBRs are currently reserved for uROM. The FIS/RS/HALT image occupies 3463
-words, which requires all seven banks; the remaining reserve is 121 words.
+All EBRs are allocated to shared code/context RAM. The FIS/RS/HALT image
+occupies 3463 words and context occupies 64 more; the remaining reserve is
+57 words (114 bytes), smaller than one sector.
 An EBR cannot simply be reassigned to a sector buffer in this configuration.
 
 A candidate to evaluate is a separate SD SPI connection, a small byte/word
@@ -671,24 +736,34 @@ The native tests check 115,255 ALU/address combinations (including all 65,536
 byte subtractions), 109,360 PC/branch/skip cases and 900 shift cases with exact
 cycle counts. The assembly microengine smoke test covers byte register writes,
 word/byte loads into PC and stable requests during long FRAM waits. SPI timing
-and data tests run with dividers 1, 2, 3, 5 and 17. Three Python tests verify
-EBR packing and bounds. The current Mac regression includes register-set and
-HALT/Proceed tests plus 209/209 no-MMU C-core snapshots (29 EIS).
-To verify the generated hardware ROM using the installed vendor models:
+and data tests run with dividers 1, 2, 3, 5 and 17. Five Python tests verify
+EBR packing, memory-image parity and code/context bounds. The current Mac
+regression includes register-set and HALT/Proceed tests plus 209/209 no-MMU
+C-core snapshots (29 EIS).
+`j11-context-test` runs assembled native code with distinct context patterns,
+six-bit index masking, PC-source/destination accesses and an instruction at
+the last code word. It verifies warm/aborted-store reset clearing and 35,808
+instructions with unchanged six-clock timing, without depositing any state.
+To verify the generated hardware RAM using the installed vendor models:
 
 ```sh
 make -C testbench j11-ebr-test LATTICE_SIM_DIR=/path/to/diamond/cae_library/simulation/verilog/machxo2
 ```
 
-This checks all 3584 words, bank boundaries and clock-enable holds, then runs
+This checks all 3584 words, bank boundaries and clock-enable holds, 1152
+context writes/readbacks and code integrity after writes/reset, then runs
+the same native context test from an independently assembled boundary image,
 the assembled guest instruction/CPU-I/O/FIS/HALT suites and the 209 no-MMU core
-snapshots through that same hardware ROM. Vendor library files remain
+snapshots through the production hardware image. Vendor library files remain
 external dependencies and are not copied into the repository.
+`include/j11_context_probe.vh` reads the actual array/vendor memory for
+assertions, not a shadow file. Only C-fixture imports and the existing future
+console stimulus deposit state through its test-only helper.
 The final register-set/HALT run passes all 3584 hardware-ROM word checks,
 guest/CPU/FIS/RS/HALT tests, and 209/209 reference snapshots (29 EIS).
 The independent FIS corpus also passes 4040/4040 cases on the updated engine.
-The synthesized RTL hashes and generated ROM words match the files tested on
-the Mac (Linux/macOS `od` differ only in whitespace).
+Those earlier results are retained as a baseline; the shared-memory
+checkpoint and its additional port/reset checks are recorded above.
 
 ## Deferred follow-up candidates
 

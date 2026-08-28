@@ -87,6 +87,8 @@ module tb_j11_execute;
 		.miso(spi_miso)
 	);
 
+	`define J11_CONTEXT_ENGINE dut
+	`include "include/j11_context_probe.vh"
 	always #5 clk = !clk;
 	always @(posedge clk) begin
 		if (guest_reset) begin
@@ -196,7 +198,7 @@ module tb_j11_execute;
 
 		$readmemh("build/guest_irq_priority.hex", fram.memory);
 		reset_engine();
-		while (dut.jctx[1] != 16'o000001) @(negedge clk);
+		while (context_words[1] != 16'o000001) @(negedge clk);
 		irq_level = 3'd4;
 		irq_vector = 8'o060;
 		irq = 1;
@@ -220,16 +222,16 @@ module tb_j11_execute;
 		/* A BR5 request must preempt the same priority-4 BPT handler. */
 		$readmemh("build/guest_irq_priority.hex", fram.memory);
 		reset_engine();
-		while (dut.jctx[1] != 16'o000001) @(negedge clk);
+		while (context_words[1] != 16'o000001) @(negedge clk);
 		irq_level = 3'd5;
 		irq_vector = 8'o060;
 		irq = 1;
 		repeat (2) @(negedge clk);
 		irq = 0;
 		while (debug_guest_r0 != 16'o012345) @(negedge clk);
-		if (dut.jctx[1] !== 16'o000001 || debug_pending_irq !== 0) begin
+		if (context_words[1] !== 16'o000001 || debug_pending_irq !== 0) begin
 			$display("FAIL: J-11 higher-priority IRQ r0=%06o r1=%06o psw=%06o pending=%06o",
-				debug_guest_r0, dut.jctx[1], debug_guest_psw,
+				debug_guest_r0, context_words[1], debug_guest_psw,
 				debug_pending_irq);
 			$finish_and_return(1);
 		end
@@ -442,42 +444,42 @@ module tb_j11_execute;
 		$readmemh("build/guest_control_traps.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[5] !== 16'o065432) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[5] !== 16'o065432) begin
 			$display("FAIL: J-11 JMP/JSR mode-0 traps pc=%06o ir=%06o r0=%06o r5=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[5], debug_cause);
+				context_words[5], debug_cause);
 			$finish_and_return(1);
 		end
 
 		$readmemh("build/guest_sob.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 0 ||
-				dut.jctx[2] !== 16'o000003) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[1] !== 0 ||
+				context_words[2] !== 16'o000003) begin
 			$display("FAIL: J-11 SOB pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], debug_cause);
+				context_words[1], context_words[2], debug_cause);
 			$finish_and_return(1);
 		end
 
 		$readmemh("build/guest_software_traps.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[6] !== 16'o002000) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[6] !== 16'o002000) begin
 			$display("FAIL: J-11 software traps pc=%06o ir=%06o r0=%06o sp=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[6], debug_guest_psw, debug_cause);
+				context_words[6], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
 		$readmemh("build/guest_com.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 16'o012000 ||
-				dut.jctx[2] !== 0) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[1] !== 16'o012000 ||
+				context_words[2] !== 0) begin
 			$display("FAIL: J-11 COM/B pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], debug_cause);
+				context_words[1], context_words[2], debug_cause);
 			$finish_and_return(1);
 		end
 		expect_fram_byte(17'o001001, 8'o125);
@@ -490,7 +492,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 INC/DEC pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], debug_guest_psw, debug_cause);
+				context_words[1], context_words[2], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 		expect_fram_word(17'o001000, 16'o000002);
@@ -510,7 +512,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 NEG/ADC/SBC pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], debug_guest_psw, debug_cause);
+				context_words[1], context_words[2], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 		expect_fram_word(17'o001000, 16'o177777);
@@ -524,7 +526,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 shift/rotate pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], debug_guest_psw, debug_cause);
+				context_words[1], context_words[2], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 		expect_fram_word(17'o003000, 16'o000000);
@@ -539,7 +541,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 SWAB pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], debug_guest_psw, debug_cause);
+				context_words[1], context_words[2], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 		expect_fram_word(17'o001000, 16'o162424);
@@ -547,10 +549,10 @@ module tb_j11_execute;
 		$readmemh("build/guest_sxt.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[4] !== 0) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[4] !== 0) begin
 			$display("FAIL: J-11 SXT pc=%06o ir=%06o r0=%06o r4=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[4], debug_guest_psw, debug_cause);
+				context_words[4], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 		expect_fram_word(17'o001000, 16'o177777);
@@ -573,8 +575,8 @@ module tb_j11_execute;
 				(debug_guest_psw & 16'o000420) !== 16'o000420) begin
 			$display("FAIL: J-11 MFPS/MTPS pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o r3=%06o r4=%06o r5=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], dut.jctx[3], dut.jctx[4],
-				dut.jctx[5], debug_guest_psw, debug_cause);
+				context_words[1], context_words[2], context_words[3], context_words[4],
+				context_words[5], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 		expect_fram_byte(17'o001000, 8'o221);
@@ -599,10 +601,10 @@ module tb_j11_execute;
 		repeat (2) @(negedge clk);
 		irq = 0;
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 16'o000001) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[1] !== 16'o000001) begin
 			$display("FAIL: J-11 MFPT/SPL/WAIT pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], debug_guest_psw, debug_cause);
+				context_words[1], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -615,11 +617,11 @@ module tb_j11_execute;
 		repeat (2) @(negedge clk);
 		irq = 0;
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 16'o000001 ||
+		if (debug_guest_r0 !== 16'o012345 || context_words[1] !== 16'o000001 ||
 				guest_reset_count !== 1 || debug_pending_irq !== 0) begin
 			$display("FAIL: J-11 RESET/RTT pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o reset_count=%0d pending=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], debug_guest_psw, guest_reset_count,
+				context_words[1], debug_guest_psw, guest_reset_count,
 				debug_pending_irq, debug_cause);
 			$finish_and_return(1);
 		end
@@ -630,7 +632,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 MUL pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], debug_guest_psw, debug_cause);
+				context_words[1], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -640,7 +642,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 ASH pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], debug_guest_psw, debug_cause);
+				context_words[1], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -650,7 +652,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 ASHC pc=%06o ir=%06o r0=%06o r1=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], debug_guest_psw, debug_cause);
+				context_words[1], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -660,7 +662,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 DIV pc=%06o ir=%06o r0=%06o r1=%06o r4=%06o r5=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[4], dut.jctx[5], debug_guest_psw, debug_cause);
+				context_words[1], context_words[4], context_words[5], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -670,7 +672,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 MARK/TSTSET/WRTLCK pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o r5=%06o lock=%06o write=%06o traps=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], dut.jctx[5],
+				context_words[1], context_words[2], context_words[5],
 				{fram.memory[17'o001001], fram.memory[17'o001000]},
 				{fram.memory[17'o001003], fram.memory[17'o001002]},
 				{fram.memory[17'o001005], fram.memory[17'o001004]},
@@ -684,7 +686,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 MARK NN boundaries pc=%06o ir=%06o r0=%06o r5=%06o sp=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[5], dut.jctx[6], debug_guest_psw, debug_cause);
+				context_words[5], context_words[6], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -694,17 +696,17 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 lock flag boundaries pc=%06o ir=%06o r0=%06o r3=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[3], debug_guest_psw, debug_cause);
+				context_words[3], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
 		$readmemh("build/guest_trace_return.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[1] !== 2 || dut.jctx[2] !== 2) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[1] !== 2 || context_words[2] !== 2) begin
 			$display("FAIL: J-11 RTI/RTT trace boundaries pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o sp=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], dut.jctx[6], debug_guest_psw, debug_cause);
+				context_words[1], context_words[2], context_words[6], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -714,7 +716,7 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345) begin
 			$display("FAIL: J-11 MFPI/MFPD/MTPI/MTPD pc=%06o ir=%06o r0=%06o r2=%06o r3=%06o sp=%06o psw=%06o cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[2], dut.jctx[3], dut.jctx[6], debug_guest_psw, debug_cause);
+				context_words[2], context_words[3], context_words[6], debug_guest_psw, debug_cause);
 			$finish_and_return(1);
 		end
 
@@ -725,8 +727,8 @@ module tb_j11_execute;
 		if (debug_guest_r0 !== 16'o012345 || guest_reset_count !== 1) begin
 			$display("FAIL: J-11 privileged PSW modes pc=%06o ir=%06o r0=%06o r1=%06o r2=%06o r3=%06o r4=%06o r5=%06o sp=%06o psw=%06o reset_count=%0d cause=%04x",
 				debug_guest_pc, debug_guest_ir, debug_guest_r0,
-				dut.jctx[1], dut.jctx[2], dut.jctx[3], dut.jctx[4],
-				dut.jctx[5], dut.jctx[6], debug_guest_psw,
+				context_words[1], context_words[2], context_words[3], context_words[4],
+				context_words[5], context_words[6], debug_guest_psw,
 				guest_reset_count, debug_cause);
 			$finish_and_return(1);
 		end
@@ -734,10 +736,10 @@ module tb_j11_execute;
 		$readmemh("build/guest_sp_banks.hex", fram.memory);
 		reset_engine();
 		while (debug_cause != 16'h0003) @(negedge clk);
-		if (debug_guest_r0 !== 16'o012345 || dut.jctx[6] !== 16'o010000 ||
-				dut.jctx[17] !== 16'o012010 || dut.jctx[19] !== 16'o014010) begin
+		if (debug_guest_r0 !== 16'o012345 || context_words[6] !== 16'o010000 ||
+				context_words[17] !== 16'o012010 || context_words[19] !== 16'o014010) begin
 			$display("FAIL: J-11 SP banks pc=%06o r0=%06o sp=%06o ssp=%06o usp=%06o",
-				debug_guest_pc, debug_guest_r0, dut.jctx[6], dut.jctx[17], dut.jctx[19]);
+				debug_guest_pc, debug_guest_r0, context_words[6], context_words[17], context_words[19]);
 			$finish_and_return(1);
 		end
 

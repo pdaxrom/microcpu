@@ -24,6 +24,8 @@ module tb_j11_core_reference;
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),
 		.guest_error(error), .irq(1'b0), .irq_level(3'b0), .irq_vector(8'b0)
 	);
+	`define J11_CONTEXT_ENGINE dut
+	`include "include/j11_context_probe.vh"
 	always #5 clk = !clk;
 	always @(posedge clk) begin
 		ready <= 0;
@@ -54,16 +56,16 @@ module tb_j11_core_reference;
 		rst = 0;
 		while (dut.state != dut.ST_FETCH) @(negedge clk);
 		// Deposit fixture state only after the engine's context clear sequence.
-		for (i = 0; i < 9; i = i + 1) dut.jctx[i] = fixture[i];
+		for (i = 0; i < 9; i = i + 1) deposit_context(i, fixture[i]);
 		dut.guest_r0_mirror = fixture[0];
 		dut.guest_pc_mirror = fixture[7];
 		dut.guest_psw_mirror = fixture[8];
-		dut.jctx[16] = fixture[18];
-		dut.jctx[17] = fixture[19];
-		dut.jctx[19] = fixture[20];
+		deposit_context(16, fixture[18]);
+		deposit_context(17, fixture[19]);
+		deposit_context(19, fixture[20]);
 		// C lazily clones R0..R5 on the first RS change. Reproduce that fixture
 		// state, not its reset policy: hardware reset zeros both independent sets.
-		for (i = 0; i < 6; i = i + 1) dut.jctx[32+i] = fixture[32+i];
+		for (i = 0; i < 6; i = i + 1) deposit_context(32+i, fixture[32+i]);
 		if (fixture[24]) begin
 			dut.upc = wait_pc;
 			deposit_cpu_io();
@@ -81,39 +83,39 @@ module tb_j11_core_reference;
 					dut.upc == wait_pc) done = 1;
 		end
 		if (!done) $fatal(1, "Timeout: uPC=%04h PC=%06o cause=%04h",
-			dut.upc, dut.jctx[7], dut.cause_reg);
+			dut.upc, context_words[7], dut.cause_reg);
 		failures = 0;
 		if (fixture[44]) begin
 			for (i = 0; i < 6; i = i + 1) begin
-				if (dut.jctx[32+i] !== fixture[38+i]) begin
+				if (context_words[32+i] !== fixture[38+i]) begin
 					$display("inactive R%0d: got %06o expected %06o", i,
-						dut.jctx[32+i], fixture[38+i]);
+						context_words[32+i], fixture[38+i]);
 					failures = failures + 1;
 				end
 			end
 		end
-		if ((dut.jctx[23] >> 8) !== fixture[29] ||
-				(dut.jctx[21] & 16'hfe00) !== fixture[30] || dut.jctx[31] !== fixture[31]) begin
+		if ((context_words[23] >> 8) !== fixture[29] ||
+				(context_words[21] & 16'hfe00) !== fixture[30] || context_words[31] !== fixture[31]) begin
 			$display("CPU I/O: CPUERR=%06o/%06o PIRQ=%06o/%06o CCR=%06o/%06o (got/expected)",
-				dut.jctx[23] >> 8, fixture[29], dut.jctx[21] & 16'hfe00,
-				fixture[30], dut.jctx[31], fixture[31]);
+				context_words[23] >> 8, fixture[29], context_words[21] & 16'hfe00,
+				fixture[30], context_words[31], fixture[31]);
 			failures = failures + 1;
 		end
 		for (i = 0; i < 9; i = i + 1) begin
-			if (dut.jctx[i] !== fixture[9 + i]) begin
-				$display("state[%0d]: got %06o expected %06o", i, dut.jctx[i], fixture[9 + i]);
+			if (context_words[i] !== fixture[9 + i]) begin
+				$display("state[%0d]: got %06o expected %06o", i, context_words[i], fixture[9 + i]);
 				failures = failures + 1;
 			end
 		end
 		if (check_banks) begin
 			// The active SP is authoritative; inactive banks must also match.
-			active_mode = (dut.jctx[8] >> 14) & 3;
+			active_mode = (context_words[8] >> 14) & 3;
 			if (active_mode == 2) active_mode = 0;
 			for (i = 0; i < 4; i = i + 1) begin
 				if (i != 2 && i != active_mode &&
-						dut.jctx[16 + i] !== fixture[21 + (i == 3 ? 2 : i)]) begin
+						context_words[16 + i] !== fixture[21 + (i == 3 ? 2 : i)]) begin
 					$display("SP bank %0d: got %06o expected %06o", i,
-						dut.jctx[16 + i], fixture[21 + (i == 3 ? 2 : i)]);
+						context_words[16 + i], fixture[21 + (i == 3 ? 2 : i)]);
 					failures = failures + 1;
 				end
 			end
@@ -130,9 +132,9 @@ module tb_j11_core_reference;
 
 	task deposit_cpu_io;
 		begin
-			dut.jctx[23] = {fixture[26][7:0], dut.jctx[23][7:0]};
-			dut.jctx[21] = (dut.jctx[21] & 16'h00ff) | (fixture[27] & 16'hfe00);
-			dut.jctx[31] = fixture[28];
+			deposit_context(23, {fixture[26][7:0], context_words[23][7:0]});
+			deposit_context(21, (context_words[21] & 16'h00ff) | (fixture[27] & 16'hfe00));
+			deposit_context(31, fixture[28]);
 		end
 	endtask
 endmodule

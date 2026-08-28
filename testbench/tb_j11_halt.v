@@ -20,6 +20,8 @@ module tb_j11_halt;
 		.guest_error(error), .guest_reset(guest_reset), .irq(irq),
 		.irq_level(3'd4), .irq_vector(8'o60)
 	);
+	`define J11_CONTEXT_ENGINE dut
+	`include "include/j11_context_probe.vh"
 	always #5 clk = !clk;
 	always @(posedge clk) begin
 		ready <= 0;
@@ -39,7 +41,7 @@ module tb_j11_halt;
 		cycles = cycles + 1;
 		if (cycles > 2000000)
 			$fatal(1, "HALT timeout: stage=%0d PC=%06o uPC=%04h cause=%0d",
-				word_at(16'o6000), dut.jctx[7], dut.upc, dut.cause_reg);
+				word_at(16'o6000), context_words[7], dut.upc, dut.cause_reg);
 	end
 	function [15:0] word_at(input [15:0] a);
 		word_at = {memory[a + 16'd1], memory[a]};
@@ -49,15 +51,15 @@ module tb_j11_halt;
 	begin
 		while (dut.cause_reg < 3) @(negedge clk);
 		if (dut.cause_reg != 3 || word_at(16'o6000) != stage ||
-				dut.jctx[7] !== pc || dut.jctx[8] !== psw || dut.jctx[6] !== sp)
+				context_words[7] !== pc || context_words[8] !== psw || context_words[6] !== sp)
 			$fatal(1, "HALT stage %0d: stage=%0d PC=%06o PSW=%06o SP=%06o R0=%06o",
-				stage, word_at(16'o6000), dut.jctx[7], dut.jctx[8], dut.jctx[6], dut.jctx[0]);
-		for (i = 0; i < 64; i = i + 1) saved_context[i] = dut.jctx[i];
+				stage, word_at(16'o6000), context_words[7], context_words[8], context_words[6], context_words[0]);
+		for (i = 0; i < 64; i = i + 1) saved_context[i] = context_words[i];
 		saved_transactions = transactions;
 		saved_resets = resets;
 		repeat (500) @(negedge clk);
 		for (i = 0; i < 64; i = i + 1)
-			if (dut.jctx[i] !== saved_context[i])
+			if (context_words[i] !== saved_context[i])
 				$fatal(1, "Context %0d changed during HALT", i);
 		if (transactions != saved_transactions || resets != saved_resets || req)
 			$fatal(1, "HALT accessed guest bus or reset peripherals");
@@ -65,7 +67,7 @@ module tb_j11_halt;
 	endtask
 	task proceed(input [15:0] command);
 	begin
-		dut.jctx[38] = command;
+		deposit_context(38, command);
 		while (dut.cause_reg == 3) @(negedge clk);
 	end
 	endtask
@@ -76,7 +78,7 @@ module tb_j11_halt;
 		rst = 0;
 		stop_at(1, word_at(16'o100), 16'o4013, 16'o10000);
 		for (i = 0; i < 6; i = i + 1)
-			if (dut.jctx[i] !== 16'o200 + i || dut.jctx[32+i] !== 16'o100 + i)
+			if (context_words[i] !== 16'o200 + i || context_words[32+i] !== 16'o100 + i)
 				$fatal(1, "HALT lost register set at R%0d", i);
 		irq = 1;
 		@(negedge clk);
@@ -95,19 +97,19 @@ module tb_j11_halt;
 		if (word_at(16'o7774) !== frame_pc || word_at(16'o7776) !== frame_psw)
 			$fatal(1, "HALT at vector entry overwrote the guest stack");
 		proceed(2);
-		while (dut.jctx[7] != word_at(16'o106) && dut.cause_reg < 3) @(negedge clk);
+		while (context_words[7] != word_at(16'o106) && dut.cause_reg < 3) @(negedge clk);
 		// Allow WAIT to settle; then a HALT request stops user mode without 004.
 		repeat (500) @(negedge clk);
 		if (dut.cause_reg >= 3) $fatal(1, "Failed before WAIT");
-		dut.jctx[38] = 1;
+		deposit_context(38, 1);
 		stop_at(3, word_at(16'o106), 16'o144000, 16'o14000);
 		proceed(2);
 		stop_at(4, word_at(16'o110), 16'o4020, 16'o10000);
 		if (word_at(16'o6006) != 0) $fatal(1, "HALT itself caused TRACE");
 		proceed(2);
 		while (dut.cause_reg < 3) @(negedge clk);
-		if (dut.cause_reg != 3 || dut.jctx[0] !== 16'o12345 || word_at(16'o6000) != 5)
-			$fatal(1, "HALT guest checks failed at PC=%06o", dut.jctx[7]);
+		if (dut.cause_reg != 3 || context_words[0] !== 16'o12345 || word_at(16'o6000) != 5)
+			$fatal(1, "HALT guest checks failed at PC=%06o", context_words[7]);
 		$display("PASS: console HALT, preserved RS/SP/PSW, pending IRQ, Proceed, single-step, vector priority, user WAIT and TRACE");
 		$finish;
 	end
