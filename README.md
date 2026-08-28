@@ -27,6 +27,12 @@
 * [Microcomputer with Lattice MachXO2-1200](docs/hc1200-microcomp.md)
 * [FPGA J-11 microengine](docs/fpga-j11.md)
 
+The default HC1200 microcomputer project now boots the microcoded J-11 from
+SPI SD (FIS, 50-Hz timer). Prepare it with
+`make -C boards/hc1200-microcomp`, then open that directory's `microcomp.ldf`.
+The original RISC project is retained as `microcomp-original.ldf`.
+See [board setup and UART pins](docs/hc1200-microcomp.md).
+
 ## Registers
 
 The processor has eight 16-bit registers. The register 0 (PC) using as program counter.

@@ -37,6 +37,18 @@ start
 	mov #0100, @#0177546
 	wait
 	check #2, r3
+	ifdef UART_TEST
+	; The board-level test receives 'U' on tx and sends 'Z' back on rx.
+uart_transmit
+	tstb @#0177564
+	bpl uart_transmit
+	movb #'U', @#0177566
+uart_receive
+	tstb @#0177560
+	bpl uart_receive
+	movb @#0177562, r2
+	check #'Z', r2
+	endif
 	mov #012345, r0
 	halt
 clock_irq

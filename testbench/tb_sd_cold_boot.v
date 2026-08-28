@@ -5,6 +5,12 @@
 module tb_sd_cold_boot;
 	parameter UCODE_FILE = "build/j11_sd_boot.words";
 	reg res = 1; // no external reset pulse at power-on
+	reg rx = 1;
+	wire tx;
+	reg uart_checked = 0;
+	reg [7:0] uart_byte;
+	integer uart_bit;
+	string program_file = "build/guest_sd_cold_boot.hex";
 	integer scenario = 0, cycles = 0, first_fetches = 0, resets = 0;
 	integer i, j, sector, read_base = 0, last_tick = 0, ticks_seen = 0;
 	reg [15:0] previous_ticks = 0;
@@ -12,7 +18,7 @@ module tb_sd_cold_boot;
 	wire fram_cs, fram_sck, fram_mosi, fram_miso;
 	wire sd_cs, sd_sck, sd_mosi, sd_miso;
 	ucode_sd_microcomp #(.UCODE_FILE(UCODE_FILE)) board (
-		.res(res), .rx(1'b1), .tx(), .gpio(), .gpio_mosi(fram_mosi),
+		.res(res), .rx(rx), .tx(tx), .gpio(), .gpio_mosi(fram_mosi),
 		.gpio_miso(fram_miso), .gpio_msck(fram_sck), .gpio_mcs(fram_cs),
 		.sd_cs_n(sd_cs), .sd_sck(sd_sck), .sd_mosi(sd_mosi), .sd_miso(sd_miso),
 		.gpio_din(), .gpio_ce(), .gpio_clk(), .gpio_rs(), .gpio_blank(),
@@ -25,6 +31,27 @@ module tb_sd_cold_boot;
 		.bad_echo(scenario == 5), .bad_status(1'b0));
 	`define J11_CONTEXT_ENGINE board.engine
 	`include "include/j11_context_probe.vh"
+	initial if ($test$plusargs("UART")) begin
+		// Decode the actual output pin and verify its framing/baud divisor.
+		@(negedge tx);
+		repeat (345) @(negedge board.clk);
+		for (uart_bit = 0; uart_bit < 8; uart_bit = uart_bit + 1) begin
+			uart_byte[uart_bit] = tx;
+			repeat (230) @(negedge board.clk);
+		end
+		if (tx !== 1 || uart_byte !== "U") $fatal(1, "Board tx: expected 'U', 115200 8N1");
+		// Send the response on the board's rx pin, not through a RAM deposit.
+		uart_byte = "Z";
+		@(negedge board.clk); rx = 0;
+		repeat (230) @(negedge board.clk);
+		for (uart_bit = 0; uart_bit < 8; uart_bit = uart_bit + 1) begin
+			rx = uart_byte[uart_bit];
+			repeat (230) @(negedge board.clk);
+		end
+		rx = 1;
+		repeat (230) @(negedge board.clk);
+		uart_checked = 1;
+	end
 
 	always @(negedge board.clk) begin
 		cycles = cycles + 1;
@@ -75,14 +102,19 @@ module tb_sd_cold_boot;
 					board.debug_cause, context_words[0], context_words[7], resets, context_words[3]);
 			if (card.read_count != read_base + 2 || card.write_commands != 0 || board.guest_bus.bank_override)
 				$fatal(1, "Guest RESET restarted SD or boot wrote to disk");
+			if ($test$plusargs("UART")) begin
+				if (!uart_checked || context_words[2] !== "Z") $fatal(1, "Board UART round trip failed");
+				$display("PASS: board tx -> 'U', rx <- 'Z', 115200 8N1, guest DL11 polling");
+			end
 		end
 	endtask
 	initial begin
 		if ($value$plusargs("SCENARIO=%d", scenario)) begin end
+		if ($value$plusargs("PROGRAM=%s", program_file)) begin end
 		if (scenario < 0 || scenario > 6) $fatal(1, "Unknown cold boot scenario");
 		#1;
 		if (card.image_fd != 0) $fatal(1, "Cold boot smoke uses its assembled synthetic SD, not SD_IMAGE");
-		$readmemh("build/guest_sd_cold_boot.hex", card.memory);
+		$readmemh(program_file, card.memory);
 		// Zero FRAM for the main path; hostile stale data for all other cases.
 		for (i = 0; i < 131072; i = i + 1) fram.memory[i] = scenario == 0 ? 0 : 8'ha5;
 		if (scenario > 0 && scenario < 6) begin

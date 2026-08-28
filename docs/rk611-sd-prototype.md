@@ -1,10 +1,12 @@
 # Experimental microcoded RK611/RH11 → SPI SD
 
 This is a **simulation/resource prototype, not a production disk controller**.
-It never replaces the accepted `j11` or `ucode` images. The normal ucode
-configuration still includes FIS. The supplied SD pins are recorded in the
+The original `j11` and no-disk `ucode` images remain separate. The main
+`hc1200-microcomp/microcomp.ldf` now selects SD + FIS + power-on boot.
+The supplied SD pins are recorded in the
 separate `sd.lpf`, but not electrically/timing-validated. No board/card
-programming is performed; the experimental Diamond script does not export JED.
+programming is performed. The experimental `build-sd.tcl` does not export JED;
+the main project's `build-microcomp.tcl` can export after timing checks pass.
 
 ## Resource result
 
@@ -167,4 +169,5 @@ tests use `j11_sd_boot.words`, byte-for-byte equal to the board `j11_sd.mem`.
 Remaining work before hardware use: make long transfers cooperative;
 extend controller/card compatibility as needed; add
 data CRC checks; confirm electrical connections, pin constraints and I/O
-timing. No disk-enabled production configuration is selected automatically.
+timing. Selecting the SD build as the main board project is not physical
+hardware acceptance. See [board preparation and UART pins](hc1200-microcomp.md).

@@ -1,5 +1,6 @@
 # Microcomputer with Lattice MachXO2-1200
 
+* [J-11 / SD boot (default project)](#j-11--sd-boot-default-project)
 * [Board](#board)
   * [UART](#uart)
   * [GPIO](#gpio)
@@ -13,13 +14,86 @@
   
 [Back to main page](..)
 
+## J-11 / SD boot (default project)
+
+`boards/hc1200-microcomp/microcomp.ldf` now selects **J-11 without MMU,
+EIS + FIS, a 50-Hz clock, and RK611-compatible SD boot**. Its top is
+`ucode_sd_microcomp`, with the generated `sd_urom_ebr.v` and `sd.lpf`.
+The original RISC hardware is preserved as `microcomp-original.ldf`;
+`microcomp-j11.ldf` and the no-disk `microcomp-ucode.ldf` remain separate.
+
+From the repository root, prepare the firmware before opening Diamond:
+
+```sh
+make -C boards/hc1200-microcomp
+# Equivalent: make -C boards hc1200-microcomp
+```
+
+This builds `microasm` if necessary, assembles the SD-autoboot microcode and
+generates `j11_sd.mem` / `sd_urom_ebr.v`. It works on the Mac without Diamond
+or SCUBA. The repository-wide `make -C boards all` also includes these images,
+but still generates the other/legacy boards' SCUBA RAMs and needs Diamond.
+Generated files are not committed.
+
+Open **`microcomp.ldf`** in Diamond and run through **JEDEC File**. To build
+from the Ubuntu command line instead (build/export only, never program):
+
+```sh
+make -C boards/hc1200-microcomp diamond \
+  DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
+```
+
+The output is `impl1-sdboot/microcomp_impl1.jed`. This separate implementation
+directory avoids reusing the old RISC results or its stale `impl1.xcf`.
+Select this JED explicitly when later configuring Programmer. The script
+exports only after TRACE reports zero cumulative negative slack; current
+SD pin timing/electrical acceptance still requires a real Diamond/board run.
+
+UART and SD locations come from the board's existing `microcomp.lpf`:
+
+| Signal (FPGA perspective) | Site | Connection |
+|---|---|---|
+| `rx` | **PT15D** | UART adapter TX |
+| `tx` | **PT17D** | UART adapter RX |
+| `sd_cs_n` | PL9B | SD CS |
+| `sd_mosi` | PR5C | SD MOSI |
+| `sd_sck` | PT12D | SD clock |
+| `sd_miso` | PT12C | SD MISO |
+
+Console settings: **115200, 8N1, no flow control**, 3.3-V UART levels and a
+common ground. RX and TX have not been swapped. The four former GPIO sites
+are now assigned to SD, not simultaneously to two ports. Guest console
+registers are the microcoded DL11 at octal `177560..177566`.
+
+After FPGA configuration or board reset, uROM reads sectors 0 and 1 from
+SD into FRAM and enters guest address 0. FRAM needs no preinstalled bootstrap.
+Use an **SDHC/SDXC card with a raw RK disk image at LBA 0**, not a file in FAT.
+Guest `RESET` does not restart the boot. ODT remains deferred.
+See [boot tests and limits](rt11-boot.md) for details and the verified RT-11 image.
+
+Mac verification of the selected project, both UART pins and SD cold boot:
+
+```sh
+make -C testbench -f Makefile.disk hc1200-sd-test
+```
+
+The program is assembled by `microasm11`, loaded only into the simulated SD,
+and checks a TX `'U'` / RX `'Z'` exchange through the actual board ports.
+Project/ROM/pin consistency and build-script error gates are checked as well;
+the latter uses mocked Diamond commands and is not a synthesis result.
+
+For the old RISC project, run `make -C boards/hc1200-microcomp original`
+(requires Diamond's SCUBA) and open `microcomp-original.ldf`. The addresses,
+UART bootloader and examples in the remaining sections describe that
+**original RISC configuration**, not the J-11 guest.
+
 ## Board
 
 The system uses a [microcomp board](https://github.com/pdaxrom/microcpu/tree/master/hw)
 
 <img src="microcomp-hw.jpg" width="480" />
 
-Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The default configuration includes 2KB of permanent RAM, pre-initialized with [bootloader](#bootloader) code and 2x2KB RAM mapper pages.
+Implemented 15 bit I/O port, UART, TIMER, memory mapping and RESET signal. The original RISC configuration includes 2KB of permanent RAM, pre-initialized with [bootloader](#bootloader) code and 2x2KB RAM mapper pages.
 
 [Top](#microcomputer-with-lattice-machxo2-1200)
 

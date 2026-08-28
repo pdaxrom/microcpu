@@ -390,6 +390,13 @@ it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.
   232 reads / 6 volatile-overlay writes / 43 UART input bytes. Both commands
   return to KMON; input hash unchanged. Both core profiles: 209/209;
   22 disk scenarios, image/overlay and 600 MMU-absence checks pass again.
+- [x] Promote SD + FIS + 50-Hz autoboot to the main `microcomp.ldf`; retain
+  the original RISC project as `microcomp-original.ldf` in a separate build
+  directory. Normal board Makefiles generate SD ROM; legacy disk commands
+  remain compatible. Add an explicit timing-gated JED build, no programming.
+- [x] Verify UART from the board configuration: RX=PT15D, TX=PT17D, 115200 8N1.
+  Check project/pins/ROM consistency and a TX 'U' / RX 'Z' round trip from a
+  microasm11 program booted through SD. No UART or CPU RTL changes required.
 - [ ] Physical-board timing/pin/electrical acceptance and programming.
   Sustained UART input, cooperative long DMA and guest timekeeping under
   disk load remain future work: missed guest ticks are still coalesced.

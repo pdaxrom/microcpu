@@ -1,8 +1,9 @@
 # RT-11 on the microcoded J-11 / SPI SD prototype
 
 This is a **testbench boot**, not a physical-board acceptance test. Use the
-explicit `ucode` disk+FIS build. The original CPU and preserved `j11` profile
-remain unchanged. No RT-11 disk image or generated microcode is committed.
+`ucode` disk+FIS build, now selected by the main `microcomp.ldf`. The original
+CPU and preserved `j11` profile remain unchanged. No RT-11 disk image or
+generated microcode is committed.
 
 ## Reproduce on the Mac
 
@@ -17,6 +18,7 @@ make -C testbench -f Makefile.disk rt11-boot-fast \
 make -C testbench -f Makefile.disk rt11-bootstrap-test
 
 # Actual board top: power-on reset, safe SD failures and RESET/50-Hz WAIT.
+make -C testbench -f Makefile.disk hc1200-sd-test
 make -C testbench -f Makefile.disk disk-cold-boot-fast
 make -C testbench -f Makefile.disk disk-cold-boot-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
 
@@ -103,7 +105,9 @@ not changed. The current board and cold-boot test ROM SHA-256 agrees:
 
 ## Power-on bootstrap
 
-`make -C boards -f Makefile.disk disk-ucode` builds **SD + FIS + autoboot**.
+`make -C boards/hc1200-microcomp` builds **SD + FIS + autoboot** for the main
+`microcomp.ldf`. The older `make -C boards -f Makefile.disk disk-ucode` command
+remains supported; both use the same shared rules and images.
 The explicit no-FIS disk build also boots from SD. Both define
 `J11_SD_AUTOBOOT`; regular CPU/disk diagnostics omit it to enter their
 preloaded guest tests. `testbench/build/j11_sd_boot.words` matches the board

@@ -176,6 +176,7 @@ peripheral semantics continue to be tested by `microasm11` programs.
 ```sh
 make -C testbench -f Makefile.disk rt11-boot-fast
 make -C testbench -f Makefile.disk rt11-bootstrap-test
+make -C testbench -f Makefile.disk hc1200-sd-test
 make -C testbench -f Makefile.disk disk-cold-boot-fast
 make -C testbench -f Makefile.disk disk-cold-boot-test # independent Icarus version
 make -C testbench -f Makefile.disk disk-cold-boot-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
@@ -204,3 +205,11 @@ clear guest RAM. Two WAIT/vector-100 interrupts and 532000-clock tick periods
 verify the nominal 50-Hz source, including continuity across guest RESET.
 The real-EBR target uses the board's generated autoboot ROM, not a diagnostic
 image with the entry path bypassed.
+
+`hc1200-sd-test` prepares the main board's SD ROM using the ordinary
+`boards/Makefile`, then checks the default LDF source set, independent legacy
+project, UART/SD pin locations, identical portable/EBR images and the new
+build script's timing/export guards (with mocked Diamond commands).
+It boots `sd_cold_boot_uart.asm` from the SD model and checks an actual board
+pin exchange: FPGA `tx` sends `'U'`, FPGA `rx` receives `'Z'`, 115200 8N1.
+The UART sites are `rx=PT15D`, `tx=PT17D`, unchanged from `microcomp.lpf`.

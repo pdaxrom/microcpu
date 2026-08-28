@@ -109,3 +109,12 @@ disk-cold-boot-ebr-test: build/guest_sd_cold_boot.hex
 	$(IVERILOG) -g2012 -Wall $(J11_EBR_FLAGS) -s tb_sd_cold_boot -o build/sd_cold_boot_ebr.vvp $(COLD_BOOT_RTL) ../boards/hc1200-microcomp/sd_urom_ebr.v
 	$(VVP) build/sd_cold_boot_ebr.vvp +SCENARIO=0
 	$(VVP) build/sd_cold_boot_ebr.vvp +SCENARIO=3
+
+build/guest_sd_cold_boot_uart.bin: j11_programs/sd_cold_boot.asm
+build/hc1200_sd_uart.vvp: $(COLD_BOOT_RTL) include/j11_context_probe.vh Makefile.disk ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_sd_cold_boot -Ptb_sd_cold_boot.UCODE_FILE='"../boards/hc1200-microcomp/j11_sd.mem"' -o $@ $(COLD_BOOT_RTL)
+.PHONY: hc1200-sd-test
+hc1200-sd-test: build/hc1200_sd_uart.vvp build/j11_sd_boot.words build/guest_sd_cold_boot_uart.hex
+	$(MAKE) -C ../boards hc1200-microcomp
+	$(PYTHON) test_hc1200_sd_project.py
+	$(VVP) build/hc1200_sd_uart.vvp +PROGRAM=build/guest_sd_cold_boot_uart.hex +UART
