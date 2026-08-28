@@ -22,6 +22,9 @@ wait_instruction
 	b fetch_events
 
 reset_initialize
+	ifdef J11_BOOT_TRACE
+	call boot_trace_banner
+	endif
 	far_call peripherals_reset
 	ifdef J11_SD_AUTOBOOT
 	far_jump sd_boot
@@ -30,6 +33,9 @@ reset_initialize
 fetch
 	clr v1
 fetch_events
+	ifdef J11_BOOT_TRACE
+	call boot_trace_tick
+	endif
 	gget v2, 14		; TRACE has priority over device interrupts
 	ldi8 v3, $10
 	bmask_set trace_entry, v2, v3
@@ -928,6 +934,9 @@ halt_stopped
 	gset v2, 10		; debugger-visible console stop; guest state is untouched
 
 stopped
+	ifdef J11_BOOT_TRACE
+	call boot_trace_stop_tick
+	endif
 	; Private firmware mailbox, NOT a guest register or a board pin:
 	; context 38 bit 0 = held HALT request, bit 1 = Proceed command.
 	; Do not poll guest IRQs, touch RAM, or reset peripherals while stopped.
@@ -2004,4 +2013,7 @@ previous_sp_same_mode
 	endif
 	ifdef J11_DISK_PROTOTYPE
 	include ../experimental/rh11_sd.asm
+	endif
+	ifdef J11_BOOT_TRACE
+	include ../diagnostics/boot_trace.asm
 	endif

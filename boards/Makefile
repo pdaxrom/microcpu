@@ -74,6 +74,7 @@ hc1200-microcomp/srampages.v:
 	$(SCUBA) -w -n srampages -lang verilog -synth lse -bus_exp 7 -bb -arch xo2c00 -type ramdq -device LCMXO2-1200HC -addr_width 12 -data_width 8 -num_words 4096 -cascade -1 -meminit0 -writemode NORMAL
 
 clean:
+	rm -f $(BOOT_TRACE_BIN) $(BOOT_TRACE_MEM) $(BOOT_TRACE_EBR) hc1200-microcomp/j11_boot_trace.lst
 	rm -f $(DIAG_BIN) $(DIAG_MEM) $(DIAG_EBR) hc1200-microcomp/sd_fram_diag.lst
 	rm -f $(J11_V2_BIN) $(J11_V2_MEM) $(J11_V2_EBR) $(SD_BIN) $(SD_NOFIS_BIN) hc1200-microcomp/j11_sd.mem hc1200-microcomp/j11_sd_nofis.mem hc1200-microcomp/sd_urom_ebr.v hc1200-microcomp/sd_nofis_urom_ebr.v *.mem $(J11_UCODE_BIN) $(J11_UCODE_MEM) $(J11_UCODE_EBR) hc1200/sram.v hc1200-mcu/sram.v hc1200-microcomp/srampages.v hc1200-microcomp/sram.v hc1200-microcomp/srampages.v
 

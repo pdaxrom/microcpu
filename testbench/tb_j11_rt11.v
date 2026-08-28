@@ -3,6 +3,7 @@
 // Integration boot: real microengine, native services, serial UART and both
 // wire-level SPI devices. FRAM starts empty; the uROM cold-start code boots SD.
 module tb_j11_rt11;
+	parameter UCODE_FILE = "build/j11_sd_boot.words";
 	reg clk = 0, rst = 1, rx = 1;
 	wire req, wr, byte_access, bank, ready, error, guest_reset, irq;
 	wire [2:0] irq_level;
@@ -14,9 +15,10 @@ module tb_j11_rt11;
 	integer console_fd, trace_fd = 0, bit_index, stage = 0;
 	integer previous_prompt_tx = -1, rx_sent = 0, rx_reads = 0;
 	integer bootstrap_sector, bootstrap_byte;
+	reg startup_script_done = 0;
 	reg [7:0] tx_byte;
 	string line = "", console_path = "build/rt11_console.log", trace_path;
-	ucode_cpu #(.UROM_WORDS(`J11_UROM_WORDS), .UCODE_FILE("build/j11_sd_boot.words")) dut (
+	ucode_cpu #(.UROM_WORDS(`J11_UROM_WORDS), .UCODE_FILE(UCODE_FILE)) dut (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr), .guest_byte(byte_access),
 		.guest_bank(bank), .guest_address(address), .guest_wdata(wdata), .guest_rdata(rdata),
 		.guest_ready(ready), .guest_error(error), .irq(irq), .irq_level(irq_level),
@@ -79,14 +81,20 @@ module tb_j11_rt11;
 			$fwrite(console_fd, "%c", tx_byte & 8'h7f);
 			$fflush(console_fd);
 			$write("%c", tx_byte & 8'h7f);
-			if ((tx_byte & 8'h7f) == 10) line = "";
+			if ((tx_byte & 8'h7f) == 10) begin
+				// This RT11 V5.03 fixture ends its startup file with SET SL ON.
+				// Its earlier command-echo dot may stay quiet while the file
+				// is read from SD; it is NOT yet an interactive KMON prompt.
+				if (line == ".SET SL ON") startup_script_done = 1;
+				line = "";
+			end
 			else if (tx_byte != 13) line = {line, tx_byte};
 		end
 	end
 	task wait_prompt;
 		begin
 			// A quiet, standalone KMON prompt, not a dot in startup command echo.
-			while (line != "." || tx_count <= previous_prompt_tx || cycles - last_tx < 1000000 || context_words[56][2]) @(negedge clk);
+			while (!startup_script_done || line != "." || tx_count <= previous_prompt_tx || cycles - last_tx < 1000000 || context_words[56][2]) @(negedge clk);
 			previous_prompt_tx = tx_count;
 			stage = stage + 1;
 		end

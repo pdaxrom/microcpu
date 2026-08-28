@@ -80,6 +80,14 @@ memory_device_low
 	beq memory_xcsr, v2, 4
 	; XBUF reads as zero. Writes submit a byte and clear DONE/request.
 	bmask_clear memory_zero, lr, 1
+	ifdef J11_BOOT_TRACE
+	; Stop unsolicited progress at the first guest TX byte. Do not steal RX
+	; or interleave heartbeat lines with the RT-11 console/prompt.
+	gget v2, 62
+	set sp, $8000
+	or v2, v2, sp
+	gset v2, 62
+	endif
 	set sp, $f002
 	strl v3, sp, 0
 	gget v2, 22

@@ -15,3 +15,10 @@ diag:
 	$(MAKE) -C .. hc1200-diag
 diag-diamond:
 	$(MAKE) -C .. hc1200-diag-diamond
+
+# J-11 SD bootstrap diagnostics, temporarily omitting FIS for trace space.
+.PHONY: boot-trace boot-trace-diamond
+boot-trace:
+	$(MAKE) -C .. hc1200-boot-trace
+boot-trace-diamond:
+	$(MAKE) -C .. hc1200-boot-trace-diamond

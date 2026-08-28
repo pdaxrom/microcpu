@@ -1,5 +1,9 @@
 # HC1200 UART / SD / FRAM diagnostic uROM
 
+If these transport tests pass but normal RT-11 boot remains silent, use the
+separate [J-11 SD boot trace](hc1200-boot-trace.md) to follow the actual
+bootstrap, sector CRC/readback checks and guest execution.
+
 This is **native microcode**, assembled from `ucode/diagnostics/sd_fram.asm`
 with `microasm --cpu ucode`. It does not run a PDP-11 guest or depend on a
 bootable SD image, external FRAM contents, or a FRAM-resident stack.

@@ -243,4 +243,7 @@ cpu_double_abort
 	ldi8 v2, 4		; emergency memory unavailable; stop until console exists
 	gset v2, 10
 cpu_double_abort_stopped
+	ifdef J11_BOOT_TRACE
+	call boot_trace_stop_tick
+	endif
 	b cpu_double_abort_stopped

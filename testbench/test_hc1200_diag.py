@@ -14,30 +14,36 @@ BOARD = board_checks.BOARD
 
 
 class DiagnosticProject(unittest.TestCase):
+    project = "microcomp-diag"
+    implementation_dir = "impl1-diag"
+    image = "sd_fram_diag"
+    ebr = "sd_fram_diag_ebr.v"
+    script = "build-diag.tcl"
+
     def test_same_hardware_different_firmware(self):
         production = board_checks.implementation("microcomp.ldf")
-        diagnostic = board_checks.implementation("microcomp-diag.ldf")
+        diagnostic = board_checks.implementation(self.project + ".ldf")
         self.assertEqual(diagnostic.find("Options").get("def_top"), "ucode_sd_microcomp")
         self.assertEqual(board_checks.sources(diagnostic, "Verilog"),
                          board_checks.sources(production, "Verilog") - {"sd_urom_ebr.v"}
-                         | {"sd_fram_diag_ebr.v"})
+                         | {self.ebr})
         self.assertEqual(board_checks.sources(diagnostic, "Logic Preference"), {"sd.lpf"})
         self.assertEqual(board_checks.sources(diagnostic, "Programming Project File"), set())
-        self.assertEqual(diagnostic.get("dir"), "impl1-diag")
+        self.assertEqual(diagnostic.get("dir"), self.implementation_dir)
         self.assertNotEqual(diagnostic.get("dir"), production.get("dir"))
         for name in board_checks.sources(diagnostic, "Verilog"):
             self.assertTrue((BOARD / name).is_file(), name)
 
     def test_mem_and_ebr_pack_the_assembled_source(self):
-        binary = (BOARD / "sd_fram_diag.bin").read_bytes()
+        binary = (BOARD / (self.image + ".bin")).read_bytes()
         self.assertEqual(len(binary) % 2, 0)
         self.assertLessEqual(len(binary), 3520 * 2)
         code = list(struct.unpack(f"<{len(binary) // 2}H", binary))
         expected = code + [0x00b0] * (3520 - len(code)) + [0] * 64
-        actual = [int(word, 16) for word in (BOARD / "sd_fram_diag.mem").read_text().split()[1:]]
+        actual = [int(word, 16) for word in (BOARD / (self.image + ".mem")).read_text().split()[1:]]
         self.assertEqual(actual, expected)
         rows = re.findall(r'\.INITVAL_[0-9A-F]{2}\("0x([0-9A-F]+)"\)',
-                          (BOARD / "sd_fram_diag_ebr.v").read_text())
+                          (BOARD / self.ebr).read_text())
         ebr = [(int(row, 16) >> (20 * i)) & 0xfffff for row in rows for i in range(16)]
         self.assertEqual(ebr, expected)
 
@@ -52,7 +58,7 @@ proc prj_run {args} {
 }
 rename open real_open
 proc open {path mode} {
-    if {$path ne "impl1-diag/microcomp-diag_impl1.twr" || $mode ne "r"} {
+    if {$path ne $::env(TEST_REPORT) || $mode ne "r"} {
         error "unexpected report access: $path $mode"
     }
     return [real_open $::env(TEST_TRACE) r]
@@ -70,12 +76,13 @@ source $::env(TEST_SCRIPT)
                 with self.subTest(timing=timing, stage=failed_stage):
                     report.write_text(timing)
                     env = dict(os.environ, TEST_TRACE=str(report), TEST_FAIL_STAGE=failed_stage,
-                               TEST_SCRIPT=str(BOARD / "build-diag.tcl"))
+                               TEST_SCRIPT=str(BOARD / self.script),
+                               TEST_REPORT=f"{self.implementation_dir}/{self.project}_impl1.twr")
                     result = subprocess.run([tclsh], input=harness, text=True, capture_output=True,
                                             env=env, timeout=10, check=False)
                     self.assertEqual(result.returncode == 0, success, result.stderr)
                     self.assertEqual("RUN Export -impl impl1 -task Jedecgen" in result.stdout, success)
-                    self.assertIn("PROJECT open microcomp-diag.ldf", result.stdout)
+                    self.assertIn(f"PROJECT open {self.project}.ldf", result.stdout)
                     self.assertNotIn("Program", result.stdout)
 
 

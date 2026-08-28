@@ -28,20 +28,35 @@ sd_boot
 	gset v2, 4
 	ldi8 v2, 4                ; PSW after CLR PC: kernel, IPL 0, Z
 	gset v2, 8
+	ifdef J11_BOOT_TRACE
+	ldi8 v2, 'G'
+	call boot_trace_state
+	endif
 	jmp fetch
 sd_boot_failed
 	ldi8 v2, 5                ; private diagnostic cause: SD boot failed
 	gset v2, 10
+	ifdef J11_BOOT_TRACE
+	ldi8 v2, 'S'
+	call boot_trace_state
+	endif
 sd_boot_failed_stop
 	; No stale/partially loaded guest code may run. Board reset retries;
 	; console Proceed does not bypass a failed boot. RH status retains error.
+	ifdef J11_BOOT_TRACE
+	call boot_trace_stop_tick
+	endif
 	b sd_boot_failed_stop
 	endif
 
 rh11_reset
 	clr v2
 	ldi8 sp, 40
+	ifdef J11_BOOT_TRACE
+	ldi8 v4, 61              ; 61/62 are private trace tick/command, not RH CSRs
+	else
 	ldi8 v4, 63
+	endif
 rh11_clear_loop
 	gsetr v2, sp
 	inc sp
@@ -239,6 +254,10 @@ rh11_sector
 	gset v3, 59
 	clr v0
 	gset v0, 57
+	ifdef J11_BOOT_TRACE
+	ldi8 v2, 'R'
+	call boot_trace_report
+	endif
 	call sd_read_sector      ; no dirty guest words until the cache is valid
 rh11_dma
 	gget v1, 42
@@ -257,6 +276,10 @@ rh11_dma
 	clr v2
 	str v2, sp, 4
 	str v3, v1, 0
+	ifdef J11_BOOT_TRACE
+	ldr v2, v1, 0            ; verify the cache -> guest FRAM write, every word
+	fbne boot_trace_dma_bad, v2, v3
+	endif
 	b rh11_dma_advance
 rh11_dma_write
 	ldr v3, v1, 0
@@ -351,6 +374,11 @@ rh11_nem
 	call sd_write_sector
 	b rh11_finish
 rh11_sd_error
+	ifdef J11_BOOT_TRACE
+	; Fatal transport errors may still have bank 1 selected; trace releases it.
+	ldi8 v2, 'E'
+	call boot_trace_state
+	endif
 	gget v2, 44
 	set v3, $8000
 	or v2, v2, v3
@@ -386,6 +414,10 @@ rh11_finish_status
 	or v1, v1, 2
 rh11_finish_irq
 	gset v1, 56
+	ifdef J11_BOOT_TRACE
+	ldi8 v2, 'D'
+	call boot_trace_report
+	endif
 	gget v0, 26
 	gget v1, 27
 	gget pc, 25
@@ -406,6 +438,12 @@ sd_end
 ; CMD(v0, v3:v4) -> R1 in v0. CS remains selected. v1/v2/sp volatile.
 sd_command
 	gset lr, 30
+	ifdef J11_BOOT_TRACE
+	gget v2, 62
+	setl v2, 0
+	or v2, v2, v0
+	gset v2, 62              ; low byte CMD, high bit console has started
+	endif
 	set sp, $f008
 	gget v2, 56
 	and v2, v2, 1
@@ -438,6 +476,10 @@ sd_command_response
 	cbnz v1, sd_command_response
 	jmp rh11_sd_error
 sd_command_done
+	ifdef J11_BOOT_TRACE
+	ldi8 v2, 'C'
+	call boot_trace_report
+	endif
 	gget pc, 30
 
 sd_initialize
@@ -552,17 +594,47 @@ sd_read_data
 	str v2, sp, 4
 	clr v1
 	set v3, 512
+	ifdef J11_BOOT_TRACE
+	clr v4                  ; CRC16 of the actual SD byte stream
+	endif
 sd_read_bytes
+	ifdef J11_BOOT_TRACE
+	ldr v0, sp, 0
+	call boot_trace_crc_byte
+	gset v0, 12
+	ldr v0, sp, 0
+	call boot_trace_crc_byte
+	gget v2, 12
+	shl v0, v0, 8
+	or v0, v0, v2
+	else
 	ldr v0, sp, 0
 	ldr v2, sp, 0
 	shl v2, v2, 8
 	or v0, v0, v2
+	endif
 	str v0, v1, 0
+	ifdef J11_BOOT_TRACE
+	ldr v2, v1, 0            ; verify SD -> bank-1 cache, before DMA can start
+	fbne boot_trace_cache_bad, v2, v0
+	endif
 	add v1, v1, 2
 	bne sd_read_bytes, v1, v3
+	ifdef J11_BOOT_TRACE
+	ldr v0, sp, 0
+	shl v0, v0, 8
+	ldr v2, sp, 0
+	or v0, v0, v2
+	call sd_end              ; release bank override before any UART access
+	mov v1, v4
+	fbne boot_trace_crc_bad, v0, v4
+	ldi8 v2, 'V'
+	call boot_trace_report
+	else
 	ldr v0, sp, 0           ; CRC disabled in SPI default mode
 	ldr v0, sp, 0
 	call sd_end
+	endif
 	gget pc, 29
 
 sd_write_sector

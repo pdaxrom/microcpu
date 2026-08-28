@@ -21,3 +21,8 @@
 /sd_fram_diag.lst
 /sd_fram_diag_ebr.v
 /impl1-diag/
+/j11_boot_trace.bin
+/j11_boot_trace.mem
+/j11_boot_trace.lst
+/boot_trace_ebr.v
+/impl1-boot-trace/

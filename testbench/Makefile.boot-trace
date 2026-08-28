@@ -1,0 +1,22 @@
+include Makefile.disk
+BOOT_TRACE_RTL = tb_boot_trace.v $(DISK_RTL) ../boards/hc1200-microcomp/sd_microcomp.v $(BOARD_STUBS)
+.PHONY: boot-trace-image boot-trace-test boot-trace-ebr-test boot-trace-rt11
+boot-trace-image:
+	$(MAKE) -C ../boards hc1200-boot-trace
+build/boot_trace_verilator/Vtb_boot_trace: $(BOOT_TRACE_RTL) include/j11_context_probe.vh Makefile.boot-trace ../ucode/config.mk | build
+	$(VERILATOR) --binary --timing -j $(VERILATOR_JOBS) -CFLAGS '-O3' -Wno-fatal --top-module tb_boot_trace --Mdir build/boot_trace_verilator $(BOOT_TRACE_RTL) > build/boot_trace_verilator.log 2>&1 || { cat build/boot_trace_verilator.log; exit 1; }
+build/boot_trace_faults/Vtb_boot_trace: $(BOOT_TRACE_RTL) include/j11_context_probe.vh Makefile.boot-trace ../ucode/config.mk | build
+	$(VERILATOR) --binary --timing -j $(VERILATOR_JOBS) -CFLAGS '-O3' -Wno-fatal --top-module tb_boot_trace -GTICK_DIVISOR=5320 --Mdir build/boot_trace_faults $(BOOT_TRACE_RTL) > build/boot_trace_faults.log 2>&1 || { cat build/boot_trace_faults.log; exit 1; }
+boot-trace-test: boot-trace-image build/boot_trace_verilator/Vtb_boot_trace build/boot_trace_faults/Vtb_boot_trace build/guest_sd_cold_boot_uart.hex build/guest_boot_trace_runtime_error.hex
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) test_boot_trace.py
+	build/boot_trace_verilator/Vtb_boot_trace +SCENARIO=0
+	@set -e; for n in 1 2 3 4 5 6 7 8 9 10 11 12; do build/boot_trace_faults/Vtb_boot_trace +SCENARIO=$$n; done
+boot-trace-ebr-test: boot-trace-image build/guest_sd_cold_boot_uart.hex
+	@test -f "$(LATTICE_SIM_DIR)/PDPW8KC.v" || { echo "Set LATTICE_SIM_DIR to Diamond's MachXO2 models"; exit 1; }
+	$(IVERILOG) -g2012 -Wall $(J11_EBR_FLAGS) -s tb_boot_trace -Ptb_boot_trace.TICK_DIVISOR=5320 -o build/boot_trace_ebr.vvp $(BOOT_TRACE_RTL) ../boards/hc1200-microcomp/boot_trace_ebr.v
+	$(VVP) build/boot_trace_ebr.vvp +SCENARIO=2
+	$(VVP) build/boot_trace_ebr.vvp +SCENARIO=5
+build/rt11_trace_verilator/Vtb_j11_rt11: tb_j11_rt11.v $(DISK_RTL) include/j11_context_probe.vh Makefile.boot-trace ../ucode/config.mk | build
+	$(VERILATOR) --binary --timing -j $(VERILATOR_JOBS) -CFLAGS '-O3' -Wno-fatal -DJ11_UROM_WORDS=$(J11_UROM_WORDS) --top-module tb_j11_rt11 -GUCODE_FILE='"../boards/hc1200-microcomp/j11_boot_trace.mem"' --Mdir build/rt11_trace_verilator $< $(DISK_RTL) > build/rt11_trace_verilator.log 2>&1 || { cat build/rt11_trace_verilator.log; exit 1; }
+boot-trace-rt11: boot-trace-image build/rt11_trace_verilator/Vtb_j11_rt11
+	$(PYTHON) run_rt11_boot.py --image "$(RT11_IMAGE)" --binary build/rt11_trace_verilator/Vtb_j11_rt11 --work-dir build/rt11-boot-trace $(RT11_VERIFY_ARGS)
