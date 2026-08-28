@@ -31,12 +31,11 @@
 	endm
 
 	macro	bsr
-	add	lr, pc, 3
-	b	#1
+	call	#1
 	endm
 
 	macro	rts
-	mov	pc, lr
+	ret
 	endm
 
 ; Absolute transfers use far_call/far_jump from j11_memory.inc.

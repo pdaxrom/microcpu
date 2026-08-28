@@ -9,7 +9,7 @@ the guest PDP-11 model. `microasm11 --cpu dcj-11` still assembles guest tests.
 |---|---|---|---|
 | `original` (default) | `rtl/cpu.v` | Existing programs/bootloader | Original native ISA |
 | `j11` | `rtl/j11_microengine.v` | `ucode/j11.asm` and its includes | Preserved reference |
-| `ucode` | `rtl/ucode_cpu.v` | Independent `ucode/v2/` sources | Specialized engine, first iteration |
+| `ucode` | `rtl/ucode_cpu.v` | Independent `ucode/v2/` sources | Specialized engine, compact calls |
 
 The reference RTL and firmware remain unchanged from commit `d4dabf1`.
 The v2 firmware and its macro file are independent copies: changing them
@@ -52,6 +52,7 @@ Use `if __CPU_UCODE__`, not `ifdef`, to test the selection.
 | Native MOVL/MOVH | Yes | Yes | No |
 | LDI8 | No | No | Yes |
 | PC destination | Legacy rules | Legacy rules | MOV, GGET, GGETR only |
+| Absolute CALL/JMP, RET | No | No | Yes |
 
 `LDI8 Rd, imm8` loads **0..255**, clears the upper byte, and preserves native
 NZVC. Its opcode field `instruction[7:3]` is `0x0c`, replacing the old
@@ -87,11 +88,12 @@ engine does not hard-code additional J-11 instructions or register banks.
 
 ## Object files and disassembly
 
-Object-header word at byte offset `0x10` contains the CPU ID in version-2
-objects: 0 = original, 1 = j11, 2 = ucode. The `j11` and `ucode` profiles
-write version 2 so older tools reject them instead of ignoring CPU metadata.
+Object-header word at byte offset `0x10` contains the CPU ID in version-2/3
+objects: 0 = original, 1 = j11, 2 = ucode. `j11` writes version 2; compact-call
+`ucode` writes version 3, identifying both its changed ISA and packed-address
+relocations. Obsolete v2 ucode objects are rejected with a rebuild diagnostic.
 The `original` profile retains the byte-compatible version-1 format.
-New tools read both versions; version-1 reserved fields remain uninterpreted.
+New tools read these versions; version-1 reserved fields remain uninterpreted.
 Old untagged objects are original; rebuild old J-11 objects with an explicit
 profile.
 
@@ -142,7 +144,7 @@ make -C testbench ucode-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
 
 This uses Icarus and does not launch Diamond or program the FPGA.
 
-## Size and verification
+## Initial profile checkpoint (stage 1)
 
 With FIS enabled and the same 3584-word physical memory:
 
@@ -187,6 +189,52 @@ values, 1152 context write/read pairs, code integrity, guest instructions,
 register banks, HALT and peripherals. The subsequent Diamond build above
 also passed; generated reports/JED are ignored build artifacts.
 
-This is the first specialized-engine iteration. A separate word-addressed
-microsequencer, CALL/RET, a changed helper ABI and carry-chain instructions
-are future changes, not features implemented by the profile switch.
+## Compact absolute transfers (stage 2)
+
+`CALL target` and `JMP target` each occupy one word. Targets are even byte
+addresses in 0..8190, including forward labels and relocated local/external
+symbols. Bits 7:4 contain 7 (CALL) or F (JMP); the 12-bit word target is
+`{instruction[3:0], instruction[15:8]}`. Thus bit 3 is an address bit, not
+the usual native ALU selector. Native XOR moves to opcode 0x05 in ucode only.
+
+CALL stores the address of the next instruction in native LR; JMP preserves
+all working registers. Both preserve NZVC. `RET` is the one-word alias for
+`MOV pc, lr`. Nested helper returns remain in context RAM, not a hardware
+stack. All three operations retain six-clock instruction timing. The guest
+stack and J-11 control-flow instructions are unaffected.
+
+The memory helpers now capture CALL's LR into context 30 on entry, restore
+the caller's LR from context 25 and return with `GGET pc, 30`. There is no
+per-call PC snapshot or return-address adjustment. `far_call`, `far_jump`
+and `bsr` macros now emit one word; all firmware addresses still use bytes.
+
+| Metric | Stage 1 | Compact calls |
+|---|---:|---:|
+| Code words | 3317 | 2968 |
+| Context words | 64 | 64 |
+| Free words in 3584 | 203 | 552 |
+| LUT4 / 1280 | 964 | 1013 |
+| Slices / 640 | 483 | 510 |
+| Registers (MAP) | 379 | 385 |
+| EBR | 7 | 7 |
+| TRACE maximum internal clock | 41.432 MHz | 48.195 MHz |
+
+This deliberately trades 49 LUTs for 349 code words and fewer executed
+microinstructions; both remain within HC1200 resources. Code plus context
+would fit 3072 words with 40 free, but the default allocation is unchanged.
+The isolated Diamond run on 2026-08-28 passes through JED with no setup/hold
+errors at 26.6 MHz. RTL and ROM hashes agree across hosts. Physical I/O and
+board operation remain unverified; the reported clock is a TRACE estimate.
+
+Assembly tests cover every CALL/JMP target encoding, forward/relocated
+addresses, range/alignment errors and rejection of obsolete objects. Native
+simulation covers high-address calls, nested RAM returns and unchanged flags.
+Acceptance on 2026-08-28: 11 assembler smoke and 20 CPU-profile tests;
+1742 native six-clock checks; all guest/peripheral/RS/HALT and no-FIS tests;
+115255 ALU comparisons; 209/209 no-MMU core snapshots (29 EIS);
+4040/4040 exact FIS cases. Actual Lattice DP8KC simulation passes all 3584
+memory words, 1152 context writes, native/guest tests and the same 209 core
+snapshots. The original and preserved J-11 RTL/firmware are byte-identical
+to `d4dabf1`.
+
+Word-addressed internal uPC and carry-chain instructions are the next stage.

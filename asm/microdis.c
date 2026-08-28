@@ -14,6 +14,7 @@ enum {
     RELOC_LSB = 0x01,
     RELOC_MSB = 0x02,
     RELOC_WORD = 0x03,
+    RELOC_UADDR12 = 0x04,
 };
 
 typedef struct {
@@ -153,7 +154,7 @@ static int looks_like_object(unsigned char *buf, size_t size)
     unsigned int code_len;
     unsigned int code_offset;
 
-    if (size < 0x20 || read_u16(buf) != 0x5aa5 || (read_u16(buf + 2) != 1 && read_u16(buf + 2) != 2)) {
+    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) < 1 || read_u16(buf + 2) > 3) {
         return 0;
     }
 
@@ -182,7 +183,12 @@ static int parse_object(unsigned char *buf, size_t size, Object *obj)
     code_len = read_u16(buf + 8);
     code_offset = read_u32(buf + 0x0a);
     int object_cpu = read_u16(buf + 2) == 1 ? CPU_ORIGINAL : read_u16(buf + 0x10);
-    if (object_cpu >= CPU_COUNT || (cpu_explicit && target_cpu != object_cpu)) {
+    if (!cpu_object_supported(read_u16(buf + 2), object_cpu)) {
+        fprintf(stderr, "Unsupported object version %u for CPU %s; rebuild object\n",
+                read_u16(buf + 2), cpu_name(object_cpu));
+        return 1;
+    }
+    if (cpu_explicit && target_cpu != object_cpu) {
         fprintf(stderr, "Object CPU '%s' does not match selected CPU '%s'\n",
                 cpu_name(object_cpu), cpu_name(target_cpu));
         return 1;
@@ -242,7 +248,7 @@ static int parse_object(unsigned char *buf, size_t size, Object *obj)
         unsigned char raw_type = buf[pos++];
 
         obj->relocs[i].external = (raw_type & 0x80) != 0;
-        obj->relocs[i].type = raw_type & 0x03;
+        obj->relocs[i].type = raw_type & 0x7f;
         obj->relocs[i].value = read_u16(buf + pos);
         obj->relocs[i].offset = read_u16(buf + pos + 2);
         pos += 4;
@@ -271,8 +277,12 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
     char tmp[16];
 
     /* Unknown encodings remain data instead of borrowing another CPU's ISA. */
-    if ((target_cpu == CPU_ORIGINAL && (op == 0x0b || op == 0x1c)) ||
-            (target_cpu == CPU_UCODE && op == 0x0e)) {
+    if (target_cpu == CPU_UCODE && ((lo & 0xf0) == 0x70 || (lo & 0xf0) == 0xf0)) {
+        snprintf(buf, size, "%s $%04X", (lo & 0xf0) == 0x70 ? "call" : "jmp",
+                 (((lo & 15) << 8) | hi) * 2);
+        return;
+    }
+    if (target_cpu == CPU_ORIGINAL && (op == 0x0b || op == 0x1c)) {
         snprintf(buf, size, "dw $%02X%02X", hi, lo);
         return;
     }
@@ -285,6 +295,12 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
     }
 
     switch (op) {
+    case 0x05:
+        if (target_cpu == CPU_UCODE)
+            snprintf(buf, size, "xor %s, %s, %s", regs[arg1], regs[arg2],
+                     reg_or_imm(arg3, tmp, sizeof(tmp)));
+        else snprintf(buf, size, "dw $%02X%02X", hi, lo);
+        break;
     case 0x00:
         snprintf(buf, size, "ldrl %s, %s, %s", regs[arg1], regs[arg2],
                  reg_or_imm(arg3, tmp, sizeof(tmp)));
@@ -317,7 +333,9 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         snprintf(buf, size, "movh %s, %s", regs[arg1], regs[arg2]);
         break;
     case 0x10:
-        snprintf(buf, size, "mov %s, %s", regs[arg1], regs[arg2]);
+        if (target_cpu == CPU_UCODE && lo == 0x80 && hi == 0x40)
+            snprintf(buf, size, "ret");
+        else snprintf(buf, size, "mov %s, %s", regs[arg1], regs[arg2]);
         break;
     case 0x12:
         if (target_cpu == CPU_ORIGINAL) {
@@ -439,7 +457,9 @@ static void append_reloc_note(char *dst, size_t size, Object *obj,
             continue;
         }
 
-        if (reloc->type == RELOC_WORD) {
+        if (reloc->type == RELOC_UADDR12) {
+            kind = "uaddr12";
+        } else if (reloc->type == RELOC_WORD) {
             kind = "word";
         } else if (reloc->type == RELOC_LSB) {
             kind = "lsb";

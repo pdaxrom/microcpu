@@ -14,6 +14,7 @@ enum {
     RELOC_LSB = 0x01,
     RELOC_MSB = 0x02,
     RELOC_WORD = 0x03,
+    RELOC_UADDR12 = 0x04,
 };
 
 typedef struct {
@@ -168,7 +169,7 @@ static int parse_object(char *path, Object *obj)
     if (read_file(path, &buf, &size)) {
         return 1;
     }
-    if (size < 0x20 || read_u16(buf) != 0x5aa5 || (read_u16(buf + 2) != 1 && read_u16(buf + 2) != 2)) {
+    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) < 1 || read_u16(buf + 2) > 3) {
         fprintf(stderr, "Invalid object file: %s\n", path);
         free(buf);
         return 1;
@@ -187,8 +188,9 @@ static int parse_object(char *path, Object *obj)
     }
 
     obj->cpu = read_u16(buf + 2) == 1 ? CPU_ORIGINAL : read_u16(buf + 0x10);
-    if (obj->cpu >= CPU_COUNT) {
-        fprintf(stderr, "Unknown CPU ID %d in %s\n", obj->cpu, path);
+    if (!cpu_object_supported(read_u16(buf + 2), obj->cpu)) {
+        fprintf(stderr, "Unsupported object version %u for CPU %s in %s; rebuild object\n",
+                read_u16(buf + 2), cpu_name(obj->cpu), path);
         free(buf);
         return 1;
     }
@@ -247,11 +249,15 @@ static int parse_object(char *path, Object *obj)
         unsigned char raw_type = buf[pos++];
 
         obj->relocs[i].external = (raw_type & 0x80) != 0;
-        obj->relocs[i].type = raw_type & 0x03;
+        obj->relocs[i].type = raw_type & 0x7f;
         obj->relocs[i].value = read_u16(buf + pos);
         obj->relocs[i].offset = read_u16(buf + pos + 2);
         pos += 4;
-        if (obj->relocs[i].type == 0 || obj->relocs[i].offset >= code_len) {
+        if (obj->relocs[i].type == 0 || obj->relocs[i].type > RELOC_UADDR12 ||
+                (obj->relocs[i].type == RELOC_UADDR12 && obj->cpu != CPU_UCODE) ||
+                obj->relocs[i].offset >= code_len ||
+                ((obj->relocs[i].type == RELOC_WORD || obj->relocs[i].type == RELOC_UADDR12) &&
+                 obj->relocs[i].offset + 1 >= code_len)) {
             fprintf(stderr, "Invalid relocation record: %s\n", path);
             free(buf);
             return 1;
@@ -404,7 +410,15 @@ static int apply_reloc(Object *obj, Reloc *reloc)
         return 1;
     }
 
-    if (reloc->type == RELOC_WORD) {
+    if (reloc->type == RELOC_UADDR12) {
+        unsigned int target = (((output[addr] & 15) << 8) | output[addr + 1]) * 2 + value;
+        if (target > 8190 || (target & 1)) {
+            fprintf(stderr, "Microcode target out of range or odd: %s\n", obj->path);
+            return 1;
+        }
+        output[addr] = (output[addr] & 0xf0) | (target >> 9);
+        output[addr + 1] = (target >> 1) & 255;
+    } else if (reloc->type == RELOC_WORD) {
         unsigned int word = output[addr] | (output[addr + 1] << 8);
 
         word = (word + value) & 0xffff;

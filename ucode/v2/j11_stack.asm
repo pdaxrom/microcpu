@@ -2,6 +2,7 @@
 ; Context 14: bit 0 yellow pending, 1 yellow inhibit, 2 vector stack push,
 ; 3 explicit PSW write, 4 pre-instruction trace, 5 red recovery in progress.
 stack_check
+	gset lr, 30
 	set v3, $100
 	bgeu stack_check_return, v2, v3
 	gget v3, 14
@@ -20,8 +21,5 @@ stack_check_yellow
 stack_check_return
 	gget v2, 28
 	gget v3, 27
-	gget lr, 30
-	add lr, lr, 7
-	gset lr, 30
 	gget lr, 25
 	gget pc, 30

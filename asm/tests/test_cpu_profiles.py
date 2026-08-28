@@ -145,7 +145,7 @@ class CpuProfiles(unittest.TestCase):
             first, _ = self.assemble("setl v0, 1\n", cpu, object_file=True)
             second, _ = self.assemble("seth v0, 2\n", cpu, object_file=True)
             self.assertEqual(struct.unpack_from("<H", first.read_bytes(), 0x10)[0], tag)
-            self.assertEqual(struct.unpack_from("<H", first.read_bytes(), 2)[0], 1 if tag == 0 else 2)
+            self.assertEqual(struct.unpack_from("<H", first.read_bytes(), 2)[0], tag + 1)
             output = self.directory / f"{cpu}.bin"
             self.run_tool("microlink", "-binary", "-o", output, first, second)
             self.assertEqual(output.read_bytes(), bytes.fromhex("43015302"))
@@ -208,6 +208,46 @@ class CpuProfiles(unittest.TestCase):
         self.run_tool("microlink", obj, ok=False)
         obj.write_bytes(b"")
         self.run_tool("microdis", "-object", obj, ok=False)
+
+    def test_absolute_transfers_all_encodings(self):
+        for name, prefix in (("call", 0x70), ("jmp", 0xf0)):
+            source = "".join(f"{name} {word * 2}\n" for word in range(4096))
+            out, _ = self.assemble(source, "ucode")
+            expected = b"".join(bytes((prefix | (word >> 8), word & 255))
+                                for word in range(4096))
+            self.assertEqual(out.read_bytes(), expected)
+            listing = self.run_tool("microdis", "--cpu=ucode", out)
+            self.assertIn(f"{name} $1000", listing)
+            self.assertIn(f"{name} $1FFE", listing)
+            for cpu in ("original", "j11"):
+                self.assemble(f"{name} 0\n", cpu, ok=False)
+            for target in ("-2", "1", "8192", "later\nlater equ 3", "missing_label"):
+                self.assemble(f"{name} {target}\n", "ucode", ok=False)
+        out, _ = self.assemble("call end\njmp end\nend\nret\nxor v0, v1, v2\n", "ucode")
+        self.assertEqual(out.read_bytes(), bytes.fromhex("7002f00280402b94"))
+        self.assertIn("ret", self.run_tool("microdis", "--cpu=ucode", out))
+        self.assemble("ret v0\n", "ucode", ok=False)
+
+    def test_absolute_transfer_relocations(self):
+        first, _ = self.assemble("extern target\ncall target\njmp local\nlocal\nret\n",
+                                 "ucode", object_file=True)
+        second, _ = self.assemble("public target\ntarget\nret\n", "ucode", object_file=True)
+        out = self.directory / "linked.bin"
+        self.run_tool("microlink", "-binary", "-o", out, first, second)
+        self.assertEqual(out.read_bytes(), bytes.fromhex("7003f00280408040"))
+        self.assertIn("reloc uaddr12", self.run_tool("microdis", first))
+        self.run_tool("microlink", "-binary", "-org", "8192", "-o", out,
+                      first, second, ok=False)
+        self.run_tool("microlink", "-binary", "-org", "1", "-o", out,
+                      first, second, ok=False)
+
+    def test_reject_obsolete_ucode_objects(self):
+        obj, _ = self.assemble("ret\n", "ucode", object_file=True)
+        data = bytearray(obj.read_bytes())
+        struct.pack_into("<H", data, 2, 2)
+        obj.write_bytes(data)
+        self.run_tool("microdis", "-object", obj, ok=False)
+        self.run_tool("microlink", obj, ok=False)
 
 
 if __name__ == "__main__":

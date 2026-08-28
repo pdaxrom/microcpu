@@ -1,25 +1,30 @@
 ; Raw transfers are confined to this dispatcher (and native peripheral I/O).
 ; Mode: bit 0 write, bit 1 byte, bit 2 instruction fetch.
 memory_fetch_word
+	gset lr, 30
 	gset v3, 27
 	ldi8 lr, 4
 	b memory_access
 
 memory_read_word
+	gset lr, 30
 	gset v3, 27
 	clr lr
 	b memory_access
 
 memory_read_byte
+	gset lr, 30
 	gset v3, 27
 	ldi8 lr, 2
 	b memory_access
 
 memory_write_word
+	gset lr, 30
 	ldi8 lr, 1
 	b memory_access
 
 memory_write_byte
+	gset lr, 30
 	ldi8 lr, 3
 
 memory_access
@@ -185,8 +190,5 @@ memory_restore
 	gget v3, 27
 	gget v4, 26
 	gget sp, 29
-	gget lr, 30
-	add lr, lr, 7		; mcall saves the address of its first instruction + 1
-	gset lr, 30
 	gget lr, 25
 	gget pc, 30

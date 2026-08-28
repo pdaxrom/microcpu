@@ -283,9 +283,11 @@ after verification; never commit generated images or program the board.
   483/640 slices, 7/7 EBRs, 41.432 MHz TRACE maximum at 26.6 MHz constraints.
   All native/guest regressions, 209 core snapshots, 4040 FIS cases and real-EBR
   tests pass. Diamond synthesis through JED passes; external I/O is unverified.
-- [ ] 2. Measure call/jump overhead and implement compact generic native
-  calls/returns/transfers where worthwhile. Keep nested helper returns in
-  microcode context, not a new J-11-specific hardware stack. Verify and commit.
+- [x] 2. Compact native CALL/JMP/RET and context-RAM nested returns: 2968
+  code words (-349), 1013 LUTs (+49), 510 slices, 385 registers, 7 EBRs;
+  TRACE 48.195 MHz. Assembler 11 smoke + 20 profile tests, native/guest tests,
+  209 core snapshots, 4040 exact FIS cases and actual-EBR regression pass.
+  Diamond through JED passes with no setup/hold violations at 26.6 MHz.
 - [ ] 3. Evaluate word-addressed uPC and native carry/borrow arithmetic
   independently. Retain only measured improvements; verify and commit the
   implementation or a documented negative experiment.

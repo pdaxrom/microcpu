@@ -58,6 +58,7 @@ enum {
     INVALID_CONTEXT_INDEX,
     INVALID_LDI8_CONSTANT,
     UNSUPPORTED_PC_DESTINATION,
+    INVALID_MICRO_TARGET,
 };
 
 enum {
@@ -65,6 +66,7 @@ enum {
     op_reg_const,
     op_reg_context,
     op_rel,
+    op_abs12,
     op_reg,
     op_reg_reg,
     op_no_reg_reg,
@@ -123,6 +125,9 @@ static OpCode opcode_table[] = {
     { "getf", op_reg, 0x1c, 0x0, CPU_ENGINES },
 
     { "b", op_rel, 0x16, 0x0, CPU_ALL },
+    { "call", op_abs12, 0x0e, 0x0, CPU_MASK(CPU_UCODE) },
+    { "jmp", op_abs12, 0x1e, 0x0, CPU_MASK(CPU_UCODE) },
+    { "ret", op_noargs, 0x10, 0x2, CPU_MASK(CPU_UCODE) },
     { "setp", op_reg, 0x18, 0x0, CPU_MASK(CPU_ORIGINAL) },
     { "getp", op_reg, 0x1a, 0x0, CPU_MASK(CPU_ORIGINAL) },
 
@@ -148,7 +153,8 @@ static OpCode opcode_table[] = {
     { "and", op_reg_reg_reg, 0x19, 0x0, CPU_ALL },
     { "or", op_reg_reg_reg, 0x1b, 0x0, CPU_ALL },
     { "inv", op_reg_reg, 0x1d, 0x0, CPU_ALL },
-    { "xor", op_reg_reg_reg, 0x1f, 0x0, CPU_ALL },
+    { "xor", op_reg_reg_reg, 0x05, 0x0, CPU_MASK(CPU_UCODE) },
+    { "xor", op_reg_reg_reg, 0x1f, 0x0, CPU_MASK(CPU_ORIGINAL) | CPU_MASK(CPU_J11) },
 
     /* pseudo ops */
     { "db", pseudo_db, 0x0, 0x0, CPU_ALL },
@@ -301,6 +307,7 @@ static int expr_high_byte = 0;
 #define RELOC_LSB 0x01
 #define RELOC_MSB 0x02
 #define RELOC_WORD 0x03
+#define RELOC_UADDR12 0x04
 
 #define COND_NESTING_LIMIT 32
 
@@ -647,13 +654,15 @@ static int relink_refs(void)
 
 static OpCode* find_opcode(char *name)
 {
+    OpCode *unsupported = NULL;
     for (int i = 0; i < sizeof(opcode_table) / sizeof(OpCode); i++) {
         if (!strcasecmp(name, opcode_table[i].name)) {
-            return &opcode_table[i];
+            if (opcode_table[i].cpus & CPU_MASK(target_cpu)) return &opcode_table[i];
+            unsupported = &opcode_table[i];
         }
     }
 
-    return NULL;
+    return unsupported;
 }
 
 static Register* find_register(char *name)
@@ -2106,8 +2115,13 @@ static int do_asm(FILE *inf, char *line)
             unsigned int old_addr = output_addr;
             Register *reg;
             int arg1 = 0;
-            int arg2 = 0;
+            int arg2 = opcode->type == op_noargs ? opcode->ext_op : 0;
             int arg3 = 0;
+
+            if (opcode->type == op_noargs && target_cpu == CPU_UCODE) {
+                SKIP_BLANK(str);
+                if (*str) { error = EXTRA_SYMBOLS; return 1; }
+            }
 
             if ((opcode->type != op_noargs ) && last == 0) {
                 error = MISSED_OPCODE_PARAM_1;
@@ -2150,6 +2164,28 @@ static int do_asm(FILE *inf, char *line)
                 while (count-- > 0) {
                     output[output_addr++] = fill;
                 }
+            } else if (opcode->type == op_abs12) {
+                SKIP_BLANK(str);
+                reset_expr_reloc();
+                int val = exp_(&str);
+                if (check_expr_reloc()) return 1;
+                if (src_pass == 2 && to_second_pass) {
+                    error = CANNOT_RESOLVE_REF;
+                    return 1;
+                }
+                if (src_pass == 2 && (val < 0 || val > 8190 || (val & 1) || expr_high_byte)) {
+                    error = INVALID_MICRO_TARGET;
+                    return 1;
+                }
+                if (src_pass == 2 && expr_reloc_label &&
+                        add_reloc(RELOC_UADDR12, output_addr, expr_reloc_label)) return 1;
+                to_second_pass = 0;
+                val >>= 1;
+                arg1 = (val >> 8) & 15;
+                arg2 = (val >> 5) & 7;
+                arg3 = val & 31;
+                SKIP_BLANK(str);
+                if (*str) { error = EXTRA_SYMBOLS; return 1; }
             } else if (opcode->type == op_rel) {
                 SKIP_BLANK(str);
 
@@ -2375,11 +2411,11 @@ static int do_asm(FILE *inf, char *line)
             } else {
 //fprintf(stderr, "%02X %02X %02X %02X\n", opcode->op, arg1, arg2, arg3);
                 print_listing_insn(output_addr,
-                                   (opcode->op << 3) | (arg1 & 0x07),
+                                   (opcode->op << 3) | (arg1 & (opcode->type == op_abs12 ? 15 : 7)),
                                    ((arg2 << 5) & 0xe0) | (arg3 & 0x1f),
                                    line);
 
-                output[output_addr++] = (opcode->op << 3) | (arg1 & 0x07);
+                output[output_addr++] = (opcode->op << 3) | (arg1 & (opcode->type == op_abs12 ? 15 : 7));
                 output[output_addr++] = ((arg2 << 5) & 0xe0) | (arg3 & 0x1f);
             }
 
@@ -2540,7 +2576,7 @@ static int output_object(FILE *outf)
     }
 
     write_u16(outf, 0x5aa5);
-    write_u16(outf, target_cpu == CPU_ORIGINAL ? 0x0001 : 0x0002);
+    write_u16(outf, cpu_object_version(target_cpu));
     write_u16(outf, ent_count);
     write_u16(outf, ext_count);
     write_u16(outf, code_len);
@@ -2596,7 +2632,7 @@ static int output_object(FILE *outf)
             val = index;
         }
 
-        fputc((reloc->external ? 0x80 : 0x00) | (reloc->type & 0x03), outf);
+        fputc((reloc->external ? 0x80 : 0x00) | reloc->type, outf);
         write_u16(outf, val);
         write_u16(outf, reloc->offset);
         reloc = reloc->next;
@@ -2718,6 +2754,8 @@ static char *get_error_string(int error)
         return "LDI8 constant must be in 0..255";
     case UNSUPPORTED_PC_DESTINATION:
         return "ucode allows PC destinations only with MOV, GGET or GGETR";
+    case INVALID_MICRO_TARGET:
+        return "Microcode target must be an even byte address in 0..8190";
     default:
         return "No error";
     }

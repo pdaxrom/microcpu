@@ -65,6 +65,7 @@ module ucode_cpu #(
 	localparam [3:0] INST_SETL  = 4'h4;
 	localparam [3:0] INST_SETH  = 4'h5;
 	localparam [3:0] INST_LDI8  = 4'h6;
+	localparam [3:0] INST_CALL  = 4'h7;
 	localparam [3:0] INST_MOV   = 4'h8;
 	localparam [3:0] INST_GGET  = 4'h9;
 	localparam [3:0] INST_GSET  = 4'ha;
@@ -72,6 +73,7 @@ module ucode_cpu #(
 	localparam [3:0] INST_GGETR = 4'hc;
 	localparam [3:0] INST_GSETR = 4'hd;
 	localparam [3:0] INST_GETF  = 4'he;
+	localparam [3:0] INST_JMP   = 4'hf;
 
 	localparam [3:0] ALU_CMP  = 4'h0;
 	localparam [3:0] ALU_BIT  = 4'h1;
@@ -84,7 +86,7 @@ module ucode_cpu #(
 	localparam [3:0] ALU_AND  = 4'hc;
 	localparam [3:0] ALU_OR   = 4'hd;
 	localparam [3:0] ALU_INV  = 4'he;
-	localparam [3:0] ALU_XOR  = 4'hf;
+	localparam [3:0] ALU_XOR  = 4'h2;
 
 	localparam [2:0] CMP_EQ  = 3'd0;
 	localparam [2:0] CMP_NE  = 3'd1;
@@ -130,6 +132,8 @@ module ucode_cpu #(
 	wire is_const4 = uir[8];
 	wire [7:0] immediate8 = uir[15:8];
 	wire [5:0] context_index = uir[13:8];
+	wire absolute_transfer = kind == INST_CALL || kind == INST_JMP;
+	wire [15:0] absolute_target = {3'b0, uir[3:0], uir[15:8], 1'b0};
 	wire [15:0] exec_pc = upc + 1'b1;
 	// The read address stays at dest after ST_READ_D, so the synchronous RAM
 	// output already holds the destination operand throughout ST_EXEC.
@@ -327,7 +331,13 @@ module ucode_cpu #(
 			host_write_high = 1;
 			host_write_address = clear_index[2:0];
 			host_write_data = 0;
-		end else if (state == ST_EXEC && !op[0] && dest != 0) begin
+		end else if (state == ST_EXEC && kind == INST_CALL) begin
+			host_write_enable = 1;
+			host_write_low = 1;
+			host_write_high = 1;
+			host_write_address = 3'd2; // native LR; nested returns belong to firmware
+			host_write_data = next_pc;
+		end else if (state == ST_EXEC && !absolute_transfer && !op[0] && dest != 0) begin
 			case (kind)
 			INST_SETL: begin
 				host_write_enable = 1;
@@ -368,7 +378,7 @@ module ucode_cpu #(
 				host_write_enable = 0;
 			end
 			endcase
-		end else if (state == ST_EXEC && op[0] &&
+		end else if (state == ST_EXEC && !absolute_transfer && op[0] &&
 				kind != ALU_CMP && kind != ALU_BIT &&
 				kind != ALU_SHL && kind != ALU_SHR && dest != 0) begin
 			host_write_enable = 1;
@@ -491,7 +501,10 @@ module ucode_cpu #(
 			end
 
 			ST_EXEC: begin
-				if (!op[0]) begin
+				if (absolute_transfer) begin
+					upc <= absolute_target;
+					state <= ST_FETCH;
+				end else if (!op[0]) begin
 					case (kind)
 					INST_LDRL,
 					INST_STRL,

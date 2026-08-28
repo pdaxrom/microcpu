@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-/* Stable IDs at offset 0x10 in version-2 objects. Legacy version-1 objects
+/* Stable IDs at offset 0x10 in version-2/3 objects. Legacy version-1 objects
  * are always original CPU; their reserved header fields stay uninterpreted. */
 enum { CPU_ORIGINAL = 0, CPU_J11, CPU_UCODE, CPU_COUNT };
 
@@ -23,6 +23,18 @@ static inline int parse_cpu(const char *name)
         if (!strcmp(name, cpu_name(cpu))) return cpu;
     }
     return -1;
+}
+
+/* v3 identifies the compact CALL/JMP ucode ISA and its packed relocations. */
+static inline unsigned int cpu_object_version(int cpu)
+{
+    return cpu == CPU_ORIGINAL ? 1 : cpu == CPU_J11 ? 2 : 3;
+}
+
+static inline int cpu_object_supported(unsigned int version, int cpu)
+{
+    return cpu >= 0 && cpu < CPU_COUNT &&
+        (version == cpu_object_version(cpu) || (version == 2 && cpu == CPU_ORIGINAL));
 }
 
 #endif

@@ -63,7 +63,7 @@ module tb_ucode_native;
 			for (i = 0; i < `J11_UROM_WORDS-64; i = i + 1)
 				if (dut.urom[i] !== code_before[i]) $fatal(1, "Context overwrote code");
 `endif
-			$display("PASS: ucode LDI8 (256 values), 64-word context, jumps, flags, bus waits/errors; %0d six-cycle checks", six_cycle_checks);
+			$display("PASS: ucode LDI8 (256 values), 64-word context, CALL/JMP/RET, flags, bus waits/errors; %0d six-cycle checks", six_cycle_checks);
 			$finish;
 		end
 	end

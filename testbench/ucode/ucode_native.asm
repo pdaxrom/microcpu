@@ -660,6 +660,20 @@ pc_source
 	bts v1, 1
 	b *
 
+; Full-range absolute calls, nested RAM returns, flag-neutral jumps/returns.
+	set v0, $ffff
+	add v0, v0, 1
+	getf v4
+	call upper_call
+after_call
+	getf v3
+	assert_equal v3, v4
+	set v1, after_call
+	assert_equal lr, v1
+	set v2, $a55a
+	xor v2, v2, v2
+	assert_equal v2, 0
+
 ; Raw byte load preserves the high half; word load replaces both halves.
 	set v0, $ab34
 	ldi8 v1, $80
@@ -676,3 +690,22 @@ pc_source
 	assert_equal v2, v3
 	ldr v2, v1, 1          ; deliberate odd word access -> bus_error_entry
 	b *
+
+; Upper half of the address space also sets encoded instruction bit 3:
+; it must not turn CALL/JMP into ALU operations or overwrite a random Rd.
+	ds $1600-*
+upper_call
+	getf v3
+	assert_equal v3, v4
+	gset lr, 61
+	call nested_call
+after_nested
+	set v1, after_nested
+	assert_equal lr, v1
+	gget lr, 61
+	jmp upper_return
+	b *
+upper_return
+	ret
+nested_call
+	ret

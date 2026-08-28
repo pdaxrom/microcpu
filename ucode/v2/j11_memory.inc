@@ -4,8 +4,7 @@
 ;
 ; Private scratch: 25=lr, 26=v4, 27=v3, 28=v2, 29=sp, 30=return.
 ; Context 18 holds a read result, or pre-store NZVC plus access mode in bits 6:4.
-; Use an absolute software call: no guest-memory literals, no new RISC opcode,
-; and no dependence on the short branch displacement as the uROM grows.
+; CALL/JMP use native absolute microcode targets, never guest-memory literals.
 	macro bmask_set
 	btc #2, #3
 	b #1
@@ -17,9 +16,7 @@
 	endm
 
 	macro mcall
-	gset pc, 30
-	set lr, #1
-	mov pc, lr
+	call #1
 	endm
 
 	macro readw
@@ -73,25 +70,22 @@
 	endm
 
 	macro far_jump
-	set lr, #1
-	mov pc, lr
+	jmp #1
 	endm
 
 	macro far_call
-	set sp, #1
-	add lr, pc, 3
-	mov pc, sp
+	call #1
 	endm
 
 	macro fbeq
 	eq #2, #3
-	b *+8
+	b *+4
 	far_jump #1
 	endm
 
 	macro fbne
 	ne #2, #3
-	b *+8
+	b *+4
 	far_jump #1
 	endm
 
