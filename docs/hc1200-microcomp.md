@@ -46,8 +46,11 @@ make -C boards/hc1200-microcomp diamond \
 The output is `impl1-sdboot/microcomp_impl1.jed`. This separate implementation
 directory avoids reusing the old RISC results or its stale `impl1.xcf`.
 Select this JED explicitly when later configuring Programmer. The script
-exports only after TRACE reports zero cumulative negative slack; current
-SD pin timing/electrical acceptance still requires a real Diamond/board run.
+exports only after TRACE reports zero cumulative negative slack. Commit
+`6668a85` passed the full Diamond build through JED: 1095 LUT4, 548 slices,
+7 EBRs, zero setup/hold errors at 26.6 MHz (TRACE maximum 37.627 MHz).
+See [the build report, implemented pins and warnings](hc1200-sd-diamond.md).
+External SD/FRAM timing and physical-board acceptance remain outstanding.
 
 UART and SD locations come from the board's existing `microcomp.lpf`:
 

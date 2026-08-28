@@ -397,6 +397,13 @@ it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.
 - [x] Verify UART from the board configuration: RX=PT15D, TX=PT17D, 115200 8N1.
   Check project/pins/ROM consistency and a TX 'U' / RX 'Z' round trip from a
   microasm11 program booted through SD. No UART or CPU RTL changes required.
+- [x] Build corrected SD-autoboot board commit `6668a85` in Diamond 3.14:
+  1095/1280 LUT4, 548/640 slices, 431 registers, 7/7 EBRs; TRACE 37.627 MHz,
+  setup +11.017 ns / hold +0.289 ns, zero timing errors at 26.6 MHz. Export
+  JED, confirm all 17 active pins and original pulls in PAD, and compare
+  25 source hashes plus generated ROM/EBR against the Mac test image.
+  Reports/JED saved as ignored artifacts; no programming. See
+  `docs/hc1200-sd-diamond.md` for warnings and external-I/O limits.
 - [ ] Physical-board timing/pin/electrical acceptance and programming.
   Sustained UART input, cooperative long DMA and guest timekeeping under
   disk load remain future work: missed guest ticks are still coalesced.

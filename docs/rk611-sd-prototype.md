@@ -3,10 +3,11 @@
 This is a **simulation/resource prototype, not a production disk controller**.
 The original `j11` and no-disk `ucode` images remain separate. The main
 `hc1200-microcomp/microcomp.ldf` now selects SD + FIS + power-on boot.
-The supplied SD pins are recorded in the
-separate `sd.lpf`, but not electrically/timing-validated. No board/card
-programming is performed. The experimental `build-sd.tcl` does not export JED;
-the main project's `build-microcomp.tcl` can export after timing checks pass.
+The supplied SD pins are recorded in `sd.lpf` and confirmed by the final
+Diamond PAD report. External I/O timing and physical-board operation remain
+unverified. No board/card programming is performed. The experimental
+`build-sd.tcl` does not export JED; the main project's `build-microcomp.tcl`
+passed timing checks and exported JED in the [current build](hc1200-sd-diamond.md).
 
 ## Resource result
 
@@ -21,14 +22,16 @@ context RAM. The code limit is therefore **3520 words**.
 
 The RT-11 follow-up removes 30 words of misleading MMU stubs, then adds
 26 words for the power-on bootstrap; see [cold boot and tests](rt11-boot.md).
-The Diamond numbers below predate these changes, the 50-Hz divisor, reset
-synchronizer and `sd.lpf`; they have not been remeasured.
+The latest Diamond check (`6668a85`, 2026-08-28) includes these changes, the
+50-Hz divisor, reset synchronizer and corrected board pin/pull constraints.
 
-The complete disk+FIS board, not just the SPI block, uses **1099/1280 LUT4,
-552/640 slices, 429 registers, 7/7 EBRs and 17 PIO + JTAGENB**. TRACE reports
-**39.987 MHz**, with no setup/hold violations at the unchanged 26.6-MHz
-constraint. These are internal placement/timing estimates; SD I/O timings and
-automatically selected experimental pins are not a validated board pinout.
+The complete disk+FIS board, not just the SPI block, uses **1095/1280 LUT4,
+548/640 slices, 431 registers, 7/7 EBRs and 17 PIO + JTAGENB**. TRACE reports
+**37.627 MHz**, with no setup/hold violations at the unchanged 26.6-MHz
+constraint. All 17 active pins are locked to the board's specified sites,
+and JED export passes. External I/O timing/electrical checks remain separate;
+see the [build report and warnings](hc1200-sd-diamond.md). The earlier
+pre-autoboot result was 1099 LUT4 / 552 slices / 429 registers / 39.987 MHz.
 
 The earlier full image needed 3645 code words, 125 beyond capacity. Shorter
 far-branch macros save 38 words, CBZ/CBNZ save 82, FIS ADC/SBC chains and shifts

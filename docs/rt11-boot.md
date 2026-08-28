@@ -197,9 +197,11 @@ there is no new J-11 register or exception logic in Verilog.
 600 traps in total. Existing processor-register tests still run; the preserved
 `j11` profile separately retains its historical zero/ignore tests. Removing the
 misleading stubs saves 30 code words; adding autoboot spends 26. The resulting
-disk+FIS image is **3497 code + 64 context + 23 free = 3584**. The last Diamond
-resource/timing numbers predate these changes and the new reset/divider/pins;
-they are not current hardware acceptance results.
+disk+FIS image is **3497 code + 64 context + 23 free = 3584**. The subsequent
+[Diamond run of `6668a85`](hc1200-sd-diamond.md) builds this exact ROM with
+the new reset/divider and corrected board constraints through JED export:
+1095 LUT4, 7 EBRs, zero internal timing errors at 26.6 MHz. Physical-board
+acceptance is still outstanding.
 
 ## Supplied SD connections — not yet electrically verified
 
@@ -212,8 +214,10 @@ they are not current hardware acceptance results.
 
 Both disk projects now select `sd.lpf` with these supplied locations; the
 ordinary/preserved projects are unchanged. No Diamond run, programming or
-real-card write is part of this test, and physical I/O timing/electrical
-verification is still required. Once configured, the SD top's reset and uROM
-bootstrap do not depend on preexisting FRAM contents or an external loader.
+real-card write is part of this simulation test. The separate Diamond run
+linked above confirms implemented pins and internal timing; physical I/O
+timing/electrical verification is still required. Once configured, the SD
+top's reset and uROM bootstrap do not depend on preexisting FRAM contents
+or an external loader.
 The disk still requires a raw RK image at SD LBA 0, not a file in a FAT volume.
 See [controller scope and remaining limitations](rk611-sd-prototype.md).
