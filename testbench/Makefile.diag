@@ -1,0 +1,24 @@
+# make -C testbench -f Makefile.diag diag-test
+# One test uses the real 50-Hz timer. Fault tests accelerate only that timer;
+# CPU, UART and both SPI clocks remain identical to the board.
+include Makefile.disk
+DIAG_RTL = tb_sd_fram_diag.v $(DISK_RTL) ../boards/hc1200-microcomp/sd_microcomp.v $(BOARD_STUBS)
+.PHONY: diag-image diag-test diag-smoke diag-ebr-test
+diag-image:
+	$(MAKE) -C ../boards hc1200-diag
+build/sd_fram_diag.vvp: $(DIAG_RTL) Makefile.diag ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_sd_fram_diag -o $@ $(DIAG_RTL)
+build/diag_verilator/Vtb_sd_fram_diag: $(DIAG_RTL) Makefile.diag ../ucode/config.mk | build
+	$(VERILATOR) --binary --timing -j $(VERILATOR_JOBS) -CFLAGS '-O3' -Wno-fatal --top-module tb_sd_fram_diag --Mdir build/diag_verilator $(DIAG_RTL) > build/diag_verilator.log 2>&1 || { cat build/diag_verilator.log; exit 1; }
+build/diag_faults/Vtb_sd_fram_diag: $(DIAG_RTL) Makefile.diag ../ucode/config.mk | build
+	$(VERILATOR) --binary --timing -j $(VERILATOR_JOBS) -CFLAGS '-O3' -Wno-fatal --top-module tb_sd_fram_diag -GTICK_DIVISOR=5320 --Mdir build/diag_faults $(DIAG_RTL) > build/diag_faults.log 2>&1 || { cat build/diag_faults.log; exit 1; }
+diag-test: diag-image build/diag_verilator/Vtb_sd_fram_diag build/diag_faults/Vtb_sd_fram_diag
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) test_hc1200_diag.py
+	build/diag_verilator/Vtb_sd_fram_diag +SCENARIO=0
+	@set -e; for n in 0 1 2 3 4 5 6 7 8 9 10 11; do build/diag_faults/Vtb_sd_fram_diag +SCENARIO=$$n; done
+diag-smoke: diag-image build/sd_fram_diag.vvp
+	$(VVP) build/sd_fram_diag.vvp +SCENARIO=0
+diag-ebr-test: diag-image
+	@test -f "$(LATTICE_SIM_DIR)/PDPW8KC.v" || { echo "Set LATTICE_SIM_DIR to Diamond's MachXO2 models"; exit 1; }
+	$(IVERILOG) -g2012 -Wall $(J11_EBR_FLAGS) -s tb_sd_fram_diag -Ptb_sd_fram_diag.TICK_DIVISOR=5320 -o build/sd_fram_diag_ebr.vvp $(DIAG_RTL) ../boards/hc1200-microcomp/sd_fram_diag_ebr.v
+	$(VVP) build/sd_fram_diag_ebr.vvp +SCENARIO=0

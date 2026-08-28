@@ -16,3 +16,8 @@
 /impl1-sd/
 /impl1-sdboot/
 /impl1-original/
+/sd_fram_diag.bin
+/sd_fram_diag.mem
+/sd_fram_diag.lst
+/sd_fram_diag_ebr.v
+/impl1-diag/

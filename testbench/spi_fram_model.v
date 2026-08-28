@@ -24,6 +24,8 @@ module spi_fram_model (
 	reg [3:0] output_count;
 	reg write_enable;
 	reg write_started;
+	// Behavioral fault controls for diagnostics; not synthesizable hardware.
+	reg write_protect = 0, alias_banks = 0;
 	integer transaction_count;
 	integer i;
 
@@ -99,6 +101,7 @@ module spi_fram_model (
 					PH_ADDRESS: begin
 						address = ((address << 8) | input_shift) & 24'h01ffff;
 						if (address_count == 2) begin
+							if (alias_banks) address[16] = 0;
 							if (command == 8'h03) begin
 								phase = PH_READ;
 								output_shift = memory[address[16:0]];
@@ -111,7 +114,7 @@ module spi_fram_model (
 						end
 					end
 					PH_WRITE: begin
-						if (write_enable) begin
+						if (write_enable && !write_protect) begin
 							memory[address[16:0]] = input_shift;
 							address = (address + 1) & 24'h01ffff;
 							write_started = 1;

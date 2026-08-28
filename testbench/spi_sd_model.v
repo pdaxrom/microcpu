@@ -20,6 +20,8 @@ module spi_sd_model #(
 	integer command_count = 0, read_count = 0, write_commands = 0, writes = 0;
 	integer init_polls = 0, power_clocks = 0, n;
 	reg initialized = 0, app_command = 0, hold_busy = 0;
+	// Optional diagnostic fault injection; defaults leave existing tests alone.
+	reg corrupt_read_crc = 0, no_read_token = 0, never_ready = 0;
 	reg [7:0] incoming;
 	reg [31:0] argument;
 	// Optional raw image is opened rb only. Writes use a bounded, sector-grained
@@ -85,6 +87,7 @@ module spi_sd_model #(
 	task command;
 		integer c, i;
 		reg previous_app;
+		reg [15:0] block_crc;
 		begin
 			c = packet[0] & 63;
 			argument = {packet[1], packet[2], packet[3], packet[4]};
@@ -105,7 +108,7 @@ module spi_sd_model #(
 			41: begin
 				if (!previous_app || argument != 32'h40000000) $fatal(1, "SD ACMD41 sequence/HCS");
 				init_polls = init_polls + 1;
-				if (init_polls >= 2) initialized = 1;
+				if (init_polls >= 2 && !never_ready) initialized = 1;
 				enqueue(initialized ? 0 : 1);
 			end
 			58: begin
@@ -119,11 +122,16 @@ module spi_sd_model #(
 				else begin
 					enqueue(0); enqueue(8'hff); enqueue(8'hff);
 					if (fail_read) enqueue(8'h08);
-					else begin
+					else if (!no_read_token) begin
 						load_sector(argument);
 						enqueue(8'hfe);
-						for (i = 0; i < 512; i = i + 1) enqueue(image_sector[i]);
-						enqueue(8'h12); enqueue(8'h34);
+						block_crc = 0;
+						for (i = 0; i < 512; i = i + 1) begin
+							enqueue(image_sector[i]);
+							block_crc = crc16_byte(block_crc, image_sector[i]);
+						end
+						enqueue(block_crc[15:8]);
+						enqueue(block_crc[7:0] ^ {7'b0, corrupt_read_crc});
 					end
 				end
 			end
@@ -136,6 +144,17 @@ module spi_sd_model #(
 			endcase
 		end
 	endtask
+	function [15:0] crc16_byte(input [15:0] crc, input [7:0] data);
+		integer bit_index;
+		reg [15:0] value;
+		begin
+			value = crc;
+			for (bit_index = 7; bit_index >= 0; bit_index = bit_index - 1)
+				value = {value[14:0], 1'b0} ^
+					((value[15] ^ data[bit_index]) ? 16'h1021 : 16'h0000);
+			crc16_byte = value;
+		end
+	endfunction
 	task consume;
 		input [7:0] value;
 		integer i;

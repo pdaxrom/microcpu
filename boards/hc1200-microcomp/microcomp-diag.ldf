@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BaliProject version="3.2" title="microcomp-diag" device="LCMXO2-1200HC-4SG32C" default_implementation="impl1">
+    <Options/>
+    <Implementation title="impl1" dir="impl1-diag" description="Native UART/SD/FRAM diagnostics; no J-11 guest" synthesis="synplify" default_strategy="Strategy1">
+        <Options def_top="ucode_sd_microcomp"/>
+        <Source name="sd_microcomp.v" type="Verilog" type_short="Verilog">
+            <Options top_module="ucode_sd_microcomp"/>
+        </Source>
+        <Source name="../../rtl/ucode_cpu.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="sd_fram_diag_ebr.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="../../rtl/spi_fram_guest_ram.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="../../rtl/spi_byte_service.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="sd_guest_bus.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="j11_guest_bus.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="uart.v" type="Verilog" type_short="Verilog"><Options/></Source>
+        <Source name="sd.lpf" type="Logic Preference" type_short="LPF"><Options/></Source>
+    </Implementation>
+    <Strategy name="Strategy1" file="j11.sty"/>
+</BaliProject>
