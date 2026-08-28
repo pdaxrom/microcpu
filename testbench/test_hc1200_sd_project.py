@@ -65,6 +65,33 @@ class BoardProject(unittest.TestCase):
             self.assertNotIn(gpio, sd)  # no second port placed at the same site
         self.assertEqual(len(sd), len(set(sd.values())))
 
+    def test_sd_preserves_all_original_constraints(self):
+        # SD takes over exactly the four external GPIO pads. Preserve every
+        # other LOCATE, IOBUF/pull mode and SYSCONFIG setting verbatim.
+        expected = (BOARD / "microcomp.lpf").read_text()
+        for index, signal in enumerate(("sd_cs_n", "sd_mosi", "sd_sck", "sd_miso")):
+            expected = expected.replace(f'"gpio[{index}]"', f'"{signal}"')
+        self.assertEqual((BOARD / "sd.lpf").read_text(), expected)
+
+    def test_sd_top_ports_match_pin_constraints(self):
+        # This board uses a simple ANSI header with decimal bus bounds. Check
+        # every bit, including unused keyboard inputs, and reject extra GPIOs
+        # that would leave the placer free to assign unexpected package pads.
+        header = (BOARD / "sd_microcomp.v").read_text().split("\n);", 1)[0]
+        declarations = re.findall(
+            r"\b(?:input|output|inout)\s+wire\s+(?:\[(\d+):(\d+)\]\s+)?([^\n]+)", header)
+        actual = []
+        for high, low, names in declarations:
+            for name in names.rstrip(",").split(","):
+                name = name.strip()
+                self.assertRegex(name, r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+                if high:
+                    actual.extend(f"{name}[{bit}]" for bit in
+                                  range(min(int(high), int(low)), max(int(high), int(low)) + 1))
+                else:
+                    actual.append(name)
+        self.assertCountEqual(actual, pins("sd.lpf"))
+
     def test_board_rom_matches_autoboot_and_ebr(self):
         mem = BOARD / "j11_sd.mem"
         self.assertEqual(mem.read_bytes(), (ROOT / "testbench/build/j11_sd_boot.words").read_bytes())

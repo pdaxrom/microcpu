@@ -15,8 +15,6 @@ module ucode_sd_microcomp #(
 	input  wire       rx,
 	output wire       tx,
 
-	inout  wire [3:0] gpio,
-
 	output wire       gpio_mosi,
 	input  wire       gpio_miso,
 	output wire       gpio_msck,
@@ -135,7 +133,6 @@ module ucode_sd_microcomp #(
 	);
 
 	/* Peripherals not routed into the guest bus yet are left electrically safe. */
-	assign gpio = 4'bzzzz;
 	assign gpio_din = 1'b0;
 	assign gpio_ce = 1'b1;
 	assign gpio_clk = 1'b0;

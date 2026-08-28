@@ -65,6 +65,14 @@ common ground. RX and TX have not been swapped. The four former GPIO sites
 are now assigned to SD, not simultaneously to two ports. Guest console
 registers are the microcoded DL11 at octal `177560..177566`.
 
+`sd.lpf` preserves the **entire original `microcomp.lpf`**, changing only
+`gpio[0..3]` to `sd_cs_n`, `sd_mosi`, `sd_sck`, `sd_miso` in the IOBUF and
+LOCATE entries. UART RX/TX, all four SD signals, FRAM and display signals
+retain `PULLMODE=NONE`; reset retains `UP`, and keyboard rows retain `DOWN`.
+All other locations, I/O types and SYSCONFIG settings are unchanged. The SD
+top has no leftover generic `gpio[0..3]` ports. This preserves the board's
+existing electrical configuration; simulation does not verify physical pulls.
+
 After FPGA configuration or board reset, uROM reads sectors 0 and 1 from
 SD into FRAM and enters guest address 0. FRAM needs no preinstalled bootstrap.
 Use an **SDHC/SDXC card with a raw RK disk image at LBA 0**, not a file in FAT.
@@ -79,7 +87,8 @@ make -C testbench -f Makefile.disk hc1200-sd-test
 
 The program is assembled by `microasm11`, loaded only into the simulated SD,
 and checks a TX `'U'` / RX `'Z'` exchange through the actual board ports.
-Project/ROM/pin consistency and build-script error gates are checked as well;
+Project/ROM/pin consistency, exact LPF preservation (including pull modes),
+top-level port coverage and build-script error gates are checked as well;
 the latter uses mocked Diamond commands and is not a synthesis result.
 
 For the old RISC project, run `make -C boards/hc1200-microcomp original`

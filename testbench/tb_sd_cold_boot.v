@@ -18,7 +18,7 @@ module tb_sd_cold_boot;
 	wire fram_cs, fram_sck, fram_mosi, fram_miso;
 	wire sd_cs, sd_sck, sd_mosi, sd_miso;
 	ucode_sd_microcomp #(.UCODE_FILE(UCODE_FILE)) board (
-		.res(res), .rx(rx), .tx(tx), .gpio(), .gpio_mosi(fram_mosi),
+		.res(res), .rx(rx), .tx(tx), .gpio_mosi(fram_mosi),
 		.gpio_miso(fram_miso), .gpio_msck(fram_sck), .gpio_mcs(fram_cs),
 		.sd_cs_n(sd_cs), .sd_sck(sd_sck), .sd_mosi(sd_mosi), .sd_miso(sd_miso),
 		.gpio_din(), .gpio_ce(), .gpio_clk(), .gpio_rs(), .gpio_blank(),
