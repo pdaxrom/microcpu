@@ -40,10 +40,14 @@ memory_access
 	bmask_clear memory_aligned, v4, 1
 	far_jump cpu_address_error
 memory_aligned
-	set sp, $fff8
+	; Raw UART/time and SD SPI/bank services are native-only, including
+	; both byte lanes and instruction fetches. Keep DL11's decode separate.
+	set sp, $fff0
 	and v2, v4, sp
 	set sp, $f000
 	fbeq bus_error_entry, v2, sp ; never expose the native service window
+	set sp, $fff8
+	and v2, v4, sp
 	set sp, $ff70
 	beq memory_console, v2, sp
 	set sp, $fffe

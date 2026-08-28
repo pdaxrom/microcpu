@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 
-// EXPERIMENTAL: SD boot top; sd.lpf records the supplied, unverified SD pinout.
+// SD boot top; sd.lpf pinout passed physical SD/FRAM and RT-11 boot tests.
+// See docs/hc1200-sd-diamond.md for versioned build/hardware acceptance.
 module ucode_sd_microcomp #(
 	parameter integer UROM_WORDS = 3584,
 	parameter UCODE_FILE = "j11_sd.mem",

@@ -398,7 +398,7 @@ ucode-j11-test: $(addprefix build/ucode_,$(addsuffix .vvp,$(filter-out j11_core_
 	$(VVP) build/ucode_j11_peripherals.vvp
 	$(VVP) build/ucode_j11_halt.vvp
 	$(VVP) build/ucode_board.vvp
-	@set -e; for test in cpu_registers_no_mmu cpu_mmu_absent cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
+	@set -e; for test in cpu_registers_no_mmu cpu_mmu_absent native_isolation cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
 		$(VVP) build/ucode_j11_cpu_io.vvp +PROGRAM=build/guest_$$test.hex +TIMEOUT=8000000; \
 	done
 	$(VVP) build/ucode_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154

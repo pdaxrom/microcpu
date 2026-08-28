@@ -138,6 +138,7 @@ These use the specialized `ucode` engine and separate Makefiles:
 ```sh
 # Icarus: wire-level card/FRAM and absent-MMU regression.
 make -C testbench -f Makefile.disk disk-test disk-nofis-test
+make -C testbench -f Makefile.disk disk-native-isolation-test
 make -C testbench -f Makefile.disk disk-image-test disk-no-mmu-test
 make -C testbench -f Makefile.disk disk-core-test disk-fis-test FIS_JOBS=4
 make -C testbench -f Makefile.disk hc1200-sd-test
@@ -153,6 +154,16 @@ make -C testbench -f Makefile.diag diag-smoke
 # NOFIS guest boot trace: Verilator suite.
 make -C testbench -f Makefile.boot-trace boot-trace-test
 ```
+
+`disk-native-isolation-test` is also included in `disk-test`. Its assembled
+DCJ11 guest checks 108 vector-4 faults: word reads/writes, instruction fetches,
+both byte lanes across private F000..F00F, odd-word ADR priority, and unmapped
+FF78..FF7F next to the real DL11. It checks unchanged load destinations and
+working DL11 CSRs. Both FIS and NOFIS firmware run on the complete SD/FRAM
+adapter; bus assertions reject any extended native-service request, bank
+override, SD command or SD/UART pin side effect after guest entry. The same
+guest runs in `ucode-test`, and the FIS SD EBR suite includes it too.
+See [isolation fix and evidence](../docs/native-service-isolation.md).
 
 Diagnostic suites include a normal run with the real 50-Hz divider and fault
 runs with an explicitly accelerated timer. CPU/UART/SPI clocks are unchanged.

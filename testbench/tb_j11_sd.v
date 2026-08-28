@@ -8,11 +8,13 @@ module tb_j11_sd;
 	wire bus_ready, bus_error, bus_irq;
 	wire [2:0] irq_level;
 	wire [7:0] irq_vector;
-	wire fram_cs, fram_sck, fram_mosi, fram_miso, sd_cs, sd_sck, sd_mosi, sd_miso;
+	wire fram_cs, fram_sck, fram_mosi, fram_miso, sd_cs, sd_sck, sd_mosi, sd_miso, uart_tx;
 	integer scenario = 0, i, sector, word_index, cycles;
 	reg [15:0] pattern;
 	reg [1023:0] program_file;
 	integer custom_program = 0;
+	integer native_isolation = 0;
+	reg isolation_armed = 0;
 	wire injected_fault = req && ((scenario == 7 && !wr && address == 16'o6002 && !bus.bank_override) ||
 		(scenario == 10 && wr && address == 2 && bus.bank_override && card.read_count == 2));
 	assign ready = injected_fault || bus_ready;
@@ -26,7 +28,7 @@ module tb_j11_sd;
 	ucode_sd_guest_bus #(.FRAM_CLK_DIV(1), .TICK_DIVISOR(1000), .SD_SLOW_DIV(3), .SD_FAST_DIV(1)) bus (
 		.clk(clk), .rst(rst), .guest_reset(reset_guest), .req(req && !injected_fault),
 		.write(wr), .byte_access(byte_access), .bank(bank), .address(address), .wdata(wdata),
-		.rdata(rdata), .ready(bus_ready), .error(bus_error), .busy(), .uart_rx(1'b1), .uart_tx(),
+		.rdata(rdata), .ready(bus_ready), .error(bus_error), .busy(), .uart_rx(1'b1), .uart_tx(uart_tx),
 		.irq(bus_irq), .irq_level(irq_level), .irq_vector(irq_vector),
 		.spi_cs_n(fram_cs), .spi_sck(fram_sck), .spi_mosi(fram_mosi), .spi_miso(fram_miso),
 		.sd_cs_n(sd_cs), .sd_sck(sd_sck), .sd_mosi(sd_mosi), .sd_miso(sd_miso)
@@ -41,6 +43,19 @@ module tb_j11_sd;
 	reg held = 0;
 	reg [34:0] held_request;
 	always @(negedge clk) if (!rst) begin
+		// rh11_reset legitimately initializes F00A/F00C before guest entry.
+		// This guest program issues no disk commands or RESET, so after its
+		// R5 marker ANY access to the extended services is an isolation leak.
+		if (native_isolation && context_words[5] != 0) isolation_armed = 1;
+		if (isolation_armed) begin
+			if (req && address[15:3] == 13'h1e01)
+				$fatal(1, "Guest reached private SD service: address=%04h write=%0d byte=%0d PC=%06o uPC=%04h",
+					address, wr, byte_access, context_words[7], dut.upc);
+			if (bus.bank_override !== 0 || sd_cs !== 1 || sd_sck !== 0 || uart_tx !== 1)
+				$fatal(1, "Private-service probe changed FRAM bank or SD/UART pins");
+			if (card.command_count != 0 || card.read_count != 0 || card.writes != 0)
+				$fatal(1, "Private-service probe reached the SD card");
+		end
 		if (bus.spi_busy && bus.base.fram_busy) $fatal(1, "Competing SPI/FRAM masters");
 		if (bus.bank_override && req && address < 16'he000 && address >= 512)
 			$fatal(1, "DMA escaped the reserved FRAM cache");
@@ -54,6 +69,9 @@ module tb_j11_sd;
 		if ($value$plusargs("SCENARIO=%d", scenario)) begin end
 		program_file = scenario == 0 ? "build/guest_rh11_disk.hex" : "build/guest_rh11_disk_error.hex";
 		custom_program = $value$plusargs("PROGRAM=%s", program_file);
+		native_isolation = $test$plusargs("NATIVE_ISOLATION");
+		if (native_isolation && (!custom_program || scenario != 0))
+			$fatal(1, "NATIVE_ISOLATION requires the isolation PROGRAM and scenario 0");
 		for (i = 0; i < 131072; i = i + 1) fram.memory[i] = 0;
 		for (sector = 0; sector < 256; sector = sector + 1)
 			for (word_index = 0; word_index < 256; word_index = word_index + 1) begin
@@ -66,11 +84,16 @@ module tb_j11_sd;
 		repeat (4) @(negedge clk); rst = 0;
 		for (cycles = 0; cycles < 8000000 && dut.cause_reg != 3; cycles = cycles + 1)
 			@(negedge clk);
-		if (dut.cause_reg != 3 || context_words[0] !== 16'o12345)
+		if (dut.cause_reg != 3 || context_words[0] !== 16'o12345) begin
+			$display("R0=%06o R1=%06o R3=%06o R4=%06o SP=%06o CPUERR=%03o",
+				context_words[0], context_words[1], context_words[3], context_words[4], context_words[6], context_words[23] >> 8);
 			$fatal(1, "Disk scenario=%0d guest case=%0d PC=%06o uPC=%h cause=%h CS1=%h WC=%h BA=%h CS2=%h ER=%h flags=%h",
 				scenario, context_words[5], context_words[7], dut.upc, dut.cause_reg,
 				context_words[40], context_words[41], context_words[42], context_words[44], context_words[46], context_words[56]);
+		end
 		if (bus.bank_override || !sd_cs || sd_sck) $fatal(1, "Completion left private bank/card active");
+		if (native_isolation && (!isolation_armed || context_words[4] !== 16'd108))
+			$fatal(1, "Isolation test did not complete all 108 guest faults");
 		if (custom_program) begin
 			$display("PASS: %0s on full SD/FRAM bus (%0d clocks)", program_file, cycles);
 			$finish;
