@@ -313,14 +313,39 @@ after verification; never commit generated images or program the board.
 
 Disk follow-up, beyond this measured prototype:
 
-- [ ] Recover at least 125 code words or design explicit overlays to retain
-  FIS with the disk in seven EBRs.
+- [x] Recover at least 125 code words to retain FIS with the disk in seven
+  EBRs: 144 words recovered by the density follow-up below; no overlays.
 - [ ] Make long commands cooperative/asynchronous: the prototype blocks guest
   execution during transfers and can overrun the UART receive buffer.
 - [ ] Extend controller/card compatibility and data CRC checks as needed;
   diagnostic registers and several RK611 operations remain placeholders.
 - [ ] Confirm SD electrical connections, pin constraints and external I/O
   timing before physical-board tests or any real-card writes.
+
+### Carry/branch density adoption (approved 2026-08-28)
+
+- [x] Adopt only the measured FBEQ/FBNE simplification, CBZ/CBNZ and native
+  ADC/SBC changes in `ucode`; preserve original/j11 RTL and firmware.
+- [x] Finish assembler/disassembler support, explicit short-range checking,
+  local object branches and version-4 ISA tagging (accept old v3 objects).
+  11 smoke + 24 profile tests, 131072 zero-branch and 83120 carry pipeline
+  checks pass, alongside the assembled native carry/branch fixture.
+- [x] Use the production 3584-word packer for full disk+FIS simulation and
+  separate `disk-ucode` / `disk-diamond` targets. Code is 3501 words, context
+  64, free 19. Ordinary FIS code is 2852 words, with 668 free; no-FIS disk
+  code is 3181 words, with 339 free. No default build selects the disk.
+- [x] Final full SD+FIS Diamond check in an isolated copy: 1099 LUT4,
+  552 slices, 429 registers, 7 EBRs, TRACE 39.987 MHz; zero setup/hold errors
+  at 26.6 MHz. Mac/Ubuntu RTL and ROM hashes agree. No SD JED or programming.
+  Ordinary no-disk build also passes through JED: 1008 LUT4, 507 slices,
+  382 registers, 7 EBRs, TRACE 43.083 MHz. Benchmark: 783572 clocks versus
+  814640 at stage 4 (-3.81%) and 903548 in the preserved engine (fast test bus).
+- [x] Finish original/preserved/new profile acceptance and disk regression:
+  both J-11 engines pass 209/209 core snapshots (29 EIS), 4040/4040 exact FIS
+  cases and complete real-EBR suites with the same 209 core snapshots.
+  Disk: 22/22 scenarios, 209/209 core snapshots, 4040/4040 FIS, both real-EBR
+  variants and explicit no-FIS traps pass. Board/testbench ROMs match and
+  all nine original/preserved sources still match `d4dabf1`. Commit sources only.
 
 The controller type is already chosen by the user; earlier entries calling
 it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.

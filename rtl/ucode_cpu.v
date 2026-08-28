@@ -77,6 +77,8 @@ module ucode_cpu #(
 
 	localparam [3:0] ALU_CMP  = 4'h0;
 	localparam [3:0] ALU_BIT  = 4'h1;
+	localparam [3:0] ALU_ADC  = 4'h3;
+	localparam [3:0] ALU_SBC  = 4'h6;
 	localparam [3:0] ALU_SEXT = 4'h4;
 	localparam [3:0] ALU_SUBB = 4'h5;
 	localparam [3:0] ALU_ADD  = 4'h8;
@@ -144,8 +146,12 @@ module ucode_cpu #(
 	// A single relative-PC adder handles fall-through, compare/bit skips and
 	// signed branches. Other instructions always select the ordinary +2.
 	wire relative_branch = !op[0] && kind == INST_B;
+	// GETF uses a zero high byte. Reserved modes 01/10 encode CBZ/CBNZ,
+	// Rd and a signed six-bit word displacement; mode 11 remains reserved.
+	wire zero_branch = !op[0] && kind == INST_GETF && (uir[15] ^ uir[14]);
 	wire conditional_skip = op[0] && (kind == ALU_CMP || kind == ALU_BIT);
-	wire [11:0] pc_step = relative_branch ?
+	wire [11:0] pc_step = zero_branch && skip_taken ?
+		{{6{uir[13]}}, uir[13:8]} : relative_branch ?
 		{dest[2], dest, immediate8} :
 		(conditional_skip && skip_taken ? 12'd2 : 12'd1);
 	wire [11:0] next_word_pc = word_pc + pc_step;
@@ -198,10 +204,12 @@ module ucode_cpu #(
 	// Shared add/subtract datapath also generates native load/store addresses.
 	// Invert the extended B operand for subtraction so bit 16 stays borrow,
 	// matching the native ALU ABI (rather than the adder's not-borrow carry).
-	wire arithmetic_subtract = op[0] && kind != ALU_ADD;
+	wire arithmetic_subtract = op[0] && kind != ALU_ADD && kind != ALU_ADC;
+	wire arithmetic_carry = op[0] && (kind == ALU_ADC || kind == ALU_SBC);
+	wire carry_in = arithmetic_subtract ^ (arithmetic_carry && alu_flags[0]);
 	wire [16:0] arithmetic_result = {1'b0, operand_a} +
 		{arithmetic_subtract, operand_b ^ {16{arithmetic_subtract}}} +
-		arithmetic_subtract;
+		carry_in;
 	wire byte_borrow = (!operand_a[7] && operand_b[7]) ||
 		((!operand_a[7] || operand_b[7]) && arithmetic_result[7]);
 	wire flag_z = alu_result[15:0] == 0;
@@ -282,6 +290,8 @@ module ucode_cpu #(
 			alu_result = {9'b0, alu_byte_result[7:0]};
 		end
 		ALU_ADD,
+		ALU_ADC,
+		ALU_SBC,
 		ALU_CMP,
 		ALU_SUB:  alu_result = arithmetic_result;
 		ALU_BIT,
@@ -295,8 +305,10 @@ module ucode_cpu #(
 
 	always @* begin
 		case (kind)
-		ALU_ADD: alu_next_flags = {flag_n, flag_z, flag_v_add, flag_c};
+		ALU_ADD,
+		ALU_ADC: alu_next_flags = {flag_n, flag_z, flag_v_add, flag_c};
 		ALU_CMP,
+		ALU_SBC,
 		ALU_SUB: alu_next_flags = {flag_n, flag_z, flag_v_sub, flag_c};
 		ALU_SUBB: alu_next_flags = {
 			alu_byte_result[7],
@@ -373,7 +385,7 @@ module ucode_cpu #(
 				host_write_data = context_read_value;
 			end
 			INST_GETF: begin
-				host_write_enable = 1;
+				host_write_enable = !zero_branch;
 				host_write_low = 1;
 				host_write_high = 1;
 				host_write_data = {12'b0, alu_flags};
@@ -499,8 +511,8 @@ module ucode_cpu #(
 			ST_PRE_EXEC: begin
 				// Operands are stable now. Register the condition before the PC
 				// adder; no extra instruction cycle is needed.
-				skip_taken <= compare_true(dest,
-					{flag_n, flag_z, flag_v_sub, flag_c});
+					skip_taken <= zero_branch ? ((operand_dest == 0) ^ uir[15]) :
+						compare_true(dest, {flag_n, flag_z, flag_v_sub, flag_c});
 				state <= ST_EXEC;
 			end
 

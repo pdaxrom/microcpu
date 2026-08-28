@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module tb_j11_sd;
-	parameter integer WORDS = 4096;
+	parameter integer WORDS = `J11_UROM_WORDS;
 	parameter UCODE_FILE = "build/j11_sd.words";
 	reg clk = 0, rst = 1;
 	wire req, wr, byte_access, bank, ready, error, reset_guest;

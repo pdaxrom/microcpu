@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """CPU profiles: encoding, rejected instructions, object tags and disassembly."""
 from pathlib import Path
+import re
 import struct
 import subprocess
 import tempfile
@@ -145,7 +146,7 @@ class CpuProfiles(unittest.TestCase):
             first, _ = self.assemble("setl v0, 1\n", cpu, object_file=True)
             second, _ = self.assemble("seth v0, 2\n", cpu, object_file=True)
             self.assertEqual(struct.unpack_from("<H", first.read_bytes(), 0x10)[0], tag)
-            self.assertEqual(struct.unpack_from("<H", first.read_bytes(), 2)[0], tag + 1)
+            self.assertEqual(struct.unpack_from("<H", first.read_bytes(), 2)[0], (1, 2, 4)[tag])
             output = self.directory / f"{cpu}.bin"
             self.run_tool("microlink", "-binary", "-o", output, first, second)
             self.assertEqual(output.read_bytes(), bytes.fromhex("43015302"))
@@ -248,6 +249,86 @@ class CpuProfiles(unittest.TestCase):
         obj.write_bytes(data)
         self.run_tool("microdis", "-object", obj, ok=False)
         self.run_tool("microlink", obj, ok=False)
+
+    def test_carry_arithmetic_encodings_and_profiles(self):
+        regs = ("pc", "sp", "lr", "v0", "v1", "v2", "v3", "v4")
+        for name, opcode in (("adc", 7), ("sbc", 13)):
+            source, expected = [], bytearray()
+            for rd in range(1, 8):
+                for ra in range(8):
+                    for rb in range(24):
+                        operand = str(rb) if rb < 16 else regs[rb - 16]
+                        source.append(f"{name} {regs[rd]}, {regs[ra]}, {operand}\n")
+                        field = (rb << 1 | 1) if rb < 16 else (rb - 16) << 2
+                        expected.extend((opcode << 3 | rd, ra << 5 | field))
+            out, _ = self.assemble("".join(source), "ucode")
+            self.assertEqual(out.read_bytes(), expected)
+            listing = self.run_tool("microdis", "--cpu=ucode", out)
+            instructions = re.findall(r"^[0-9A-F]{4}: [0-9A-F]{4}    (.*)$", listing, re.M)
+            again, _ = self.assemble("\n".join(instructions) + "\n", "ucode")
+            self.assertEqual(again.read_bytes(), expected)
+            for cpu in ("original", "j11"):
+                self.assemble(f"{name} v0, v1, v2\n", cpu, ok=False)
+                self.assertNotIn(f"    {name} ", self.run_tool("microdis", f"--cpu={cpu}", out))
+            for operand in ("-1", "16", "missing"):
+                self.assemble(f"{name} v0, v1, {operand}\n", "ucode", ok=False)
+            self.assemble(f"{name} pc, v1, 0\n", "ucode", ok=False)
+
+    def test_zero_branches_all_encodings_and_roundtrip(self):
+        regs = ("pc", "sp", "lr", "v0", "v1", "v2", "v3", "v4")
+        for name, mode in (("cbz", 1), ("cbnz", 2)):
+            for rd, reg in enumerate(regs):
+                source, expected = ["org 128\n"], bytearray()
+                for i, rel in enumerate(range(-32, 32)):
+                    source.append(f"{name} {reg}, {128 + i * 2 + rel * 2}\n")
+                    expected.extend((0xe0 | rd, mode << 6 | (rel & 63)))
+                out, _ = self.assemble("".join(source), "ucode")
+                self.assertEqual(out.read_bytes(), expected)
+                listing = self.run_tool("microdis", "--cpu=ucode", "-org", 128, out)
+                instructions = re.findall(r"^[0-9A-F]{4}: [0-9A-F]{4}    (.*)$", listing, re.M)
+                again, _ = self.assemble("org 128\n" + "\n".join(instructions) + "\n", "ucode")
+                self.assertEqual(again.read_bytes(), expected)
+
+    def test_zero_branch_bounds_profiles_and_reserved_getf(self):
+        for name in ("cbz", "cbnz"):
+            for cpu in ("original", "j11"):
+                self.assemble(f"{name} v0, *\n", cpu, ok=False)
+            for target in ("*+64", "*-66", "*+1", "8192", "-2", "missing", "/here"):
+                self.assemble(f"org 128\nhere\n{name} v0, {target}\n", "ucode", ok=False)
+            self.assemble(f"org 1\n{name} v0, 2\n", "ucode", ok=False)
+        for source, encoding, origin, instruction in (
+                ("org 8190\ncbz pc, 0\n", "e041", 8190, "cbz pc, $0000"),
+                ("cbnz v4, 8190\n", "e7bf", 0, "cbnz v4, $1FFE")):
+            out, _ = self.assemble(source, "ucode")
+            self.assertEqual(out.read_bytes().hex(), encoding)
+            self.assertIn(instruction, self.run_tool("microdis", "--cpu=ucode", "-org", origin, out))
+        out, _ = self.assemble("dw $c0e3\ndw $01e3\ngetf v0\n", "ucode")
+        listing = self.run_tool("microdis", "--cpu=ucode", out)
+        for text in ("dw $C0E3", "dw $01E3", "getf v0"):
+            self.assertIn(text, listing)
+
+    def test_zero_branch_local_object_and_version_compatibility(self):
+        source = "first\ncbz v0, next\ncbnz pc, first+2\nnext\ncbnz v4, *-2\nret\n"
+        obj, _ = self.assemble(source, "ucode", object_file=True)
+        binary, _ = self.assemble(source, "ucode")
+        out = self.directory / "local.bin"
+        for origin in (0, 128, 8184):
+            self.run_tool("microlink", "-binary", "-org", origin, "-o", out, obj)
+            self.assertEqual(out.read_bytes(), binary.read_bytes())
+        for origin in (1, 8192):
+            self.run_tool("microlink", "-binary", "-org", origin, "-o", out, obj, ok=False)
+        for source in ("extern x\ncbz v0, x\n", "cbz v0, 0\n", "x equ 0\ncbz v0, x\n",
+                       "x\ncbz v0, 2*x\n", "x\ncbz v0, x*2\n", "x\ncbz v0, 2-x\n",
+                       "x\ncbz v0, x+*\n"):
+            _, log = self.assemble(source, "ucode", object_file=True, ok=False)
+            self.assertIn("local label or *", log)
+        old, _ = self.assemble("ret\n", "ucode", object_file=True)
+        data = bytearray(old.read_bytes())
+        struct.pack_into("<H", data, 2, 3)
+        old.write_bytes(data)
+        self.assertIn("ret", self.run_tool("microdis", old))
+        self.run_tool("microlink", "-binary", "-o", out, old, obj)
+        self.assertEqual(out.read_bytes(), bytes.fromhex("8040") + binary.read_bytes())
 
 
 if __name__ == "__main__":

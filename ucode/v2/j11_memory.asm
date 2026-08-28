@@ -75,7 +75,7 @@ memory_device_low
 	beq memory_ltc, v2, sp
 	set sp, $ff70
 	sub v2, v2, sp
-	beq memory_rcsr, v2, 0
+	cbz v2, memory_rcsr
 	beq memory_rbuf, v2, 2
 	beq memory_xcsr, v2, 4
 	; XBUF reads as zero. Writes submit a byte and clear DONE/request.
@@ -103,7 +103,7 @@ memory_csr
 	bne memory_csr_enable_known, lr, v2
 	b memory_csr_preserve
 memory_csr_enable_known
-	beq memory_csr_disable, lr, 0
+	cbz lr, memory_csr_disable
 	ldi8 v2, $80
 	bmask_clear memory_csr_preserve, v4, v2
 	set v2, $100

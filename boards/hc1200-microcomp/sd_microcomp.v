@@ -3,7 +3,7 @@
 // EXPERIMENTAL: resource-estimate top; SD package pins are not assigned.
 module ucode_sd_microcomp #(
 	parameter integer UROM_WORDS = 3584,
-	parameter UCODE_FILE = "j11_sd_nofis.mem",
+	parameter UCODE_FILE = "j11_sd.mem",
 	parameter integer FRAM_CLK_DIV = 2,
 	parameter integer TICK_DIVISOR = 443333,
 	parameter integer SD_SLOW_DIV = 68,

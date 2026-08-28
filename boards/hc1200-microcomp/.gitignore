@@ -12,3 +12,5 @@
 /j11_sd_nofis.mem
 /sd_nofis_urom_ebr.v
 /impl1-sd-nofis/
+/sd_urom_ebr.v
+/impl1-sd/

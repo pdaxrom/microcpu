@@ -39,7 +39,7 @@ fetch_no_interrupt
 	bmask_clear fetch_no_halt, v2, 1 ; HALT has lower priority than traps/IRQs
 	far_jump halt_stopped
 fetch_no_halt
-	bne wait_instruction, v1, 0
+	cbnz v1, wait_instruction
 fetch_instruction
 	fetchw v1, v0, 0		; internal CPU registers are not executable
 	gset v1, 9		; guest IR <- fetched word
@@ -228,7 +228,7 @@ branch_compare
 	b fetch
 
 branch_boolean
-	beq branch_compare, v4, 0
+	cbz v4, branch_compare
 	setl v4, 1
 	b branch_compare
 
@@ -263,7 +263,7 @@ set_priority
 	gget v3, 8
 	set sp, $c000
 	and v4, v3, sp
-	beq set_priority_apply, v4, 0
+	cbz v4, set_priority_apply
 	set sp, $8000
 	bne fetch, v4, sp		; user/supervisor SPL is a NOP
 
@@ -280,7 +280,7 @@ reset_instruction
 	gget v2, 8
 	set v3, $c000
 	and v2, v2, v3
-	beq reset_instruction_kernel, v2, 0
+	cbz v2, reset_instruction_kernel
 	set v3, $8000
 	bne fetch, v2, v3	; user/supervisor RESET is a NOP on DCJ11
 
@@ -304,7 +304,7 @@ multiply
 	ldi8 sp, $3f
 	and v2, v2, sp
 	far_call ea_resolve
-	beq multiply_source_register, v2, 0
+	cbz v2, multiply_source_register
 	readw v4, v4, 0
 	b multiply_operands_ready
 
@@ -335,7 +335,7 @@ multiply_source_magnitude_ready
 multiply_loop
 	clr v2
 	and v1, sp, 1
-	beq multiply_shift, v1, 0
+	cbz v1, multiply_shift
 	add v4, v4, v3
 	getf v2
 	and v2, v2, 1
@@ -343,22 +343,22 @@ multiply_loop
 multiply_shift
 	and v1, v4, 1
 	shr sp, sp, 1
-	beq multiply_shift_high, v1, 0
+	cbz v1, multiply_shift_high
 	set v1, $8000
 	or sp, sp, v1
 
 multiply_shift_high
 	shr v4, v4, 1
-	beq multiply_next_bit, v2, 0
+	cbz v2, multiply_next_bit
 	set v1, $8000
 	or v4, v4, v1
 
 multiply_next_bit
 	dec lr
-	bne multiply_loop, lr, 0
+	cbnz lr, multiply_loop
 
 	; Convert the magnitude to a signed 32-bit result when required.
-	beq multiply_signed_ready, v0, 0
+	cbz v0, multiply_signed_ready
 	inv sp, sp
 	add sp, sp, 1
 	getf v2
@@ -375,12 +375,12 @@ multiply_signed_ready
 
 multiply_zero
 	or v1, v4, sp
-	bne multiply_carry, v1, 0
+	cbnz v1, multiply_carry
 	or v0, v0, 4
 
 multiply_carry
 	blt multiply_carry_negative_low, sp, 0
-	bne multiply_set_carry, v4, 0
+	cbnz v4, multiply_set_carry
 	b multiply_write
 
 multiply_carry_negative_low
@@ -445,7 +445,7 @@ jump
 	and v2, v2, sp
 	mov v3, v2
 	shr v3, v3, 3
-	beq illegal_jump, v3, 0
+	cbz v3, illegal_jump
 	far_call ea_resolve
 	gset v4, 7
 	b fetch
@@ -498,7 +498,7 @@ move
 	ldi8 sp, $3f
 	and v2, v2, sp
 	far_call ea_resolve
-	beq move_source_register, v2, 0
+	cbz v2, move_source_register
 	blt move_source_byte_memory, v1, 0
 	readw v3, v4, 0
 	b move_destination
@@ -529,7 +529,7 @@ move_destination
 	and v2, v2, sp
 	far_call ea_resolve
 move_destination_resolved
-	beq move_destination_register, v2, 0
+	cbz v2, move_destination_register
 	blt move_destination_byte_memory, v1, 0
 	writew v3, v4, 0
 	far_jump move_flags
@@ -563,7 +563,7 @@ double_operand
 	ldi8 sp, $3f
 	and v2, v2, sp
 	bsr ea_resolve
-	beq double_source_register, v2, 0
+	cbz v2, double_source_register
 	blt double_source_byte_memory, v1, 0
 	readw v3, v4, 0
 	b double_destination
@@ -594,7 +594,7 @@ double_destination
 	and v2, v2, sp
 	bsr ea_resolve
 double_destination_resolved
-	beq double_destination_register, v2, 0
+	cbz v2, double_destination_register
 	blt double_destination_byte_memory, v1, 0
 	readw sp, v4, 0
 	b double_execute
@@ -624,7 +624,7 @@ double_sub
 	sub sp, sp, v3
 
 double_write_result
-	beq double_add_register, v2, 0
+	cbz v2, double_add_register
 	writew sp, v4, 0
 	gget v2, 18		; memory helper's saved pre-store ALU flags
 	b double_arithmetic_flags_ready
@@ -647,7 +647,7 @@ double_exclusive_or
 
 double_logic_write
 	bge double_logic_write_word, v1, 0
-	beq double_logic_write_byte_register, v2, 0
+	cbz v2, double_logic_write_byte_register
 	writeb sp, v4, 0
 	b double_logic_flags_byte
 
@@ -659,7 +659,7 @@ double_logic_flags_byte
 	far_jump move_flags
 
 double_logic_write_word
-	beq double_logic_write_word_register, v2, 0
+	cbz v2, double_logic_write_word_register
 	writew sp, v4, 0
 	b double_logic_flags_word
 
@@ -704,7 +704,7 @@ clear_operand
 	ldi8 sp, $3f
 	and v2, v2, sp
 	bsr ea_resolve
-	beq clear_register, v2, 0
+	cbz v2, clear_register
 	blt clear_byte_memory, v1, 0
 	writew v3, v4, 0
 	b clear_flags
@@ -803,7 +803,7 @@ trap_entry
 	clr lr			; DCJ11 treats reserved mode 2 as kernel
 
 trap_entry_mode_ready
-	beq trap_entry_stack_ready, lr, 0
+	cbz lr, trap_entry_stack_ready
 	ldi8 v2, 16
 	add v2, v2, lr
 	gsetr v4, v2		; save outgoing SSP/USP before using KSP
@@ -852,7 +852,7 @@ return_common
 	mov v2, v1
 	set sp, $c000
 	and v2, v2, sp
-	beq return_common_apply, v2, 0
+	cbz v2, return_common_apply
 	set sp, $8000
 	beq return_common_apply, v2, sp
 	; Outside kernel, PSW[15:11] are set-only and IPL is unchanged.
@@ -915,7 +915,7 @@ halt
 	gget v3, 8
 	set sp, $c000
 	and v2, v3, sp
-	beq halt_stopped, v2, 0
+	cbz v2, halt_stopped
 	set sp, $8000
 	beq halt_stopped, v2, sp
 	far_jump cpu_illegal_halt
@@ -1026,7 +1026,7 @@ adjust_operand
 	gset v2, 13		; zero means register, nonzero means memory
 	gget v3, 12		; restore the operation selector
 	gset v3, 12
-	beq adjust_register_load, v2, 0
+	cbz v2, adjust_register_load
 	blt adjust_byte_memory_load, v1, 0
 	readw sp, v4, 0
 	b adjust_word_value
@@ -1043,7 +1043,7 @@ adjust_register_load
 adjust_word_value
 	mov v3, sp
 	gget v2, 12
-	beq adjust_word_increment, v2, 0
+	cbz v2, adjust_word_increment
 	beq adjust_word_decrement, v2, 1
 	beq adjust_word_negative, v2, 2
 	beq adjust_word_add_carry, v2, 3
@@ -1075,14 +1075,14 @@ adjust_word_negative
 adjust_word_add_carry
 	gget lr, 8
 	and lr, lr, 1
-	beq adjust_word_without_carry, lr, 0
+	cbz lr, adjust_word_without_carry
 	add v3, v3, 1
 	b adjust_word_replace_flags
 
 adjust_word_subtract_carry
 	gget lr, 8
 	and lr, lr, 1
-	beq adjust_word_without_carry, lr, 0
+	cbz lr, adjust_word_without_carry
 	sub v3, v3, 1
 	b adjust_word_replace_flags
 
@@ -1140,7 +1140,7 @@ adjust_word_test
 
 adjust_word_write
 	gget v2, 13
-	beq adjust_word_register_write, v2, 0
+	cbz v2, adjust_word_register_write
 	writew v3, v4, 0
 	b adjust_merge_flags
 
@@ -1150,7 +1150,7 @@ adjust_word_register_write
 
 adjust_byte_value
 	gget v2, 12
-	beq adjust_byte_increment, v2, 0
+	cbz v2, adjust_byte_increment
 	beq adjust_byte_decrement, v2, 1
 	beq adjust_byte_negative, v2, 2
 	beq adjust_byte_add_carry, v2, 3
@@ -1180,13 +1180,13 @@ adjust_byte_negative
 adjust_byte_add_carry
 	gget lr, 8
 	and lr, lr, 1
-	beq adjust_byte_without_carry, lr, 0
+	cbz lr, adjust_byte_without_carry
 	ldi8 v2, $ff
 	subb v3, sp, v2
 	getf lr
 	and lr, lr, 14		; subtraction supplies ADCB N/Z/V
 	and v2, lr, 4		; with carry in, ADCB carry out equals Z
-	beq adjust_byte_add_carry_ready, v2, 0
+	cbz v2, adjust_byte_add_carry_ready
 	or lr, lr, 1
 adjust_byte_add_carry_ready
 	ldi8 v1, 1
@@ -1195,7 +1195,7 @@ adjust_byte_add_carry_ready
 adjust_byte_subtract_carry
 	gget lr, 8
 	and lr, lr, 1
-	beq adjust_byte_without_carry, lr, 0
+	cbz lr, adjust_byte_without_carry
 	subb v3, sp, 1
 	b adjust_byte_replace_flags
 
@@ -1290,7 +1290,7 @@ adjust_shift_finish_byte
 
 adjust_byte_write
 	gget v2, 13
-	beq adjust_byte_register_write, v2, 0
+	cbz v2, adjust_byte_register_write
 	writeb v3, v4, 0
 	b adjust_merge_flags
 
@@ -1302,7 +1302,7 @@ adjust_byte_register_write
 adjust_merge_flags
 	gget v4, 8
 	set sp, $fff0		; retain upper PSW and select carry policy
-	bne adjust_merge_mask_ready, v1, 0
+	cbnz v1, adjust_merge_mask_ready
 	inc sp			; INC/DEC retain old C
 adjust_merge_mask_ready
 	and v4, v4, sp
@@ -1314,7 +1314,7 @@ swap_bytes_operand
 	shl v2, v1, 10
 	shr v2, v2, 10
 	bsr ea_resolve
-	beq swap_bytes_register_load, v2, 0
+	cbz v2, swap_bytes_register_load
 	readw sp, v4, 0
 	b swap_bytes_value
 
@@ -1326,7 +1326,7 @@ swap_bytes_value
 	shr v3, v3, 8
 	shl sp, sp, 8
 	or v3, v3, sp
-	beq swap_bytes_register_write, v2, 0
+	cbz v2, swap_bytes_register_write
 	writew v3, v4, 0
 	b swap_bytes_flags
 
@@ -1354,7 +1354,7 @@ ea_resolve
 	mov v4, v2
 	and v4, v4, 7
 	shr v2, v2, 3
-	beq ea_register, v2, 0
+	cbz v2, ea_register
 	beq ea_deferred, v2, 1
 	beq ea_autoincrement, v2, 2
 	beq ea_autoincrement_deferred, v2, 3
@@ -1457,14 +1457,14 @@ sign_extend_operand
 	clr v3
 	gget v2, 8
 	and v2, v2, 8
-	beq sign_extend_resolve, v2, 0
+	cbz v2, sign_extend_resolve
 	inv v3, v3
 
 sign_extend_resolve
 	shl v2, v1, 10
 	shr v2, v2, 10
 	bsr ea_resolve
-	beq sign_extend_register, v2, 0
+	cbz v2, sign_extend_register
 	writew v3, v4, 0
 	b move_flags
 
@@ -1485,7 +1485,7 @@ move_to_processor_status_tail
 	ldi8 sp, $3f
 	and v2, v2, sp
 	bsr ea_resolve
-	beq move_to_processor_status_register, v2, 0
+	cbz v2, move_to_processor_status_register
 	readb v3, v4, 0
 	b move_to_processor_status_apply
 
@@ -1500,7 +1500,7 @@ move_to_processor_status_apply
 	mov v2, v4
 	set sp, $c000
 	and v2, v2, sp
-	beq move_to_processor_status_merge, v2, 0
+	cbz v2, move_to_processor_status_merge
 	set sp, $8000
 	beq move_to_processor_status_merge, v2, sp
 	ldi8 sp, $001f		; non-kernel MTPS cannot change priority
@@ -1535,7 +1535,7 @@ move_flags
 	gget v4, 8
 	set v2, $fff1		; clear N, Z, and V; preserve C and upper PSW
 	and v4, v4, v2
-	beq move_zero, v3, 0
+	cbz v3, move_zero
 	blt move_negative, v3, 0
 	pset v4
 	b fetch_far
@@ -1564,7 +1564,7 @@ arithmetic_shift
 	ldi8 sp, $3f
 	and v2, v2, sp
 	bsr ea_resolve
-	beq arithmetic_shift_count_register, v2, 0
+	cbz v2, arithmetic_shift_count_register
 	readw v4, v4, 0
 	b arithmetic_shift_count_ready
 
@@ -1577,7 +1577,7 @@ arithmetic_shift_count_ready
 	gget v3, 13
 	clr v0			; accumulated overflow predicate
 	clr v2			; outgoing carry, including count zero
-	beq arithmetic_shift_flags, v4, 0
+	cbz v4, arithmetic_shift_flags
 	ldi8 sp, 32
 	bgeu arithmetic_shift_right_count, v4, sp
 	mov lr, v4
@@ -1592,7 +1592,7 @@ arithmetic_shift_left_loop
 	or v0, v0, v2
 	mov v2, sp
 	dec lr
-	bne arithmetic_shift_left_loop, lr, 0
+	cbnz lr, arithmetic_shift_left_loop
 	b arithmetic_shift_flags
 
 arithmetic_shift_right_count
@@ -1607,12 +1607,12 @@ arithmetic_shift_right_loop
 	shl sp, sp, 15
 	or v3, v3, sp
 	dec lr
-	bne arithmetic_shift_right_loop, lr, 0
+	cbnz lr, arithmetic_shift_right_loop
 
 arithmetic_shift_flags
 	shl v0, v0, 1		; accumulated overflow becomes PSW V
 	blt arithmetic_shift_negative, v3, 0
-	beq arithmetic_shift_zero, v3, 0
+	cbz v3, arithmetic_shift_zero
 	b arithmetic_shift_carry
 
 arithmetic_shift_negative
@@ -1651,7 +1651,7 @@ arithmetic_shift_combined
 	ldi8 sp, $3f
 	and v2, v2, sp
 	bsr ea_resolve
-	beq arithmetic_shift_combined_count_register, v2, 0
+	cbz v2, arithmetic_shift_combined_count_register
 	readw v4, v4, 0
 	b arithmetic_shift_combined_count_ready
 
@@ -1685,7 +1685,7 @@ arithmetic_shift_combined_left_loop
 	or v0, v0, v2		; any pair-sign transition means overflow
 	mov v2, sp
 	dec lr
-	bne arithmetic_shift_combined_left_loop, lr, 0
+	cbnz lr, arithmetic_shift_combined_left_loop
 	b arithmetic_shift_combined_flags
 
 arithmetic_shift_combined_right_count
@@ -1704,13 +1704,13 @@ arithmetic_shift_combined_right_loop
 	shl sp, sp, 15
 	or v3, v3, sp
 	dec lr
-	bne arithmetic_shift_combined_right_loop, lr, 0
+	cbnz lr, arithmetic_shift_combined_right_loop
 
 arithmetic_shift_combined_flags
 	shl v0, v0, 1		; accumulated overflow becomes PSW V
 	blt arithmetic_shift_combined_negative, v3, 0
 	or v1, v3, v4
-	beq arithmetic_shift_combined_zero, v1, 0
+	cbz v1, arithmetic_shift_combined_zero
 	b arithmetic_shift_combined_carry
 
 arithmetic_shift_combined_negative
@@ -1750,7 +1750,7 @@ divide
 	ldi8 sp, $3f
 	and v2, v2, sp
 	bsr ea_resolve
-	beq divide_source_register, v2, 0
+	cbz v2, divide_source_register
 	readw v4, v4, 0
 	b divide_source_ready
 
@@ -1802,12 +1802,12 @@ divide_loop
 
 divide_next_bit
 	dec lr
-	bne divide_loop, lr, 0
+	cbnz lr, divide_loop
 
 	; The full unsigned quotient is v3:v4. Positive results must be <= 077777;
 	; negative magnitudes may also use the exact 0100000 boundary.
 	and v1, v0, 1
-	bne divide_negative_fit, v1, 0
+	cbnz v1, divide_negative_fit
 	bne divide_overflow, v3, 0
 	blt divide_overflow, v4, 0
 	b divide_quotient_sign
@@ -1821,7 +1821,7 @@ divide_negative_fit
 
 divide_quotient_sign
 	and v1, v0, 2
-	beq divide_remainder_sign_ready, v1, 0
+	cbz v1, divide_remainder_sign_ready
 	clr lr
 	sub v2, lr, v2		; PDP-11 remainder follows dividend sign
 
@@ -1829,14 +1829,14 @@ divide_remainder_sign_ready
 	gget lr, 12
 	gsetr v4, lr		; quotient always writes R
 	and v1, lr, 1
-	bne divide_success_flags, v1, 0
+	cbnz v1, divide_success_flags
 	or lr, lr, 1
 	gsetr v2, lr		; an even R also receives remainder in R|1
 
 divide_success_flags
 	clr v0
 	blt divide_success_negative, v4, 0
-	beq divide_success_zero, v4, 0
+	cbz v4, divide_success_zero
 	b divide_merge_flags
 
 divide_success_negative
@@ -1854,7 +1854,7 @@ divide_by_zero
 	gget v1, 12
 	ggetr v3, v1
 	blt divide_by_zero_negative, v3, 0
-	beq divide_by_zero_zero, v3, 0
+	cbz v3, divide_by_zero_zero
 	b divide_merge_flags
 
 divide_by_zero_negative
@@ -1900,7 +1900,7 @@ write_lock_operand
 
 lock_operand_nz
 	blt lock_operand_negative, v3, 0
-	beq lock_operand_zero, v3, 0
+	cbz v3, lock_operand_zero
 	b lock_operand_merge_flags
 
 lock_operand_negative
@@ -1926,7 +1926,7 @@ move_from_previous
 	shl v2, v1, 10
 	shr v2, v2, 10
 	bsr ea_resolve
-	beq move_from_previous_register, v2, 0
+	cbz v2, move_from_previous_register
 	readw v3, v4, 0
 	b move_from_previous_push
 
@@ -1956,7 +1956,7 @@ move_to_previous
 	readw v3, sp, 0
 	add sp, sp, 2
 	gset sp, 6
-	beq move_to_previous_register, v2, 0
+	cbz v2, move_to_previous_register
 	writew v3, v4, 0
 	b move_flags
 

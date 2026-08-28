@@ -169,7 +169,7 @@ static int parse_object(char *path, Object *obj)
     if (read_file(path, &buf, &size)) {
         return 1;
     }
-    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) < 1 || read_u16(buf + 2) > 3) {
+    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) < 1 || read_u16(buf + 2) > 4) {
         fprintf(stderr, "Invalid object file: %s\n", path);
         free(buf);
         return 1;
@@ -440,6 +440,12 @@ static int link_objects(Object *objects, int object_count)
     unsigned int addr = start_addr;
 
     for (int i = 0; i < object_count; i++) {
+        if (objects[i].cpu == CPU_UCODE &&
+                ((addr & 1) || addr + objects[i].code_len > 8192)) {
+            fprintf(stderr, "Microcode object base must be even and image must fit 8192 bytes: %s\n",
+                    objects[i].path);
+            return 1;
+        }
         if (addr + objects[i].code_len > sizeof(output)) {
             fprintf(stderr, "Output buffer overflow\n");
             return 1;

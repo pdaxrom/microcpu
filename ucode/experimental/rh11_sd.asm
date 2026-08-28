@@ -177,7 +177,7 @@ rh11_read
 	bmask_set rh11_sector, v0, 1
 	call sd_initialize
 rh11_sector
-	; Full 24-bit LBA = DC*66 + head*22 + sector. Native carries are software.
+	; Full 24-bit LBA = DC*66 + head*22 + sector, using native carry.
 	gget v0, 43
 	ldi8 v2, 31
 	and v1, v0, v2
@@ -199,13 +199,9 @@ rh11_sector
 	add v3, v3, v2
 	shl v0, v0, 1
 	add v4, v4, v0
-	getf v2
-	and v2, v2, 1
-	add v3, v3, v2
+	adc v3, v3, 0
 	add v4, v4, v1
-	getf v2
-	and v2, v2, 1
-	add v3, v3, v2
+	adc v3, v3, 0
 	gset v4, 58
 	gset v3, 59
 	clr v0
@@ -248,7 +244,7 @@ rh11_dma_no_ba
 	gget v1, 41
 	inc v1
 	gset v1, 41
-	beq rh11_dma_flush, v1, 0
+	cbz v1, rh11_dma_flush
 	set v2, 512
 	bne rh11_dma, v0, v2
 rh11_dma_flush
@@ -318,7 +314,7 @@ rh11_nem
 	gget v2, 56
 	bmask_clear rh11_finish, v2, 8
 	gget v2, 57
-	beq rh11_finish, v2, 0
+	cbz v2, rh11_finish
 	call sd_write_sector
 	b rh11_finish
 rh11_sd_error
@@ -339,7 +335,7 @@ rh11_finish
 	ldi8 v2, $80
 	or v0, v0, v2
 	gget v1, 46
-	beq rh11_finish_no_er, v1, 0
+	cbz v1, rh11_finish_no_er
 	set v2, $8000
 	or v0, v0, v2
 rh11_finish_no_er
@@ -393,7 +389,7 @@ sd_command
 	strl v2, sp, 0
 	strl v4, sp, 0
 	ldi8 v2, 1
-	bne sd_command_not_reset, v0, 0
+	cbnz v0, sd_command_not_reset
 	ldi8 v2, $95
 sd_command_not_reset
 	bne sd_command_crc, v0, 8
@@ -406,7 +402,7 @@ sd_command_response
 	ldi8 v2, $80
 	bmask_clear sd_command_done, v0, v2
 	dec v1
-	bne sd_command_response, v1, 0
+	cbnz v1, sd_command_response
 	jmp rh11_sd_error
 sd_command_done
 	gget pc, 30
@@ -426,7 +422,7 @@ sd_power_settle
 sd_power_clocks
 	ldr v0, sp, 0
 	dec v1
-	bne sd_power_clocks, v1, 0
+	cbnz v1, sd_power_clocks
 	clr v0
 	clr v3
 	clr v4
@@ -463,7 +459,7 @@ sd_initialize_wait
 	set v3, $4000
 	clr v4
 	call sd_command
-	beq sd_initialize_ready, v0, 0
+	cbz v0, sd_initialize_ready
 	fbne rh11_sd_error, v0, 1
 	call sd_end
 	set sp, $f004

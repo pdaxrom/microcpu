@@ -12,20 +12,22 @@ context RAM. The code limit is therefore **3520 words**.
 
 | Configuration | Code | Context | Free code words | EBR required |
 |---|---:|---:|---:|---:|
-| Accepted ucode + FIS, no disk | 2968 | 64 | 552 | 7 allocated |
-| Disk + FIS | 3645 | 64 | **−125** | **8; does not fit** |
-| Explicit disk/no-FIS prototype | 3298 | 64 | 222 | 7 |
+| Normal ucode + FIS, no disk | 2852 | 64 | 668 | 7 allocated |
+| Explicit disk + FIS | 3501 | 64 | **19** | **7; fits** |
+| Explicit disk/no-FIS prototype | 3181 | 64 | 339 | 7 |
 
-The complete disk/no-FIS board, not just the SPI block, uses **1041/1280 LUT4,
-523/640 slices, 423 registers, 7/7 EBRs and 17 PIO + JTAGENB**. TRACE reports
-**41.943 MHz**, with no setup/hold violations at the unchanged 26.6-MHz
+The complete disk+FIS board, not just the SPI block, uses **1099/1280 LUT4,
+552/640 slices, 429 registers, 7/7 EBRs and 17 PIO + JTAGENB**. TRACE reports
+**39.987 MHz**, with no setup/hold violations at the unchanged 26.6-MHz
 constraint. These are internal placement/timing estimates; SD I/O timings and
 automatically selected experimental pins are not a validated board pinout.
 
-The disk logic costs 82 LUTs compared with the accepted engine/board. Logic
-fits; microcode capacity is the obstacle to retaining FIS with this prototype.
-The full variant is tested in a **4096-word simulation-only image**. The
-production EBR packer continues to reject it instead of truncating code.
+The earlier full image needed 3645 code words, 125 beyond capacity. Shorter
+far-branch macros save 38 words, CBZ/CBNZ save 82, FIS ADC/SBC chains and shifts
+save 20, and disk LBA carry chains save four: **144 words recovered**.
+The combined ISA change costs 58 LUTs against the earlier 1041-LUT disk/no-FIS
+board. Both flat simulation and the actual EBR path now use **3584 words**;
+the production packer still rejects oversized images. FIS has not been removed.
 
 ## Architecture and scope
 
@@ -110,12 +112,14 @@ From the repository root:
 make -C testbench -f Makefile.disk disk-test disk-nofis-test
 make -C testbench -f Makefile.disk disk-core-test disk-fis-test FIS_JOBS=8
 make -C testbench -f Makefile.disk disk-nofis-disabled-test
-make -C testbench -f Makefile.disk disk-nofis-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
+make -C testbench -f Makefile.disk disk-ebr-test disk-nofis-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
 
-# Expected to FAIL capacity checking, never truncate or silently drop FIS:
+# Full SD+FIS .mem and vendor EBR initialization, with capacity checking:
 make -C boards -f Makefile.disk disk-ucode
 
-# Explicit alternative, in an isolated Ubuntu build directory:
+# In an isolated Ubuntu build directory; no SD JED export/programming:
+make -C boards -f Makefile.disk disk-diamond DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
+# Explicit optional no-FIS configuration remains available:
 make -C boards -f Makefile.disk disk-nofis-diamond DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
 ```
 
@@ -132,21 +136,20 @@ Final acceptance on 2026-08-28: **22/22 disk scenarios** (eleven each with
 and without FIS), **209/209 J-11 core snapshots** including 29 EIS cases,
 and **4040/4040 exact FIS cases** pass. The explicit no-FIS build traps FIS
 instructions. Actual Lattice DP8KC simulation passes normal transfers,
-partial DMA faults and next-sector cache faults with the fitting no-FIS
-image. Native SPI tests cover 512 byte/speed combinations, held requests,
+partial DMA faults and next-sector cache faults with both images, plus FIS
+and FIS-edge programs on the full image. Native SPI tests cover 512 byte/speed combinations, held requests,
 read completion, alignment and reset during a transfer.
 
 The ordinary ucode native/guest/peripheral/core suites pass again. All nine
-original/preserved profile source files still match `d4dabf1`, and the normal
-FIS ROM retains its stage-4 SHA-256:
-`0ea83148ca9328b9a5afa4a42026e124724e07948874412457c4ab44d3b33f20`.
-The final disk/no-FIS ROM hash agrees between Mac simulation and the isolated
+original/preserved profile source files still match `d4dabf1`. The new normal
+FIS ROM SHA-256 is
+`a874745b302008bcf6659f3f52bb67dddcefb79dc2e634a122d35de77a792781`.
+The final full disk+FIS ROM hash agrees between Mac simulation and the isolated
 Ubuntu Diamond build:
-`f672cf5613e3fec71cca3d2d3bcbda81346a378a64dbb68677365c05de229ef5`.
+`234dc454156e3a1d4c0e402e85b171374f8fb43728c126177ecff71b1a2b97df`.
 Generated images and reports remain ignored build artifacts.
 
-Remaining work before hardware use: recover at least 125 code words (or
-design an explicit code-overlay scheme) while retaining FIS; make long
-transfers cooperative; extend controller/card compatibility as needed; add
+Remaining work before hardware use: make long transfers cooperative;
+extend controller/card compatibility as needed; add
 data CRC checks; confirm electrical connections, pin constraints and I/O
 timing. No disk-enabled production configuration is selected automatically.

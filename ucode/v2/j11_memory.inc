@@ -78,14 +78,12 @@
 	endm
 
 	macro fbeq
-	eq #2, #3
-	b *+4
+	ne #2, #3
 	far_jump #1
 	endm
 
 	macro fbne
-	ne #2, #3
-	b *+4
+	eq #2, #3
 	far_jump #1
 	endm
 

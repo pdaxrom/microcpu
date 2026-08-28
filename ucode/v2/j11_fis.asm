@@ -33,14 +33,14 @@ fis_entry
 	shr sp, v0, 7
 	and sp, sp, v4
 	gset sp, 27
-	bne fis_a_nonzero, sp, 0
+	cbnz sp, fis_a_nonzero
 	clr v0
 	clr v1
 fis_a_nonzero
 	shr sp, v2, 7
 	and sp, sp, v4
 	gset sp, 28
-	bne fis_b_nonzero, sp, 0
+	cbnz sp, fis_b_nonzero
 	clr v2
 	clr v3
 fis_b_nonzero
@@ -102,7 +102,7 @@ fis_add_sorted
 	shl v3, v3, 6
 	ldi8 lr, 31
 	bgeu fis_add_combine, v4, lr	; tiny B cannot affect rounding
-	beq fis_add_aligned, v4, 0
+	cbz v4, fis_add_aligned
 fis_add_align
 	; Right shift with jam: retain whether ANY discarded bit was nonzero.
 	and lr, v3, 1
@@ -112,7 +112,7 @@ fis_add_align
 	or v3, v3, lr
 	shr v2, v2, 1
 	dec v4
-	bne fis_add_align, v4, 0
+	cbnz v4, fis_add_align
 	b fis_add_aligned
 fis_add_combine
 	clr v2
@@ -122,10 +122,7 @@ fis_add_aligned
 	gget v4, 26
 	blt fis_subtract, v4, 0
 	add v1, v1, v3
-	getf lr
-	and lr, lr, 1
-	add v0, v0, v2
-	add v0, v0, lr
+	adc v0, v0, v2
 	set v4, $4000
 	bmask_clear fis_normalize, v0, v4
 	bsr fis_shift_right
@@ -133,10 +130,7 @@ fis_add_aligned
 	b fis_round
 fis_subtract
 	sub v1, v1, v3
-	getf lr
-	and lr, lr, 1
-	sub v0, v0, v2
-	sub v0, v0, lr
+	sbc v0, v0, v2
 	b fis_normalize
 
 fis_add_use_b
@@ -181,10 +175,7 @@ fis_mul_div
 fis_multiply_loop
 	bmask_clear fis_multiply_shift, lr, 1
 	add v1, v1, v3
-	getf v4
-	and v4, v4, 1
-	add v0, v0, v2
-	add v0, v0, v4
+	adc v0, v0, v2
 fis_multiply_shift
 	shl v4, v0, 15
 	shr v1, v1, 1
@@ -197,7 +188,7 @@ fis_multiply_shift
 	gget v4, 29
 	dec v4
 	gset v4, 29
-	bne fis_multiply_loop, v4, 0
+	cbnz v4, fis_multiply_loop
 	gget sp, 27
 	b fis_normalize
 
@@ -214,29 +205,22 @@ fis_divide
 	gset v4, 29
 fis_divide_loop
 	; Generate one integer bit and 29 fractional quotient bits.
-	shr v4, lr, 15
-	shl sp, sp, 1
-	or sp, sp, v4
-	shl lr, lr, 1
+	add lr, lr, lr
+	adc sp, sp, sp
 	bltu fis_divide_next, v0, v2
 	bne fis_divide_subtract, v0, v2
 	bltu fis_divide_next, v1, v3
 fis_divide_subtract
 	sub v1, v1, v3
-	getf v4
-	and v4, v4, 1
-	sub v0, v0, v2
-	sub v0, v0, v4
+	sbc v0, v0, v2
 	or lr, lr, 1
 fis_divide_next
-	shr v4, v1, 15
-	shl v0, v0, 1
-	or v0, v0, v4
-	shl v1, v1, 1
+	add v1, v1, v1
+	adc v0, v0, v0
 	gget v4, 29
 	dec v4
 	gset v4, 29
-	bne fis_divide_loop, v4, 0
+	cbnz v4, fis_divide_loop
 	mov v0, sp
 	mov v1, lr
 	gget sp, 27
@@ -247,18 +231,14 @@ fis_normalize
 	set v4, $2000
 fis_normalize_loop
 	bmask_set fis_round, v0, v4
-	shr lr, v1, 15
-	shl v0, v0, 1
-	or v0, v0, lr
-	shl v1, v1, 1
+	add v1, v1, v1
+	adc v0, v0, v0
 	dec sp
 	b fis_normalize_loop
 fis_round
 	ldi8 v4, $20
 	add v1, v1, v4
-	getf lr
-	and lr, lr, 1
-	add v0, v0, lr
+	adc v0, v0, 0
 	set v4, $4000
 	bmask_clear fis_pack, v0, v4
 	bsr fis_shift_right

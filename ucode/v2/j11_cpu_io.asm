@@ -66,7 +66,7 @@ cpu_pirq
 	shr sp, v2, 9
 	clr v3
 cpu_pirq_priority
-	beq cpu_pirq_visible, sp, 0
+	cbz sp, cpu_pirq_visible
 	shr sp, sp, 1
 	inc v3
 	b cpu_pirq_priority
@@ -190,12 +190,12 @@ cpu_interrupt_select
 	shr sp, sp, 9
 	clr v3
 cpu_interrupt_scan
-	beq cpu_interrupt_found, sp, 0
+	cbz sp, cpu_interrupt_found
 	shr sp, sp, 1
 	inc v3
 	b cpu_interrupt_scan
 cpu_interrupt_found
-	beq cpu_interrupt_done, v3, 0
+	cbz v3, cpu_interrupt_done
 	shr v4, v2, 8
 	and v4, v4, 7
 	bltu cpu_interrupt_done, v3, v4

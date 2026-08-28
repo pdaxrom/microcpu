@@ -154,7 +154,7 @@ static int looks_like_object(unsigned char *buf, size_t size)
     unsigned int code_len;
     unsigned int code_offset;
 
-    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) < 1 || read_u16(buf + 2) > 3) {
+    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) < 1 || read_u16(buf + 2) > 4) {
         return 0;
     }
 
@@ -287,6 +287,18 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         return;
     }
 
+    if (op == 0x1c && hi != 0) {
+        if (target_cpu == CPU_UCODE && ((hi >> 6) == 1 || (hi >> 6) == 2)) {
+            int rel = hi & 63;
+            if (rel & 32) rel -= 64;
+            snprintf(buf, size, "%s %s, $%04X", hi & 128 ? "cbnz" : "cbz",
+                     regs[arg1], (addr + rel * 2) & 8191);
+        } else {
+            snprintf(buf, size, "dw $%02X%02X", hi, lo);
+        }
+        return;
+    }
+
     if (target_cpu == CPU_UCODE && arg1 == 0 &&
             (op == 0x00 || op == 0x04 || op == 0x08 || op == 0x0a ||
              op == 0x0c || op == 0x1c || ((op & 1) && op != 0x01 && op != 0x03))) {
@@ -295,6 +307,13 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
     }
 
     switch (op) {
+    case 0x07:
+    case 0x0d:
+        if (target_cpu == CPU_UCODE)
+            snprintf(buf, size, "%s %s, %s, %s", op == 0x07 ? "adc" : "sbc",
+                     regs[arg1], regs[arg2], reg_or_imm(arg3, tmp, sizeof(tmp)));
+        else snprintf(buf, size, "dw $%02X%02X", hi, lo);
+        break;
     case 0x05:
         if (target_cpu == CPU_UCODE)
             snprintf(buf, size, "xor %s, %s, %s", regs[arg1], regs[arg2],

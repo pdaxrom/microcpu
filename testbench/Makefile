@@ -301,7 +301,7 @@ j11-ebr-test: j11-board-ucode build/j11_ucode.words build/j11_context_urom_ebr.v
 	$(IVERILOG) -g2012 -Wall -s tb_j11_halt -o build/tb_j11_halt_ebr.vvp $(J11_EBR_FLAGS) tb_j11_halt.v ../rtl/j11_microengine.v $(J11_EBR_VSRC)
 	$(VVP) build/tb_j11_halt_ebr.vvp
 	$(IVERILOG) -g2012 -Wall -s tb_j11_execute -o build/tb_j11_execute_ebr.vvp $(J11_EBR_FLAGS) $(J11_EXECUTE_VSRC) $(J11_EBR_VSRC)
-	$(VVP) build/tb_j11_execute_ebr.vvp
+	$(VVP) -i build/tb_j11_execute_ebr.vvp +TRACE_TESTS
 	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o build/tb_j11_cpu_io_ebr.vvp $(J11_EBR_FLAGS) $(J11_CPU_IO_VSRC) $(J11_EBR_VSRC)
 	@for test in cpu_registers cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
 		$(VVP) build/tb_j11_cpu_io_ebr.vvp +PROGRAM=build/guest_$$test.hex || exit 1; \
@@ -384,10 +384,12 @@ build/ucode_native.words: build/ucode_native.bin ../ucode/make_urom_ebr.py ../uc
 	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
 
 .PHONY: ucode-test ucode-native-test ucode-j11-test ucode-core-test ucode-fis-reference-test ucode-nofis-test
-ucode-native-test: build/ucode_ucode_native.vvp build/ucode_native.words build/ucode_j11_alu.vvp build/ucode_ucode_datapath.vvp
+ucode-native-test: build/ucode_ucode_native.vvp build/ucode_native.words build/ucode_j11_alu.vvp build/ucode_ucode_datapath.vvp build/ucode_ucode_zero_branch.vvp build/ucode_ucode_carry.vvp
 	$(VVP) build/ucode_ucode_native.vvp
 	$(VVP) build/ucode_j11_alu.vvp
 	$(VVP) build/ucode_ucode_datapath.vvp
+	$(VVP) build/ucode_ucode_zero_branch.vvp
+	$(VVP) build/ucode_ucode_carry.vvp
 
 ucode-j11-test: $(addprefix build/ucode_,$(addsuffix .vvp,$(filter-out j11_core_reference,$(J11_V2_TESTS)))) build/ucode_board.vvp build/j11_ucode_v2.words $(J11_GUEST_HEXES)
 	$(VVP) build/ucode_j11_fetch.vvp
@@ -460,7 +462,7 @@ ucode-ebr-test: ucode-board-ucode build/ucode_native_ebr.v build/j11_ucode_v2.wo
 	$(VVP) build/ucode_native_ebr.vvp
 	@set -e; for test in j11_execute j11_peripherals j11_halt; do \
 		$(IVERILOG) -g2012 -Wall -s tb_$$test -o build/ucode_$${test}_ebr.vvp $(J11_V2_EBR_FLAGS) tb_$$test.v $(J11_V2_COMMON) $(J11_V2_EBR); \
-		$(VVP) build/ucode_$${test}_ebr.vvp; \
+		$(VVP) -i build/ucode_$${test}_ebr.vvp +TRACE_TESTS; \
 	done
 	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o build/ucode_cpu_io_ebr.vvp $(J11_V2_EBR_FLAGS) tb_j11_cpu_io.v $(J11_V2_COMMON) $(J11_V2_EBR)
 	@set -e; for test in cpu_registers cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \

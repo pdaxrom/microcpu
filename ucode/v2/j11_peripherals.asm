@@ -90,10 +90,10 @@ peripherals_select
 	bge peripherals_select_ltc, v2, 0
 	shr v4, v2, 8
 	and v4, v4, 7
-	bne peripherals_select_ltc, v4, 0
+	cbnz v4, peripherals_select_ltc
 	ldi8 v3, $ff
 	and v3, v2, v3
-	bne peripherals_select_ltc, v3, 0
+	cbnz v3, peripherals_select_ltc
 	clr v2
 	gset v2, 11		; acknowledge only the native BR0 notification
 peripherals_select_ltc

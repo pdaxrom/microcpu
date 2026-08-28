@@ -59,6 +59,8 @@ enum {
     INVALID_LDI8_CONSTANT,
     UNSUPPORTED_PC_DESTINATION,
     INVALID_MICRO_TARGET,
+    INVALID_SHORT_BRANCH,
+    INVALID_SHORT_BRANCH_OBJECT,
 };
 
 enum {
@@ -66,6 +68,7 @@ enum {
     op_reg_const,
     op_reg_context,
     op_rel,
+    op_reg_rel6,
     op_abs12,
     op_reg,
     op_reg_reg,
@@ -123,6 +126,8 @@ static OpCode opcode_table[] = {
     { "ggetr", op_reg_reg, 0x18, 0x0, CPU_ENGINES },
     { "gsetr", op_reg_reg, 0x1a, 0x0, CPU_ENGINES },
     { "getf", op_reg, 0x1c, 0x0, CPU_ENGINES },
+    { "cbz", op_reg_rel6, 0x1c, 0x1, CPU_MASK(CPU_UCODE) },
+    { "cbnz", op_reg_rel6, 0x1c, 0x2, CPU_MASK(CPU_UCODE) },
 
     { "b", op_rel, 0x16, 0x0, CPU_ALL },
     { "call", op_abs12, 0x0e, 0x0, CPU_MASK(CPU_UCODE) },
@@ -147,6 +152,8 @@ static OpCode opcode_table[] = {
     { "subb", op_reg_reg_reg, 0x0b, 0x0, CPU_ENGINES },
 
     { "add", op_reg_reg_reg, 0x11, 0x0, CPU_ALL },
+    { "adc", op_reg_reg_reg, 0x07, 0x0, CPU_MASK(CPU_UCODE) },
+    { "sbc", op_reg_reg_reg, 0x0d, 0x0, CPU_MASK(CPU_UCODE) },
     { "sub", op_reg_reg_reg, 0x13, 0x0, CPU_ALL },
     { "shl", op_reg_reg_reg, 0x15, 0x0, CPU_ALL },
     { "shr", op_reg_reg_reg, 0x17, 0x0, CPU_ALL },
@@ -298,6 +305,7 @@ static unsigned int entry_addr = 0;
 static Label *expr_reloc_label = NULL;
 static int expr_reloc_count = 0;
 static int expr_high_byte = 0;
+static int expr_current_addr_count = 0;
 
 #define OUT_MEM 0
 #define OUT_VERILOG 1
@@ -560,6 +568,7 @@ static void reset_expr_reloc(void)
     expr_reloc_label = NULL;
     expr_reloc_count = 0;
     expr_high_byte = 0;
+    expr_current_addr_count = 0;
 }
 
 static void note_expr_reloc(Label *label)
@@ -1114,6 +1123,7 @@ static int operand(char **str)
     } else if (match(str, '\'')) {
         return character(str);
     } else if (match(str, '*')) {
+        expr_current_addr_count++;
         return output_addr;
     } else if (isdigit(*(*str))) {
         return decimal(str);
@@ -1126,6 +1136,25 @@ static int operand(char **str)
         }
         return 0;
     }
+}
+
+/* A position-independent short target is one local address, optionally plus
+ * or minus a constant expression. Reject e.g. 2*label or constant-label:
+ * merely counting one relocatable symbol would silently mislink those. */
+static int short_branch_object_expression(char *str)
+{
+    reset_expr_reloc();
+    (void)operand(&str);
+    if (error || expr_reloc_count + expr_current_addr_count != 1 ||
+            (expr_reloc_label && expr_reloc_label->external)) return 0;
+    SKIP_BLANK(str);
+    if (!*str) return 1;
+    if (*str != '+' && *str != '-') return 0;
+    str++;
+    reset_expr_reloc();
+    (void)exp_(&str);
+    SKIP_BLANK(str);
+    return !error && !*str && !expr_reloc_label && !expr_current_addr_count && !expr_high_byte;
 }
 
 static int exp8(char **str)
@@ -2186,6 +2215,44 @@ static int do_asm(FILE *inf, char *line)
                 arg3 = val & 31;
                 SKIP_BLANK(str);
                 if (*str) { error = EXTRA_SYMBOLS; return 1; }
+            } else if (opcode->type == op_reg_rel6) {
+                /* Same-section relative branches need no object relocation.
+                 * Absolute/external object targets require a long conditional jump. */
+                SKIP_BLANK(str);
+                reg = find_register_in_string(&str);
+                if (!reg) { error = MISSED_OPCODE_ARG_1; return 1; }
+                arg1 = reg->n;
+                if (!match(&str, ',')) { error = EXPECTED_ARG_2; return 1; }
+                SKIP_BLANK(str);
+                char *target_expression = str;
+                reset_expr_reloc();
+                int val = exp_(&str);
+                if (check_expr_reloc()) return 1;
+                if (src_pass == 2) {
+                    if (to_second_pass) { error = CANNOT_RESOLVE_REF; return 1; }
+                    if (val < 0 || val > 8190 || (val & 1) ||
+                            output_addr > 8190 || (output_addr & 1) || expr_high_byte) {
+                        error = INVALID_MICRO_TARGET;
+                        return 1;
+                    }
+                    if (out_type == OUT_OBJECT && !short_branch_object_expression(target_expression)) {
+                        error = INVALID_SHORT_BRANCH_OBJECT;
+                        return 1;
+                    }
+                    /* 12-bit word PC wraps at 8192 bytes. */
+                    val = (val - (int)output_addr + 4096) & 8191;
+                    val -= 4096;
+                    if (val < -64 || val > 62) {
+                        error = INVALID_SHORT_BRANCH;
+                        return 1;
+                    }
+                }
+                to_second_pass = 0;
+                val = (opcode->ext_op << 6) | (((unsigned int)val >> 1) & 63);
+                arg2 = (val >> 5) & 7;
+                arg3 = val & 31;
+                SKIP_BLANK(str);
+                if (*str) { error = EXTRA_SYMBOLS; return 1; }
             } else if (opcode->type == op_rel) {
                 SKIP_BLANK(str);
 
@@ -2756,6 +2823,10 @@ static char *get_error_string(int error)
         return "ucode allows PC destinations only with MOV, GGET or GGETR";
     case INVALID_MICRO_TARGET:
         return "Microcode target must be an even byte address in 0..8190";
+    case INVALID_SHORT_BRANCH:
+        return "CBZ/CBNZ target must be within -32..31 words; use a long conditional jump";
+    case INVALID_SHORT_BRANCH_OBJECT:
+        return "CBZ/CBNZ object target must be a local label or * expression; use a long conditional jump";
     default:
         return "No error";
     }

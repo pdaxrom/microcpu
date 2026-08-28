@@ -53,6 +53,8 @@ Use `if __CPU_UCODE__`, not `ifdef`, to test the selection.
 | LDI8 | No | No | Yes |
 | PC destination | Legacy rules | Legacy rules | MOV, GGET, GGETR only |
 | Absolute CALL/JMP, RET | No | No | Yes |
+| ADC/SBC with native carry/borrow | No | No | Yes |
+| One-word CBZ/CBNZ | No | No | Yes |
 
 `LDI8 Rd, imm8` loads **0..255**, clears the upper byte, and preserves native
 NZVC. Its opcode field `instruction[7:3]` is `0x0c`, replacing the old
@@ -82,16 +84,38 @@ semantics. The SET macro remains **two words**, including for forward labels;
 there is no pass-dependent instruction shrinking. V2 uses explicit LDI8 at
 known small constants, so fixed-length far-call/skip macros remain valid.
 
+`ADC Rd, Ra, Rb/imm4` computes `Ra + Rb + C`; `SBC` computes `Ra - Rb - C`.
+Both update NZVC. Native C means **borrow** after subtraction, not its inverse.
+Their opcode fields are 0x07 and 0x0d; other operand fields follow ADD/SUB.
+These are microengine operations, separate from guest PDP-11 ADC/SBC.
+
+`CBZ reg, target` and `CBNZ reg, target` test the register directly, preserve
+all working registers and NZVC, and take six clocks. They use opcode 0x1c
+(GETF), register bits 2:0, mode bits 15:14 = 01/10, and signed displacement
+bits 13:8. The displacement is **-32..31 words relative to this instruction**,
+with the 12-bit word-PC wrap. Canonical GETF has a zero high byte; mode 11
+and other noncanonical GETF words are not emitted as instructions by the tools.
+PC is permitted as a test source: its A+1 read value is always nonzero.
+
+Short/long selection is explicit and fixed-size, not assembler relaxation.
+Use CBZ/CBNZ for nearby zero tests; out-of-range targets are errors. The
+existing BEQ/BNE macros use compare-and-skip plus relative B (two words).
+FBEQ/FBNE now use the inverted compare-and-skip plus absolute JMP, also two
+words, for any even target in the native code window. Recheck short ranges
+after adding firmware: the assembler never silently truncates a displacement.
+
 Guest decode, EA modes, PSW, architectural register banks, FIS, HALT,
 processor I/O registers and device semantics remain in firmware. The new
 engine does not hard-code additional J-11 instructions or register banks.
 
 ## Object files and disassembly
 
-Object-header word at byte offset `0x10` contains the CPU ID in version-2/3
-objects: 0 = original, 1 = j11, 2 = ucode. `j11` writes version 2; compact-call
-`ucode` writes version 3, identifying both its changed ISA and packed-address
-relocations. Obsolete v2 ucode objects are rejected with a rebuild diagnostic.
+Object-header word at byte offset `0x10` contains the CPU ID in version-2+
+objects: 0 = original, 1 = j11, 2 = ucode. `j11` writes version 2; current
+`ucode` writes version 4 for the carry/zero-branch ISA. Version-3 compact-call
+ucode objects remain accepted; obsolete v2 ucode objects are rejected with a
+rebuild diagnostic. Older linkers reject v4; use the updated disassembler too
+(an old auto-detecting disassembler may mistake an unknown object for raw data).
 The `original` profile retains the byte-compatible version-1 format.
 New tools read these versions; version-1 reserved fields remain uninterpreted.
 Old untagged objects are original; rebuild old J-11 objects with an explicit
@@ -101,6 +125,13 @@ profile.
 common instructions. Assemble shared modules separately for each target.
 Bounded context/LDI8 operands cannot have relocations; use SETL/SETH for
 relocatable addresses.
+
+CBZ/CBNZ in objects accept a same-section local label or `*` plus/minus a
+constant. The displacement is position-independent and needs no relocation.
+Absolute and external object targets are rejected: use a conditional skip
+and JMP for those. Linker placement of ucode objects must be even, and the
+whole image must fit the 8192-byte native window. Raw binaries may use even
+numeric short-branch targets, including wraparound at the window boundary.
 
 `microdis --cpu original|j11|ucode file.bin` selects raw-binary decoding.
 For objects it reads the CPU tag automatically; an explicitly conflicting
@@ -143,6 +174,9 @@ make -C testbench ucode-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
 ```
 
 This uses Icarus and does not launch Diamond or program the FPGA.
+The vendor-model guest suites are substantially slower than flat-memory
+simulation; the EBR execute runs print each case number via `+TRACE_TESTS`,
+with unbuffered output so progress is visible in redirected logs too.
 
 ## Initial profile checkpoint (stage 1)
 
@@ -260,8 +294,10 @@ Word PC saves 54 LUTs and four registers. The experimental native ADC/SBC
 used opcodes 0x07/0x0d, consumed native carry/borrow and replaced five manual
 FIS carry chains. It passed native boundary/random arithmetic, assembled
 chains, 209 guest core snapshots and 4040 exact FIS cases, but cost **57 additional LUTs for only
-14 code words**, with worse timing. It is not part of the shipped ISA; FIS
-keeps its proven software carry chains. Guest PDP-11 ADC/SBC are unaffected.
+14 code words**, with worse timing. It was rejected at this checkpoint.
+The later density follow-up below adopts carry arithmetic together with
+zero branches and more FIS shifts, because the combined change makes SD+FIS
+fit. Guest PDP-11 ADC/SBC are unaffected.
 
 The retained PC regression checks all 4096 fall-through/skip positions,
 every signed branch displacement at six boundaries, all CALL/JMP targets
@@ -313,7 +349,51 @@ pin assignments and physical I/O remain unverified.
 The [RK611/RH11-to-SPI-SD prototype](rk611-sd-prototype.md) implements disk
 registers and protocol in assembly, with generic SPI/FRAM services in RTL.
 It uses separate `Makefile.disk` targets and does not change the normal ROM.
-The complete explicit disk/no-FIS board fits at 1041 LUT4 and seven EBRs;
-disk plus FIS exceeds the code limit by 125 words and is simulation-only.
+At the stage-5 checkpoint, the complete explicit disk/no-FIS board fit at
+1041 LUT4 and seven EBRs; disk plus FIS exceeded the code limit by 125 words.
+The density follow-up below removes that capacity blocker.
 Transfers currently block guest execution, so this is not yet a production
 disk configuration. All five planned stages are recorded in `TODO.md`.
+
+## Carry and conditional-branch density follow-up (2026-08-28)
+
+The adopted combination saves **144 words** in the full disk+FIS image:
+38 from shorter FBEQ/FBNE, 82 from explicit CBZ/CBNZ, 20 from FIS carry chains,
+rounding and three doubleword left shifts, and four from disk LBA carry chains.
+There are no new architectural/context registers or instruction cycles.
+
+| Current firmware | Code words | Context | Free in 3584 |
+|---|---:|---:|---:|
+| Normal ucode + FIS | 2852 | 64 | 668 |
+| Explicit SD + FIS | 3501 | 64 | 19 |
+| Explicit SD without FIS | 3181 | 64 | 339 |
+
+The full SD+FIS board passes isolated Diamond synthesis/MAP/PAR/TRACE:
+**1099 LUT4, 552 slices, 429 registers, seven EBRs, 39.987 MHz**, with zero
+setup/hold violations at 26.6 MHz. This is 58 more LUTs than the earlier
+disk/no-FIS board for the **combined** change, not a measurement of CBZ alone.
+Nineteen free words are a fit result, not a comfortable expansion budget.
+No SD JED was exported and no board/card was programmed.
+
+The ordinary no-disk board was synthesized separately with the same engine:
+**1008/1280 LUT4, 507/640 slices, 382 registers, seven EBRs, 43.083 MHz**.
+It passes setup/hold at 26.6 MHz and JED export. Relative to stage 4 this
+trades 49 LUTs for 116 code words. The common assembled fast-bus benchmark
+takes **783572 clocks**, versus 814640 at stage 4 (**3.81% fewer**) and
+903548 in the preserved engine. This is not a physical memory/disk speed claim.
+
+New regression includes all short-branch encodings, disassembly round trips,
+range/alignment/profile errors, v3/v4 objects, relocated local branches,
+**131072 CBZ/CBNZ pipeline cases** and **83120 ADC/SBC result/NZVC cases**.
+An assembled native program tests carry chains and forward/backward branches;
+the ordinary six-clock ABI and memory wait/error tests remain enabled.
+The full disk test now uses the production packer and **3584 words**, including
+actual Lattice EBR simulations; it no longer relies on the 4096-word helper.
+
+Final Mac acceptance passes the original/bootloader/board suites and both
+J-11 engines: **209/209 core snapshots (29 EIS), 4040/4040 exact FIS cases**,
+guest/peripheral/HALT/no-FIS tests, and complete real-EBR suites including
+the same 209 core snapshots. The separate disk build passes **22/22 card
+scenarios**, 209 core snapshots, 4040 FIS cases, no-FIS traps and both EBR
+variants. Board/testbench ROMs match; all nine preserved sources still match
+`d4dabf1`. All 24 assembler profile tests also pass on Mac and Ubuntu.

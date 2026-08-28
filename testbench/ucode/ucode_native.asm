@@ -25,6 +25,41 @@ bus_error_entry
 
 start
 	ldi8 v0, 0
+	sub v0, v0, 1          ; FFFF, C=borrow=1
+	ldi8 v1, 0
+	cbnz v0, carry_nonzero
+	b *
+carry_nonzero
+	cbz v1, carry_zero
+	b *
+carry_zero
+	adc v2, v1, 0          ; CBZ/CBNZ must preserve carry
+	assert_equal v2, 1
+	adc v2, v0, 1          ; low word wraps, C=1
+	adc v3, v0, 0          ; middle word wraps, C=1
+	adc v4, v1, 0          ; high word receives carry
+	assert_equal v2, 0
+	assert_equal v3, 0
+	assert_equal v4, 1
+	sub v2, v1, 1
+	sbc v3, v1, 0          ; propagate borrow through a zero word
+	getf v4
+	assert_equal v3, v0
+	assert_equal v4, 9
+	sbc v3, v0, 15         ; FFFF - 15 - borrow = FFEF, no new borrow
+	getf v4
+	assert_equal v4, 8
+	ldi8 v4, 2
+zero_branch_loop
+	sub v4, v4, 1
+	cbnz v4, zero_branch_loop
+	cbnz v4, zero_branch_fail
+	cbz v0, zero_branch_fail
+	cbnz pc, zero_branch_done ; native PC read is byte address + 1
+zero_branch_fail
+	b *
+zero_branch_done
+	ldi8 v0, 0
 	sub v0, v0, 1
 	getf v4
 	ldi8 v0, $80
