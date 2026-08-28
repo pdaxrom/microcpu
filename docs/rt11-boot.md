@@ -1,9 +1,9 @@
 # RT-11 on the microcoded J-11 / SPI SD prototype
 
-This is a **testbench boot**, not a physical-board acceptance test. Use the
-`ucode` disk+FIS build, now selected by the main `microcomp.ldf`. The original
-CPU and preserved `j11` profile remain unchanged. No RT-11 disk image or
-generated microcode is committed.
+The complete SD + FIS image has now booted in both the wire-level testbench
+and the physical HC1200. Use the `ucode` disk+FIS build selected by the main
+`microcomp.ldf`. The original CPU and preserved `j11` profile remain
+unchanged. No RT-11 disk image or generated microcode is committed.
 
 ## Reproduce on the Mac
 
@@ -71,6 +71,40 @@ RT11FB.SYS   103P 26-Jan-1999
 The entire scripted sequence represents about **59.2 seconds** at the board's
 26.6-MHz microengine clock. This is a functional bring-up, not a throughput
 claim. In particular, long DMA commands still suspend guest execution.
+
+### FIS-enabled physical-board acceptance (2026-08-28)
+
+The user programmed the rebuilt FIS JED from source commit `4007f49` into the
+HC1200. RT-11 booted from DM0, reported 56 KiB, EIS, FIS and the 50-cycle clock,
+and returned to KMON after `SHOW CONFIGURATION`. This confirms that the
+default FIS-enabled image, not only the temporary NOFIS trace, boots on the
+board. It does not establish the cause of the earlier silent run.
+
+The independent arithmetic suite remains simulation evidence: five
+directed/fault FIS runs and **4040/4040** exact reference cases passed on the
+same FIS implementation. The repeated full RT-11 test passed all seven
+runner checks, with the same 1,574,968,301 clocks and unchanged source-image
+hash. Its logs are in `testbench/build/rt11-fis-recheck/`.
+
+Fresh Diamond synthesis, mapping, routing, setup/hold checks and JED export
+from that commit also passed: 1095 LUT4, 548 slices, 431 registers, 7 EBRs,
+zero unrouted connections, and zero setup/hold errors at 26.6 MHz. The
+existing unused-pin, configuration-port and CFG_EBRUFM WID warnings remain.
+The accepted JED and reports were saved separately in
+`boards/hc1200-microcomp/impl1-sdboot/fis-recheck-4007f49/` on Mac and Ubuntu.
+JED SHA-256:
+
+```text
+a1e29e7aacd392c8a234b110626d2280c34223baddd9aa8ad7ec8e825dff7e2d
+```
+
+The maintenance register currently reads zero. Thus MAINT[8] correctly says
+that no optional FPA accelerator is installed, while module-ID bits 7:4 also
+read zero and make RT-11 print `Unknown Processor`. RT-11's separate
+`Floating Point Microcode` line is its no-FPA description; it does not mean
+that FP11 has been implemented. FIS is detected and printed separately.
+
+### Other simulation coverage
 
 The independent two-sector Icarus check reaches RT-11's `000604` entry in
 **1,688,185 clocks** with all 1024 bytes matching the disk. The seven board-top
@@ -201,9 +235,9 @@ disk+FIS image is **3497 code + 64 context + 23 free = 3584**. The subsequent
 [Diamond run of `6668a85`](hc1200-sd-diamond.md) builds this exact ROM with
 the new reset/divider and corrected board constraints through JED export:
 1095 LUT4, 7 EBRs, zero internal timing errors at 26.6 MHz. Physical-board
-acceptance is still outstanding.
+acceptance is recorded above for the subsequent rebuild.
 
-## Supplied SD connections — not yet electrically verified
+## Supplied SD connections — functionally verified
 
 | Board site | SD signal | RTL port |
 |---|---|---|
@@ -212,12 +246,12 @@ acceptance is still outstanding.
 | PT12D | SCLK | `sd_sck` |
 | PT12C | MISO | `sd_miso` |
 
-Both disk projects now select `sd.lpf` with these supplied locations; the
-ordinary/preserved projects are unchanged. No Diamond run, programming or
-real-card write is part of this simulation test. The separate Diamond run
-linked above confirms implemented pins and internal timing; physical I/O
-timing/electrical verification is still required. Once configured, the SD
-top's reset and uROM bootstrap do not depend on preexisting FRAM contents
-or an external loader.
+Both disk projects select `sd.lpf` with these supplied locations; the
+ordinary/preserved projects are unchanged. The separate Diamond run confirms
+implemented pins and internal timing. Real-card initialization, sector reads,
+CRC checking and RT-11 operation have now passed on the board; physical I/O
+timing margins and signal integrity have not been measured. Once configured,
+the SD top's reset and uROM bootstrap do not depend on preexisting FRAM
+contents or an external loader.
 The disk still requires a raw RK image at SD LBA 0, not a file in a FAT volume.
 See [controller scope and remaining limitations](rk611-sd-prototype.md).

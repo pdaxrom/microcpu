@@ -110,6 +110,21 @@ does not prove that a sector belongs to the intended OS image.
 
 ## Verification
 
+### Physical-board result (2026-08-28)
+
+The `J11 TRACE NOFIS` JED booted the real HC1200 from the same RT-11 V05.03
+SD image. The captured trace contained 86 `R` and 86 matching `V` records,
+with no `E`, `S`, `X`, `K`, or `M` records. All traced sector CRC pairs
+matched and all RH completion error fields were zero. RT-11 then executed
+`SHOW CONFIGURATION`, `DIRECTORY`, and `SHOW ALL`; DM0 was resident at octal CSR
+`177440`, vector `210`, with 56 KiB guest RAM and the 50-Hz clock reported.
+
+This confirms the physical SD -> FRAM cache -> guest FRAM -> CPU path used by
+the real boot. It does not identify the cause of the earlier silent run by
+itself, because this image also adds diagnostic UART output and readback work.
+
+### Reproduce simulation
+
 ```sh
 make -C testbench -f Makefile.boot-trace boot-trace-test
 make -C testbench -f Makefile.boot-trace boot-trace-ebr-test \
@@ -157,8 +172,9 @@ slow startup-file read is not sufficient evidence that KMON is ready.
   `e769228f2e1262220297bfa98b8f2841688849ab4c49ad9cd48d0d73d0a99553`.
 
 This RT-11 image still prints `Floating Point Microcode` in its configuration
-report. The functional `FADD`/vector-010 check, not that text, verifies that
-FIS is disabled in this diagnostic build.
+report. That string is its description of a J-11 without the optional FPA
+accelerator: MAINT[8] is clear. It is not a FIS indicator. The functional
+`FADD`/vector-010 check verifies that FIS is disabled in this diagnostic build.
 
 ### Diamond result (2026-08-28)
 

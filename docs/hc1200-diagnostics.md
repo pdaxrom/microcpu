@@ -151,6 +151,20 @@ error. The SD model also checks the published 512 x FF -> CRC 7FA1 vector.
 These are simulated tests; hardware operation must be checked with the
 diagnostic JED on the user's board.
 
+## Physical-board result: 2026-08-28
+
+The diagnostic JED was programmed into the HC1200 and exercised through the
+115200-8N1 console. SD initialization completed through CMD0, CMD8, ACMD41 and
+CMD58. LBA 0 returned token FE at both slow and fast SPI rates; both received
+CRC values were `C478` and matched the independently calculated value. The
+first 16 data bytes agreed between both reads.
+
+The explicit `W` test covered physical FRAM byte ranges `0200..0207` (hex) in both
+banks. It reported `FRAM R/W PASS` and `FRAM RESTORE PASS`; subsequent ALIVE
+messages confirmed return to the command loop. This accepts the exercised
+transport paths and save/restore window, not every FRAM address or SPI timing
+margin.
+
 ## Verified build: 2026-08-28
 
 - Diagnostic code: **944 words**, plus 64 reserved context words, in the

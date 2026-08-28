@@ -35,6 +35,27 @@ or SCUBA. The repository-wide `make -C boards all` also includes these images,
 but still generates the other/legacy boards' SCUBA RAMs and needs Diamond.
 Generated files are not committed.
 
+The diagnostic sources and their Diamond projects are committed separately;
+they regenerate their own BIN/MEM/EBR/JED artifacts and never replace the
+default project. Run each target with `make -C boards/hc1200-microcomp TARGET`:
+
+| Image | Portable uROM target | Diamond/JED target | Project / output |
+|---|---|---|---|
+| J-11 + FIS + SD autoboot | `all` (default) | `diamond` | `microcomp.ldf` / `impl1-sdboot/microcomp_impl1.jed` |
+| Native SD/FRAM transport diagnostic | `diag` | `diag-diamond` | `microcomp-diag.ldf` / `impl1-diag/microcomp-diag_impl1.jed` |
+| J-11 SD boot trace, temporarily no FIS | `boot-trace` | `boot-trace-diamond` | `microcomp-boot-trace.ldf` / `impl1-boot-trace/microcomp-boot-trace_impl1.jed` |
+
+The source entry points are `ucode/diagnostics/sd_fram.asm` and
+`ucode/diagnostics/boot_trace.asm`; shared rules are in
+`boards/diagnostics.mk` and `boards/sd.mk`. See the
+[transport diagnostic](hc1200-diagnostics.md) and
+[boot-trace diagnostic](hc1200-boot-trace.md) instructions before programming.
+
+All three uROM targets were rebuilt from a clean `git archive 4007f49` on
+2026-08-28 without untracked workspace files. Their MEM/EBR hashes matched
+the accepted images; seven diagnostic and six current-board project checks
+passed. This check generates uROM only; Diamond results are recorded separately.
+
 Open **`microcomp.ldf`** in Diamond and run through **JEDEC File**. To build
 from the Ubuntu command line instead (build/export only, never program):
 
@@ -50,7 +71,9 @@ exports only after TRACE reports zero cumulative negative slack. Commit
 `6668a85` passed the full Diamond build through JED: 1095 LUT4, 548 slices,
 7 EBRs, zero setup/hold errors at 26.6 MHz (TRACE maximum 37.627 MHz).
 See [the build report, implemented pins and warnings](hc1200-sd-diamond.md).
-External SD/FRAM timing and physical-board acceptance remain outstanding.
+Subsequent physical-board runs passed the native SD/FRAM diagnostic, the
+NOFIS boot trace, and the default FIS-enabled RT-11 boot. External SPI timing
+margins are still not characterized; see the linked diagnostic reports.
 
 UART and SD locations come from the board's existing `microcomp.lpf`:
 
