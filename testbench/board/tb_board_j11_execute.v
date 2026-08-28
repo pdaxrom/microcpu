@@ -1,3 +1,4 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 module tb_board_j11_execute;
@@ -19,8 +20,8 @@ module tb_board_j11_execute;
 
 	assign gpio = 4'hz;
 
-	j11_hc1200_microcomp #(
-		.UCODE_FILE("build/j11_ucode.words"),
+	`J11_BOARD_MODULE #(
+		.UCODE_FILE(`J11_UCODE_FILE),
 		.FRAM_CLK_DIV(1)
 	) dut (
 		.res(res),

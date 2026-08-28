@@ -2,3 +2,7 @@
 /j11_ucode.bin
 /j11_urom_ebr.v
 /impl1-j11/
+/j11_ucode_v2.mem
+/j11_ucode_v2.bin
+/ucode_urom_ebr.v
+/impl1-ucode/

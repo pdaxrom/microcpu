@@ -31,8 +31,10 @@ def main():
     parser.add_argument("--vvp", default="vvp")
     parser.add_argument("--testbench", default="build/tb_j11_core_reference.vvp")
     parser.add_argument("--banks", action="store_true")
+    parser.add_argument("--listing", default="build/j11_ucode.lst")
+    parser.add_argument("--work-dir", default="build/core_reference")
     args = parser.parse_args()
-    directory = Path("build/core_reference")
+    directory = Path(args.work_dir)
     directory.mkdir(parents=True, exist_ok=True)
     command = ["build/core_reference_export"] + (["--banks"] if args.banks else [])
     result = checked(command)
@@ -42,7 +44,7 @@ def main():
     if not cases:
         raise RuntimeError("Reference exported no cases")
 
-    listing = Path("build/j11_ucode.lst").read_text()
+    listing = Path(args.listing).read_text()
     labels = {}
     for name in ("fetch_instruction", "wait_instruction"):
         matches = re.findall(rf"^\[{name}\]\s+([0-9A-Fa-f]+)$", listing, re.M)
@@ -80,7 +82,7 @@ def main():
                  case["inactive_before"] + case["inactive_after"] +
                  [case["regset_valid"]])
         (directory / "state.hex").write_text("\n".join(f"{value:04x}" for value in state) + "\n")
-        cmd = [args.vvp, args.testbench,
+        cmd = [args.vvp, args.testbench, f"+FIXTURE_DIR={directory}",
                f"+FETCH_PC={labels['fetch_instruction']:x}",
                f"+WAIT_PC={labels['wait_instruction']:x}",
                f"+CHECK_BANKS={int(args.banks and bool(case['banks_valid']))}"]

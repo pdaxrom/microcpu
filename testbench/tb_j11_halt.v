@@ -1,3 +1,4 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 // Architectural setup/checks are assembled guest code. The only injected
@@ -12,8 +13,8 @@ module tb_j11_halt;
 	reg [15:0] frame_pc, frame_psw;
 	integer i, cycles = 0, transactions = 0, resets = 0;
 	integer saved_transactions, saved_resets;
-	j11_microengine #(.UROM_WORDS(`J11_UROM_WORDS),
-		.UCODE_FILE("build/j11_ucode.words")) dut (
+	`J11_ENGINE_MODULE #(.UROM_WORDS(`J11_UROM_WORDS),
+		.UCODE_FILE(`J11_UCODE_FILE)) dut (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr),
 		.guest_byte(byte_access), .guest_bank(bank), .guest_address(address),
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),

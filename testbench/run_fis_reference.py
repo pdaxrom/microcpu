@@ -6,6 +6,7 @@ by one rounding to 24 significant bits (nearest, ties away from zero).
 Generated assembly, binary and hex files stay under ignored build/.
 """
 import argparse
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fractions import Fraction
 from pathlib import Path
@@ -94,7 +95,7 @@ def vectors(seed, count):
 
 def run(args):
     root = Path(__file__).resolve().parent
-    output = root / 'build' / 'fis_reference'
+    output = root / args.work_dir
     output.mkdir(parents=True, exist_ok=True)
     corpus = list(vectors(args.seed, args.random))
     if args.limit:
@@ -102,7 +103,7 @@ def run(args):
     def batch(start):
         cases = corpus[start:start + args.batch]
         source = output / f'cases_{start:05d}.asm'
-        lines = ['\tinclude ../../j11_programs/fis_test.inc', 'table']
+        lines = ['\tinclude ' + os.path.relpath(root / 'j11_programs/fis_test.inc', output), 'table']
         for op, a, b in cases:
             answer, flags, error = reference(op, a, b)
             values = [b >> 16, b & 65535, a >> 16, a & 65535,
@@ -143,6 +144,7 @@ if __name__ == '__main__':
     parser.add_argument('--asm11', default='../../../PROJECTS/k1801vm1/microasm11/microasm11')
     parser.add_argument('--vvp', default='vvp')
     parser.add_argument('--testbench', default='build/tb_j11_fis.vvp')
+    parser.add_argument('--work-dir', default='build/fis_reference')
     parser.add_argument('--seed', type=int, default=0x11f15)
     parser.add_argument('--random', type=int, default=1024)
     parser.add_argument('--batch', type=int, default=64)

@@ -54,7 +54,7 @@ test: tb.vvp $(HEXES) bootloader-smoke bootloader-save bootloader-go bootloader-
 tb.vvp: $(VSRC)
 	$(IVERILOG) -g2012 -o $@ $(VSRC)
 
-$(ASM): ../asm/microasm.c
+$(ASM): ../asm/microasm.c ../asm/cpu_target.h
 	$(MAKE) -C ../asm microasm
 
 build:
@@ -129,7 +129,7 @@ j11-test: j11-alu-test j11-pc-test j11-shift-test j11-ebr-pack-test j11-context-
 
 .PHONY: j11-context-test
 build/j11_context_memory.bin: ucode/j11_context_memory.asm ../ucode/config.mk ../asm/include/pseudo.inc $(ASM) | build
-	$(ASM) -D J11_CODE_WORDS=$(J11_UCODE_WORDS) -binary $< $@ > build/j11_context_memory.asm.log 2>&1 || { cat build/j11_context_memory.asm.log; exit 1; }
+	$(ASM) --cpu j11 -D J11_CODE_WORDS=$(J11_UCODE_WORDS) -binary $< $@ > build/j11_context_memory.asm.log 2>&1 || { cat build/j11_context_memory.asm.log; exit 1; }
 
 build/j11_context_memory.words: build/j11_context_memory.bin ../ucode/make_urom_ebr.py ../ucode/config.mk
 	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
@@ -209,7 +209,7 @@ j11-fis-reference-test: build/tb_j11_fis.vvp build/j11_ucode.words check-microas
 # Optional strict profile keeps FIS opcodes reserved; never overwrites the
 # production ROM or the generated board image.
 build/j11_nofis.bin: $(J11_UCODE_ASM) $(wildcard ../ucode/j11_*.asm ../ucode/j11_*.inc) ../ucode/config.mk ../asm/include/pseudo.inc $(ASM) | build
-	$(ASM) -D J11_DISABLE_FIS -binary $< $@ > build/j11_nofis.asm.log 2>&1 || { cat build/j11_nofis.asm.log; exit 1; }
+	$(ASM) --cpu j11 -D J11_DISABLE_FIS -binary $< $@ > build/j11_nofis.asm.log 2>&1 || { cat build/j11_nofis.asm.log; exit 1; }
 	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UCODE_WORDS))) || { echo "J-11 microcode is $$size bytes; code limit is $$((2 * $(J11_UCODE_WORDS))) (64 words reserved for context)"; exit 1; }
 
 build/j11_nofis.words: build/j11_nofis.bin ../ucode/make_urom_ebr.py ../ucode/config.mk
@@ -241,7 +241,7 @@ j11-fram-test: build/tb_spi_fram_guest_ram.vvp
 	done
 
 build/j11_microengine_smoke.bin: $(J11_ENGINE_ASM) ../asm/include/pseudo.inc $(ASM) | build
-	$(ASM) -binary $< $@ > build/j11_microengine_smoke.asm.log 2>&1 || { cat build/j11_microengine_smoke.asm.log; exit 1; }
+	$(ASM) --cpu j11 -binary $< $@ > build/j11_microengine_smoke.asm.log 2>&1 || { cat build/j11_microengine_smoke.asm.log; exit 1; }
 
 build/j11_microengine_smoke.words: build/j11_microengine_smoke.bin ../ucode/make_urom_ebr.py
 	$(PYTHON) ../ucode/make_urom_ebr.py $< --words 1024 --format mem > $@
@@ -253,7 +253,7 @@ j11-engine-test: build/tb_j11_microengine.vvp build/j11_microengine_smoke.words
 	$(VVP) build/tb_j11_microengine.vvp
 
 build/j11_ucode.bin: $(J11_UCODE_ASM) $(wildcard ../ucode/j11_*.asm ../ucode/j11_*.inc) ../ucode/config.mk ../asm/include/pseudo.inc $(ASM) | build
-	$(ASM) -binary --list build/j11_ucode.lst $< $@ > build/j11_ucode.asm.log 2>&1 || { cat build/j11_ucode.asm.log; exit 1; }
+	$(ASM) --cpu j11 -binary --list build/j11_ucode.lst $< $@ > build/j11_ucode.asm.log 2>&1 || { cat build/j11_ucode.asm.log; exit 1; }
 	@size=$$(wc -c < $@); test $$size -le $$((2 * $(J11_UCODE_WORDS))) || { echo "J-11 microcode is $$size bytes; code limit is $$((2 * $(J11_UCODE_WORDS))) (64 words reserved for context)"; exit 1; }
 
 build/j11_ucode.words: build/j11_ucode.bin ../ucode/make_urom_ebr.py ../ucode/config.mk
@@ -352,3 +352,98 @@ vcd-%: tb.vvp build/%.hex
 
 clean:
 	rm -rf build *.vvp *.vcd
+
+# New specialized CPU, separate RTL, firmware and output paths.
+J11_V2_DEPS = $(wildcard ../ucode/v2/*.asm ../ucode/v2/*.inc) ../ucode/config.mk
+J11_V2_FLAGS = -DJ11_ENGINE_MODULE=ucode_cpu -DJ11_BOARD_MODULE=ucode_hc1200_microcomp \
+	-DJ11_UCODE_FILE='"build/j11_ucode_v2.words"'
+J11_V2_COMMON = ../rtl/ucode_cpu.v ../rtl/spi_fram_guest_ram.v \
+	../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v spi_fram_model.v
+J11_V2_TESTS = j11_alu j11_fetch j11_execute j11_cpu_io j11_peripherals j11_halt j11_fis j11_core_reference
+J11_TARGET_HEADER = include/j11_test_target.vh
+
+$(addprefix build/tb_,$(addsuffix .vvp,$(J11_V2_TESTS))) build/tb_board_j11_execute.vvp: $(J11_TARGET_HEADER)
+
+build/j11_ucode_v2.bin: ../ucode/v2/j11.asm $(J11_V2_DEPS) $(ASM) | build
+	$(ASM) --cpu ucode -binary --list build/j11_ucode_v2.lst $< $@ > build/j11_ucode_v2.asm.log 2>&1 || { cat build/j11_ucode_v2.asm.log; exit 1; }
+
+build/j11_ucode_v2.words: build/j11_ucode_v2.bin ../ucode/make_urom_ebr.py ../ucode/config.mk
+	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
+
+build/ucode_%.vvp: tb_%.v $(J11_V2_COMMON) $(J11_TARGET_HEADER) include/j11_context_probe.vh ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_$* $(J11_V2_FLAGS) -o $@ $< $(J11_V2_COMMON)
+
+build/ucode_board.vvp: board/tb_board_j11_execute.v $(J11_V2_COMMON) $(BOARD_STUBS) ../boards/hc1200-microcomp/ucode_microcomp.v $(J11_TARGET_HEADER) ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_board_j11_execute $(J11_V2_FLAGS) -o $@ $(filter %.v,$^)
+
+build/ucode_native.bin: ucode/ucode_native.asm ../ucode/v2/pseudo.inc $(ASM) | build
+	$(ASM) --cpu ucode -binary $< $@ > build/ucode_native.asm.log 2>&1 || { cat build/ucode_native.asm.log; exit 1; }
+
+build/ucode_native.words: build/ucode_native.bin ../ucode/make_urom_ebr.py ../ucode/config.mk
+	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
+
+.PHONY: ucode-test ucode-native-test ucode-j11-test ucode-core-test ucode-fis-reference-test ucode-nofis-test
+ucode-native-test: build/ucode_ucode_native.vvp build/ucode_native.words build/ucode_j11_alu.vvp
+	$(VVP) build/ucode_ucode_native.vvp
+	$(VVP) build/ucode_j11_alu.vvp
+
+ucode-j11-test: $(addprefix build/ucode_,$(addsuffix .vvp,$(filter-out j11_core_reference,$(J11_V2_TESTS)))) build/ucode_board.vvp build/j11_ucode_v2.words $(J11_GUEST_HEXES)
+	$(VVP) build/ucode_j11_fetch.vvp
+	$(VVP) build/ucode_j11_execute.vvp
+	$(VVP) build/ucode_j11_peripherals.vvp
+	$(VVP) build/ucode_j11_halt.vvp
+	$(VVP) build/ucode_board.vvp
+	@set -e; for test in cpu_registers cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
+		$(VVP) build/ucode_j11_cpu_io.vvp +PROGRAM=build/guest_$$test.hex; \
+	done
+	$(VVP) build/ucode_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154
+	$(VVP) build/ucode_j11_fis.vvp +PROGRAM=build/guest_fis_faults.hex +FAULT_READ=06006
+	$(VVP) build/ucode_j11_fis.vvp +PROGRAM=build/guest_fis_faults.hex +FAULT_WRITE=06004
+	$(VVP) build/ucode_j11_fis.vvp +PROGRAM=build/guest_fis_partial_write.hex +FAULT_WRITE=06006
+
+ucode-core-test: build/core_reference_export build/ucode_j11_core_reference.vvp build/j11_ucode_v2.words check-microasm11
+	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP) --banks --testbench build/ucode_j11_core_reference.vvp --listing build/j11_ucode_v2.lst --work-dir build/ucode_core_reference
+
+ucode-fis-reference-test: build/ucode_j11_fis.vvp build/j11_ucode_v2.words check-microasm11
+	$(PYTHON) run_fis_reference.py --asm11 $(ASM11) --vvp $(VVP) --testbench build/ucode_j11_fis.vvp --work-dir build/ucode_fis_reference
+
+build/j11_v2_nofis.bin: ../ucode/v2/j11.asm $(J11_V2_DEPS) $(ASM) | build
+	$(ASM) --cpu ucode -D J11_DISABLE_FIS -binary $< $@ > build/j11_v2_nofis.asm.log 2>&1 || { cat build/j11_v2_nofis.asm.log; exit 1; }
+
+build/j11_v2_nofis.words: build/j11_v2_nofis.bin ../ucode/make_urom_ebr.py ../ucode/config.mk
+	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
+
+build/ucode_nofis.vvp: tb_j11_cpu_io.v $(J11_V2_COMMON) $(J11_TARGET_HEADER) include/j11_context_probe.vh ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io $(J11_V2_FLAGS) -Ptb_j11_cpu_io.UCODE_FILE='"build/j11_v2_nofis.words"' -o $@ $< $(J11_V2_COMMON)
+
+ucode-nofis-test: build/ucode_nofis.vvp build/j11_v2_nofis.words build/guest_fis_unavailable.hex
+	$(VVP) build/ucode_nofis.vvp +PROGRAM=build/guest_fis_unavailable.hex
+
+ucode-test: ucode-native-test ucode-j11-test ucode-nofis-test
+
+# Optional exact EBR simulation on the Mac; this does not run Diamond.
+J11_V2_EBR = ../boards/hc1200-microcomp/ucode_urom_ebr.v
+J11_V2_EBR_FLAGS = $(J11_V2_FLAGS) $(J11_EBR_FLAGS) -DJ11_EBR_MODULE=ucode_urom_ebr
+.PHONY: ucode-board-ucode ucode-ebr-test
+ucode-board-ucode:
+	$(MAKE) -C ../boards j11-v2-ucode
+
+build/ucode_native_ebr.v: build/ucode_native.bin ../ucode/make_urom_ebr.py ../ucode/config.mk
+	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --module-name ucode_urom_ebr > $@
+
+ucode-ebr-test: ucode-board-ucode build/ucode_native_ebr.v build/j11_ucode_v2.words build/core_reference_export $(J11_GUEST_HEXES)
+	@test -f "$(LATTICE_SIM_DIR)/PDPW8KC.v" || { echo "Set LATTICE_SIM_DIR to Diamond's MachXO2 Verilog models"; exit 1; }
+	$(IVERILOG) -g2012 -Wall -s tb_j11_urom_ebr -o build/ucode_pack_ebr.vvp $(J11_V2_EBR_FLAGS) tb_j11_urom_ebr.v $(J11_V2_EBR)
+	$(VVP) build/ucode_pack_ebr.vvp
+	$(IVERILOG) -g2012 -Wall -s tb_ucode_native -o build/ucode_native_ebr.vvp $(J11_V2_EBR_FLAGS) tb_ucode_native.v ../rtl/ucode_cpu.v build/ucode_native_ebr.v
+	$(VVP) build/ucode_native_ebr.vvp
+	@set -e; for test in j11_execute j11_peripherals j11_halt; do \
+		$(IVERILOG) -g2012 -Wall -s tb_$$test -o build/ucode_$${test}_ebr.vvp $(J11_V2_EBR_FLAGS) tb_$$test.v $(J11_V2_COMMON) $(J11_V2_EBR); \
+		$(VVP) build/ucode_$${test}_ebr.vvp; \
+	done
+	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o build/ucode_cpu_io_ebr.vvp $(J11_V2_EBR_FLAGS) tb_j11_cpu_io.v $(J11_V2_COMMON) $(J11_V2_EBR)
+	@set -e; for test in cpu_registers cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
+		$(VVP) build/ucode_cpu_io_ebr.vvp +PROGRAM=build/guest_$$test.hex; \
+	done
+	$(IVERILOG) -g2012 -Wall -s tb_j11_core_reference -o build/ucode_core_ebr.vvp $(J11_V2_EBR_FLAGS) tb_j11_core_reference.v ../rtl/ucode_cpu.v $(J11_V2_EBR)
+	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP) --banks --testbench build/ucode_core_ebr.vvp --listing build/j11_ucode_v2.lst --work-dir build/ucode_core_ebr

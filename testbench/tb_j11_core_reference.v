@@ -1,3 +1,4 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 /* Instruction-level core checks use a deterministic flat RAM bus.
@@ -14,11 +15,12 @@ module tb_j11_core_reference;
 	reg [7:0] memory [0:65535];
 	reg [7:0] expected [0:65535];
 	reg [15:0] fixture [0:44];
+	reg [4095:0] fixture_dir;
 	integer fetch_pc, wait_pc, check_banks;
 	integer i, cycles, started, done, failures, active_mode;
 
-	j11_microengine #(.UROM_WORDS(`J11_UROM_WORDS),
-		.UCODE_FILE("build/j11_ucode.words")) dut (
+	`J11_ENGINE_MODULE #(.UROM_WORDS(`J11_UROM_WORDS),
+		.UCODE_FILE(`J11_UCODE_FILE)) dut (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr),
 		.guest_byte(byte_access), .guest_bank(bank), .guest_address(address),
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),
@@ -49,9 +51,11 @@ module tb_j11_core_reference;
 				!$value$plusargs("WAIT_PC=%h", wait_pc) ||
 				!$value$plusargs("CHECK_BANKS=%d", check_banks))
 			$fatal(1, "Missing microcode boundary/coverage arguments");
-		$readmemh("build/core_reference/input.hex", memory);
-		$readmemh("build/core_reference/expected.hex", expected);
-		$readmemh("build/core_reference/state.hex", fixture);
+		if (!$value$plusargs("FIXTURE_DIR=%s", fixture_dir))
+			fixture_dir = "build/core_reference";
+		$readmemh($sformatf("%0s/input.hex", fixture_dir), memory);
+		$readmemh($sformatf("%0s/expected.hex", fixture_dir), expected);
+		$readmemh($sformatf("%0s/state.hex", fixture_dir), fixture);
 		repeat (4) @(negedge clk);
 		rst = 0;
 		while (dut.state != dut.ST_FETCH) @(negedge clk);

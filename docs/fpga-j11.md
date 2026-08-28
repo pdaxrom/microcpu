@@ -10,6 +10,11 @@ their address decoding, masks, and side effects belong in assembly, not in a
 J-11-specific Verilog state machine. The existing microengine is the execution
 mechanism, not a second implementation of J-11 architectural behavior.
 
+The resource figures and ISA details below describe the preserved
+`--cpu j11` reference. The independent `--cpu ucode` engine and its
+`ucode/v2/` firmware are described in [CPU profiles](cpu-profiles.md);
+its generated images and build targets are separate.
+
 ## Version 1 scope
 
 - 16-bit PDP-11 address space
@@ -566,9 +571,11 @@ changes were needed for the storage migration.
 
 ### SD-backed disk: feasibility, not an implemented device
 
-The user requested saving logic for a future Verilog disk controller backed by
-an SD card. The guest-visible controller type and SD wiring are not chosen yet;
-no disk registers, DMA, card initialization, or disk-image handling are present.
+The user selected an RK611/RH11-compatible controller at octal 0177440, backed
+by SD, with `k1801vm1/lsi11/dev_rh11.c` as reference. SD wiring still needs
+confirmation; no disk registers, DMA, card initialization, or disk-image
+handling are present at this checkpoint. The five-stage follow-up in TODO.md
+authorizes an isolated prototype and resource measurement, not board writes.
 
 SDHC/SDXC transfers use 512-byte blocks; see the SD Association's
 [Physical Layer specification, section 7](https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver5.10.pdf).

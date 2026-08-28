@@ -324,9 +324,9 @@ directive; use `PUBLIC` to export symbols from an object file.
 
 ### Command line options
 
-`microasm [-verilog|-binary|-object] [--list <file|->] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]`
+`microasm [--cpu original|j11|ucode] [-verilog|-binary|-object] [--list <file|->] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]`
 
-`microasm [-verilog|-binary|-obj] [--list=<file|->] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]`
+`microasm [--cpu original|j11|ucode] [-verilog|-binary|-obj] [--list=<file|->] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]`
 
 * -verilog - create verilog ram file
 * -binary  - create binary file
@@ -410,3 +410,7 @@ Open the Programmer, reconnect the FTDI board and disconnect the JTAG port:
 `./ft2232d-util/ft2232d-ctl`
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
+
+Native processor selection and the independent specialized engine are documented
+in [CPU profiles](docs/cpu-profiles.md). The default remains `original`;
+use `--cpu j11` for the reference firmware or `--cpu ucode` for `ucode/v2/`.

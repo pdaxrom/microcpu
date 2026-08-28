@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "cpu_target.h"
 
 enum {
     INPUT_AUTO = 0,
@@ -29,6 +30,7 @@ typedef struct {
 } Reloc;
 
 typedef struct {
+    int cpu;
     Symbol *entries;
     unsigned int entry_count;
     Symbol *externs;
@@ -51,6 +53,8 @@ static const char *regs[] = {
 };
 
 static unsigned int origin = 0;
+static int target_cpu = CPU_ORIGINAL;
+static int cpu_explicit = 0;
 
 static unsigned int read_u16(unsigned char *buf)
 {
@@ -149,7 +153,7 @@ static int looks_like_object(unsigned char *buf, size_t size)
     unsigned int code_len;
     unsigned int code_offset;
 
-    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) != 1) {
+    if (size < 0x20 || read_u16(buf) != 0x5aa5 || (read_u16(buf + 2) != 1 && read_u16(buf + 2) != 2)) {
         return 0;
     }
 
@@ -165,10 +169,7 @@ static int looks_like_object(unsigned char *buf, size_t size)
 
 static int parse_object(unsigned char *buf, size_t size, Object *obj)
 {
-    unsigned int ent_count = read_u16(buf + 4);
-    unsigned int ext_count = read_u16(buf + 6);
-    unsigned int code_len = read_u16(buf + 8);
-    unsigned int code_offset = read_u32(buf + 0x0a);
+    unsigned int ent_count, ext_count, code_len, code_offset;
     unsigned int pos;
 
     if (!looks_like_object(buf, size)) {
@@ -176,7 +177,20 @@ static int parse_object(unsigned char *buf, size_t size, Object *obj)
         return 1;
     }
 
+    ent_count = read_u16(buf + 4);
+    ext_count = read_u16(buf + 6);
+    code_len = read_u16(buf + 8);
+    code_offset = read_u32(buf + 0x0a);
+    int object_cpu = read_u16(buf + 2) == 1 ? CPU_ORIGINAL : read_u16(buf + 0x10);
+    if (object_cpu >= CPU_COUNT || (cpu_explicit && target_cpu != object_cpu)) {
+        fprintf(stderr, "Object CPU '%s' does not match selected CPU '%s'\n",
+                cpu_name(object_cpu), cpu_name(target_cpu));
+        return 1;
+    }
+    target_cpu = object_cpu;
+
     memset(obj, 0, sizeof(*obj));
+    obj->cpu = object_cpu;
     obj->entry_count = ent_count;
     obj->extern_count = ext_count;
     obj->code_len = code_len;
@@ -256,6 +270,20 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
     unsigned int imm8 = hi;
     char tmp[16];
 
+    /* Unknown encodings remain data instead of borrowing another CPU's ISA. */
+    if ((target_cpu == CPU_ORIGINAL && (op == 0x0b || op == 0x1c)) ||
+            (target_cpu == CPU_UCODE && op == 0x0e)) {
+        snprintf(buf, size, "dw $%02X%02X", hi, lo);
+        return;
+    }
+
+    if (target_cpu == CPU_UCODE && arg1 == 0 &&
+            (op == 0x00 || op == 0x04 || op == 0x08 || op == 0x0a ||
+             op == 0x0c || op == 0x1c || ((op & 1) && op != 0x01 && op != 0x03))) {
+        snprintf(buf, size, "dw $%02X%02X", hi, lo);
+        return;
+    }
+
     switch (op) {
     case 0x00:
         snprintf(buf, size, "ldrl %s, %s, %s", regs[arg1], regs[arg2],
@@ -280,7 +308,10 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         snprintf(buf, size, "seth %s, $%02X", regs[arg1], imm8);
         break;
     case 0x0c:
-        snprintf(buf, size, "movl %s, %s", regs[arg1], regs[arg2]);
+        if (target_cpu == CPU_UCODE)
+            snprintf(buf, size, "ldi8 %s, $%02X", regs[arg1], imm8);
+        else
+            snprintf(buf, size, "movl %s, %s", regs[arg1], regs[arg2]);
         break;
     case 0x0e:
         snprintf(buf, size, "movh %s, %s", regs[arg1], regs[arg2]);
@@ -289,17 +320,17 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         snprintf(buf, size, "mov %s, %s", regs[arg1], regs[arg2]);
         break;
     case 0x12:
-        if (arg1 == 0 && hi == 0) {
+        if (target_cpu == CPU_ORIGINAL) {
             snprintf(buf, size, "sws");
         } else {
-            snprintf(buf, size, "gget %s, $%X", regs[arg1], hi & 0x0f);
+            snprintf(buf, size, "gget %s, $%X", regs[arg1], hi & (target_cpu == CPU_UCODE ? 0x3f : 0x1f));
         }
         break;
     case 0x14:
-        if (arg1 == 0 && hi == 0) {
+        if (target_cpu == CPU_ORIGINAL) {
             snprintf(buf, size, "swu");
         } else {
-            snprintf(buf, size, "gset %s, $%X", regs[arg1], hi & 0x0f);
+            snprintf(buf, size, "gset %s, $%X", regs[arg1], hi & (target_cpu == CPU_UCODE ? 0x3f : 0x1f));
         }
         break;
     case 0x16: {
@@ -311,14 +342,14 @@ static void decode_instruction(unsigned int addr, unsigned char lo,
         break;
     }
     case 0x18:
-        if (arg2 == 0) {
+        if (target_cpu == CPU_ORIGINAL) {
             snprintf(buf, size, "setp %s", regs[arg1]);
         } else {
             snprintf(buf, size, "ggetr %s, %s", regs[arg1], regs[arg2]);
         }
         break;
     case 0x1a:
-        if (arg2 == 0) {
+        if (target_cpu == CPU_ORIGINAL) {
             snprintf(buf, size, "getp %s", regs[arg1]);
         } else {
             snprintf(buf, size, "gsetr %s, %s", regs[arg1], regs[arg2]);
@@ -464,6 +495,7 @@ static void disassemble(unsigned char *code, unsigned int code_len,
 static void print_object_header(Object *obj)
 {
     printf("; object file\n");
+    if (obj->cpu != CPU_ORIGINAL) printf("; cpu %s\n", cpu_name(obj->cpu));
     for (unsigned int i = 0; i < obj->extern_count; i++) {
         printf("extern %s\n", obj->externs[i].name);
     }
@@ -498,7 +530,7 @@ static void free_object(Object *obj)
 static void print_usage(char *prog)
 {
     fprintf(stderr,
-            "Usage: %s [-binary|-object] [-org address] <input.bin|input.obj>\n",
+            "Usage: %s [--cpu original|j11|ucode] [-binary|-object] [-org address] <input.bin|input.obj>\n",
             prog);
 }
 
@@ -511,7 +543,27 @@ int main(int argc, char *argv[])
     int ret = 1;
 
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-binary")) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            print_usage(argv[0]);
+            return 0;
+        } else if (!strcmp(argv[i], "--cpu") || !strncmp(argv[i], "--cpu=", 6)) {
+            const char *name;
+            if (!strcmp(argv[i], "--cpu")) {
+                if (++i >= argc) {
+                    print_usage(argv[0]);
+                    return 1;
+                }
+                name = argv[i];
+            } else {
+                name = argv[i] + 6;
+            }
+            target_cpu = parse_cpu(name);
+            cpu_explicit = 1;
+            if (target_cpu < 0) {
+                fprintf(stderr, "Unknown CPU: %s\n", name);
+                return 1;
+            }
+        } else if (!strcmp(argv[i], "-binary")) {
             input_type = INPUT_BINARY;
         } else if (!strcmp(argv[i], "-object") || !strcmp(argv[i], "-obj")) {
             input_type = INPUT_OBJECT;

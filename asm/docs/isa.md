@@ -5,6 +5,10 @@ encoding) and `rtl/cpu.v` (execution semantics). The assembler implementation is
 the source of truth for syntax and encoding. The RTL is the source of truth for
 runtime behavior.
 
+For CPU selection and differences between the original ISA, preserved J-11
+microengine and new specialized engine, see [CPU profiles](../../docs/cpu-profiles.md).
+The native execution semantics below refer to the original CPU.
+
 ## 1. ISA Overview
 
 ### Registers

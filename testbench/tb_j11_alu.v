@@ -1,9 +1,10 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 // Native RISC combinational ALU equivalence test, not a guest instruction
 // fixture. Guest ISA programs remain assembly built with microasm11.
 module tb_j11_alu;
-	j11_microengine #(.UROM_WORDS(512)) dut (
+	`J11_ENGINE_MODULE #(.UROM_WORDS(512)) dut (
 		.clk(1'b0), .rst(1'b1), .guest_ready(1'b0), .guest_error(1'b0),
 		.guest_rdata(16'b0), .irq(1'b0), .irq_level(3'b0), .irq_vector(8'b0)
 	);

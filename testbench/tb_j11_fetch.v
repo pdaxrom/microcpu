@@ -1,3 +1,4 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 module tb_j11_fetch;
@@ -24,9 +25,9 @@ module tb_j11_fetch;
 	wire [15:0] debug_cause;
 	wire [15:0] debug_pending_irq;
 
-	j11_microengine #(
+	`J11_ENGINE_MODULE #(
 		.UROM_WORDS(`J11_UROM_WORDS),
-		.UCODE_FILE("build/j11_ucode.words")
+		.UCODE_FILE(`J11_UCODE_FILE)
 	) dut (
 		.clk(clk),
 		.rst(rst),

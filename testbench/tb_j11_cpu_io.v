@@ -1,7 +1,8 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 module tb_j11_cpu_io;
-	parameter UCODE_FILE = "build/j11_ucode.words";
+	parameter UCODE_FILE = `J11_UCODE_FILE;
 	reg clk = 0, rst = 1;
 	wire req, wr, byte_access, bank, ready, error, guest_reset, irq;
 	wire [2:0] level;
@@ -16,7 +17,7 @@ module tb_j11_cpu_io;
 
 	// All architectural assertions are assembled guest code, not testbench
 	// mutations of processor state. Use the real board UART/time/FRAM path.
-	j11_microengine #(.UROM_WORDS(`J11_UROM_WORDS),
+	`J11_ENGINE_MODULE #(.UROM_WORDS(`J11_UROM_WORDS),
 		.UCODE_FILE(UCODE_FILE)) engine (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr),
 		.guest_byte(byte_access), .guest_bank(bank), .guest_address(address),

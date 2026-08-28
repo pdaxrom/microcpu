@@ -1,3 +1,4 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 // Exercise the generated PDPW8KC read AND write ports with Lattice's model.
@@ -13,7 +14,7 @@ module tb_j11_urom_ebr;
 	reg [15:0] expected [0:`J11_UROM_WORDS-1];
 	reg [15:0] held;
 	integer i, pass;
-	j11_urom_ebr #(.WORDS(`J11_UROM_WORDS)) dut (
+	`J11_EBR_MODULE #(.WORDS(`J11_UROM_WORDS)) dut (
 		.clk(clk), .rst(rst), .enable(enable), .address(address), .data(data),
 		.write_enable(write_enable), .write_address(write_address), .write_data(write_data)
 	);
@@ -37,7 +38,7 @@ module tb_j11_urom_ebr;
 	end
 	endtask
 	initial begin
-		$readmemh("build/j11_ucode.words", expected);
+		$readmemh(`J11_UCODE_FILE, expected);
 		repeat (4) @(negedge clk);
 		rst = 0;
 		check_all_words();

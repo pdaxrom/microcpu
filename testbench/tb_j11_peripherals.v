@@ -1,3 +1,4 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 // Execute assembled guest programs against the real native bus/UART/FRAM.
@@ -15,8 +16,8 @@ module tb_j11_peripherals;
 	reg [7:0] tx_byte;
 	reg [7:0] expected_tx [0:3];
 
-	j11_microengine #(.UROM_WORDS(`J11_UROM_WORDS),
-		.UCODE_FILE("build/j11_ucode.words")) engine (
+	`J11_ENGINE_MODULE #(.UROM_WORDS(`J11_UROM_WORDS),
+		.UCODE_FILE(`J11_UCODE_FILE)) engine (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr),
 		.guest_byte(byte_access), .guest_bank(bank), .guest_address(address),
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),

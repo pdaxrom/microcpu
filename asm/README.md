@@ -2,6 +2,14 @@ Documentation
 
 Full assembler and ISA reference (including RTL semantics): docs/isa.md
 
+CPU profiles
+
+`--cpu original|j11|ucode` selects the native processor ISA. The default is
+`original` (`rtl/cpu.v`). `j11` preserves the current microengine and firmware;
+`ucode` selects the independent specialized engine and `ucode/v2/` firmware.
+Unsupported opcodes are errors. See [CPU profiles](../docs/cpu-profiles.md)
+for source assertions, encodings, object tags and separate build targets.
+
 Usage
 
 Build the assembler:
@@ -13,8 +21,8 @@ make -C asm
 Run it:
 
 ```
-asm/microasm [-verilog|-binary|-object] [--list <file|->] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]
-asm/microasm [-verilog|-binary|-obj] [--list=<file|->] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]
+asm/microasm [--cpu original|j11|ucode] [-verilog|-binary|-object] [--list <file|->] [-D name[=expr]|--define name[=expr]] [-U name|--undef name] <input.asm> [output]
+asm/microasm [--cpu original|j11|ucode] [-verilog|-binary|-obj] [--list=<file|->] [-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] <input.asm> [output]
 ```
 
 - default output is a `.mem` hex file.
@@ -68,10 +76,11 @@ Disassembly
 Disassemble raw binary or object files:
 
 ```
-asm/microdis [-binary|-object] [-org address] <input.bin|input.obj>
+asm/microdis [--cpu original|j11|ucode] [-binary|-object] [-org address] <input.bin|input.obj>
 ```
 
-Input mode is auto-detected by default. Use `-binary` or `-object` / `-obj` to
+Objects carry their CPU profile; raw binaries default to `original`.
+`microlink` rejects mixed CPU profiles. Input mode is auto-detected by default. Use `-binary` or `-object` / `-obj` to
 force a mode. `-org` controls the base address printed in the listing. Object
 disassembly includes `extern`/`public` declarations, public labels, entry point
 information, and relocation comments. `microdis` does not infer data regions;
@@ -113,4 +122,4 @@ Testing
 
 Run assembler smoke tests:
 
-sh scripts/test-asm-smoke.sh
+make -C asm test  # from repository root

@@ -8,13 +8,13 @@ BIN="$ROOT_DIR/microasm"
 LINK="$ROOT_DIR/microlink"
 DIS="$ROOT_DIR/microdis"
 
-if [ ! -x "$BIN" ] || [ "$ROOT_DIR/microasm.c" -nt "$BIN" ]; then
+if [ "$ROOT_DIR/cpu_target.h" -nt "$BIN" ] || [ ! -x "$BIN" ] || [ "$ROOT_DIR/microasm.c" -nt "$BIN" ]; then
     cc -Wall -Wpedantic -g -o "$BIN" "$ROOT_DIR/microasm.c"
 fi
-if [ ! -x "$LINK" ] || [ "$ROOT_DIR/microlink.c" -nt "$LINK" ]; then
+if [ "$ROOT_DIR/cpu_target.h" -nt "$LINK" ] || [ ! -x "$LINK" ] || [ "$ROOT_DIR/microlink.c" -nt "$LINK" ]; then
     cc -Wall -Wpedantic -g -o "$LINK" "$ROOT_DIR/microlink.c"
 fi
-if [ ! -x "$DIS" ] || [ "$ROOT_DIR/microdis.c" -nt "$DIS" ]; then
+if [ "$ROOT_DIR/cpu_target.h" -nt "$DIS" ] || [ ! -x "$DIS" ] || [ "$ROOT_DIR/microdis.c" -nt "$DIS" ]; then
     cc -Wall -Wpedantic -g -o "$DIS" "$ROOT_DIR/microdis.c"
 fi
 

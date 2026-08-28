@@ -272,6 +272,35 @@ and console groundwork use 72 words beyond the FIS checkpoint. Fabric has
   guest/CPU/FIS/RS/HALT programs, and the same **209/209** snapshots. Record
   the measured result and commit only source files; generated images ignored.
 
+### Specialized ucode engine: five-stage plan (approved 2026-08-28)
+
+Keep `original` and the `j11` RTL/firmware at the `d4dabf1` reference unchanged.
+Only the independent `ucode` profile and `ucode/v2/` evolve. Commit each stage
+after verification; never commit generated images or program the board.
+
+- [x] 1. Preserve three assembler/RTL profiles and record the first measured
+  ucode checkpoint: 3317 code + 64 context + 203 free words; 964/1280 LUTs,
+  483/640 slices, 7/7 EBRs, 41.432 MHz TRACE maximum at 26.6 MHz constraints.
+  All native/guest regressions, 209 core snapshots, 4040 FIS cases and real-EBR
+  tests pass. Diamond synthesis through JED passes; external I/O is unverified.
+- [ ] 2. Measure call/jump overhead and implement compact generic native
+  calls/returns/transfers where worthwhile. Keep nested helper returns in
+  microcode context, not a new J-11-specific hardware stack. Verify and commit.
+- [ ] 3. Evaluate word-addressed uPC and native carry/borrow arithmetic
+  independently. Retain only measured improvements; verify and commit the
+  implementation or a documented negative experiment.
+- [ ] 4. Full preserved/new CPU, guest/core/FIS and actual-EBR regression;
+  isolated Diamond measurements and reproducible acceptance checks. Commit.
+- [ ] 5. Isolated SD/FRAM disk prototype for the already selected RK611/RH11
+  controller at octal 0177440, using `k1801vm1/lsi11/dev_rh11.c` as reference.
+  Measure complete-board fit, test reads/writes, transfer arbitration and
+  error paths; do not infer fit from CPU savings. No sector EBR is available.
+  SD pin assignment and physical writes require confirmation; simulation
+  and a separate synthesis top must not change the production board wiring.
+
+The controller type is already chosen by the user; earlier entries calling
+it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.
+
 ### Deferred: not part of the active follow-up
 
 - [ ] Full `MFPI`, `MTPI`, `MFPD`, `MTPD` previous-mode/space semantics.

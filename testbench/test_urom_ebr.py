@@ -55,6 +55,14 @@ class UromPacking(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "64 reserved for context"):
                     emit(binary + bytes(2), words)
 
+    def test_independent_module_name(self):
+        default = packer.generate(b"", 512)
+        new = packer.generate(b"", 512, "ucode_urom_ebr")
+        self.assertEqual(default.replace("module j11_urom_ebr", "module ucode_urom_ebr"), new)
+        for name in ("", "bad-name", "123name", "module; injected"):
+            with self.assertRaises(ValueError):
+                packer.generate(b"", 512, name)
+
     def test_bad_size(self):
         for words in (0, 511, 513, 4096):
             with self.assertRaises(ValueError):

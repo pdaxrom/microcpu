@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "cpu_target.h"
 
 enum {
     OUT_MEM = 0,
@@ -30,6 +31,7 @@ typedef struct {
 
 typedef struct {
     char *path;
+    int cpu;
     Symbol *entries;
     unsigned int entry_count;
     Symbol *externs;
@@ -166,7 +168,7 @@ static int parse_object(char *path, Object *obj)
     if (read_file(path, &buf, &size)) {
         return 1;
     }
-    if (size < 0x20 || read_u16(buf) != 0x5aa5 || read_u16(buf + 2) != 1) {
+    if (size < 0x20 || read_u16(buf) != 0x5aa5 || (read_u16(buf + 2) != 1 && read_u16(buf + 2) != 2)) {
         fprintf(stderr, "Invalid object file: %s\n", path);
         free(buf);
         return 1;
@@ -184,6 +186,12 @@ static int parse_object(char *path, Object *obj)
         return 1;
     }
 
+    obj->cpu = read_u16(buf + 2) == 1 ? CPU_ORIGINAL : read_u16(buf + 0x10);
+    if (obj->cpu >= CPU_COUNT) {
+        fprintf(stderr, "Unknown CPU ID %d in %s\n", obj->cpu, path);
+        free(buf);
+        return 1;
+    }
     obj->entry_count = ent_count;
     obj->extern_count = ext_count;
     obj->code_len = code_len;
@@ -594,6 +602,12 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < input_count; i++) {
         if (parse_object(input_names[i], &objects[i])) {
+            goto done;
+        }
+        if (i && objects[i].cpu != objects[0].cpu) {
+            fprintf(stderr, "Cannot link CPU '%s' (%s) with CPU '%s' (%s)\n",
+                    cpu_name(objects[i].cpu), input_names[i],
+                    cpu_name(objects[0].cpu), input_names[0]);
             goto done;
         }
     }

@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include "cpu_target.h"
+
+static int target_cpu = CPU_ORIGINAL;
 
 enum {
     NO_ERROR = 0,
@@ -50,11 +53,17 @@ enum {
     EXTRA_SYMBOLS,
     SYNTAX_ERROR,
     CANNOT_OPEN_FILE,
+    UNSUPPORTED_CPU_OPCODE,
+    CPU_MISMATCH,
+    INVALID_CONTEXT_INDEX,
+    INVALID_LDI8_CONSTANT,
+    UNSUPPORTED_PC_DESTINATION,
 };
 
 enum {
     op_noargs = 0,
     op_reg_const,
+    op_reg_context,
     op_rel,
     op_reg,
     op_reg_reg,
@@ -80,6 +89,7 @@ enum {
     pseudo_extern,
     pseudo_public,
     pseudo_entry,
+    pseudo_cpu,
 };
 
 typedef struct {
@@ -87,79 +97,82 @@ typedef struct {
     int type;
     int op;
     int ext_op;
+    unsigned int cpus;
 } OpCode;
 
 static OpCode opcode_table[] = {
-    { "ldrl", op_reg_reg_reg, 0x00, 0x0  },
-    { "strl", op_reg_reg_reg, 0x02, 0x0  },
-    { "ldr", op_reg_reg_reg, 0x04, 0x0  },
-    { "str", op_reg_reg_reg, 0x06, 0x0  },
-    { "setl", op_reg_const, 0x08, 0x0  },
-    { "seth", op_reg_const, 0x0a, 0x0  },
-    { "movl", op_reg_reg, 0x0c, 0x0  },
-    { "movh", op_reg_reg, 0x0e, 0x0  },
+    { "ldrl", op_reg_reg_reg, 0x00, 0x0, CPU_ALL },
+    { "strl", op_reg_reg_reg, 0x02, 0x0, CPU_ALL },
+    { "ldr", op_reg_reg_reg, 0x04, 0x0, CPU_ALL },
+    { "str", op_reg_reg_reg, 0x06, 0x0, CPU_ALL },
+    { "setl", op_reg_const, 0x08, 0x0, CPU_ALL },
+    { "ldi8", op_reg_const, 0x0c, 0x0, CPU_MASK(CPU_UCODE) },
+    { "seth", op_reg_const, 0x0a, 0x0, CPU_ALL },
+    { "movl", op_reg_reg, 0x0c, 0x0, (CPU_MASK(CPU_ORIGINAL) | CPU_MASK(CPU_J11)) },
+    { "movh", op_reg_reg, 0x0e, 0x0, (CPU_MASK(CPU_ORIGINAL) | CPU_MASK(CPU_J11)) },
 
-    { "mov", op_reg_reg, 0x10, 0x0  },
+    { "mov", op_reg_reg, 0x10, 0x0, CPU_ALL },
 
-    { "sws", op_noargs, 0x12, 0x0  },
-    { "swu", op_noargs, 0x14, 0x0  },
+    { "sws", op_noargs, 0x12, 0x0, CPU_MASK(CPU_ORIGINAL) },
+    { "swu", op_noargs, 0x14, 0x0, CPU_MASK(CPU_ORIGINAL) },
     /* J-11 microengine aliases; these opcodes replace SWS/SWU in ucode. */
-    { "gget", op_reg_const, 0x12, 0x0  },
-    { "gset", op_reg_const, 0x14, 0x0  },
-    { "ggetr", op_reg_reg, 0x18, 0x0  },
-    { "gsetr", op_reg_reg, 0x1a, 0x0  },
-    { "getf", op_reg, 0x1c, 0x0  },
+    { "gget", op_reg_context, 0x12, 0x0, CPU_ENGINES },
+    { "gset", op_reg_context, 0x14, 0x0, CPU_ENGINES },
+    { "ggetr", op_reg_reg, 0x18, 0x0, CPU_ENGINES },
+    { "gsetr", op_reg_reg, 0x1a, 0x0, CPU_ENGINES },
+    { "getf", op_reg, 0x1c, 0x0, CPU_ENGINES },
 
-    { "b", op_rel, 0x16, 0x0  },
-    { "setp", op_reg, 0x18, 0x0  },
-    { "getp", op_reg, 0x1a, 0x0  },
+    { "b", op_rel, 0x16, 0x0, CPU_ALL },
+    { "setp", op_reg, 0x18, 0x0, CPU_MASK(CPU_ORIGINAL) },
+    { "getp", op_reg, 0x1a, 0x0, CPU_MASK(CPU_ORIGINAL) },
 
-    { "eq", op_ext_reg_reg, 0x01, 0x0  },
-    { "ne", op_ext_reg_reg, 0x01, 0x1  },
-    { "mi", op_ext_reg_reg, 0x01, 0x2  },
-    { "vs", op_ext_reg_reg, 0x01, 0x3  },
-    { "lt", op_ext_reg_reg, 0x01, 0x4  },
-    { "ge", op_ext_reg_reg, 0x01, 0x5  },
-    { "ltu", op_ext_reg_reg, 0x01, 0x6  },
-    { "geu", op_ext_reg_reg, 0x01, 0x7  },
+    { "eq", op_ext_reg_reg, 0x01, 0x0, CPU_ALL },
+    { "ne", op_ext_reg_reg, 0x01, 0x1, CPU_ALL },
+    { "mi", op_ext_reg_reg, 0x01, 0x2, CPU_ALL },
+    { "vs", op_ext_reg_reg, 0x01, 0x3, CPU_ALL },
+    { "lt", op_ext_reg_reg, 0x01, 0x4, CPU_ALL },
+    { "ge", op_ext_reg_reg, 0x01, 0x5, CPU_ALL },
+    { "ltu", op_ext_reg_reg, 0x01, 0x6, CPU_ALL },
+    { "geu", op_ext_reg_reg, 0x01, 0x7, CPU_ALL },
 
-    { "btc", op_ext_reg_reg, 0x03, 0x0  },
-    { "bts", op_ext_reg_reg, 0x03, 0x1  },
+    { "btc", op_ext_reg_reg, 0x03, 0x0, CPU_ALL },
+    { "bts", op_ext_reg_reg, 0x03, 0x1, CPU_ALL },
 
-    { "sxt", op_reg_reg, 0x09, 0x0  },
-    { "subb", op_reg_reg_reg, 0x0b, 0x0  },
+    { "sxt", op_reg_reg, 0x09, 0x0, CPU_ALL },
+    { "subb", op_reg_reg_reg, 0x0b, 0x0, CPU_ENGINES },
 
-    { "add", op_reg_reg_reg, 0x11, 0x0  },
-    { "sub", op_reg_reg_reg, 0x13, 0x0  },
-    { "shl", op_reg_reg_reg, 0x15, 0x0  },
-    { "shr", op_reg_reg_reg, 0x17, 0x0  },
-    { "and", op_reg_reg_reg, 0x19, 0x0  },
-    { "or", op_reg_reg_reg, 0x1b, 0x0  },
-    { "inv", op_reg_reg, 0x1d, 0x0  },
-    { "xor", op_reg_reg_reg, 0x1f, 0x0  },
+    { "add", op_reg_reg_reg, 0x11, 0x0, CPU_ALL },
+    { "sub", op_reg_reg_reg, 0x13, 0x0, CPU_ALL },
+    { "shl", op_reg_reg_reg, 0x15, 0x0, CPU_ALL },
+    { "shr", op_reg_reg_reg, 0x17, 0x0, CPU_ALL },
+    { "and", op_reg_reg_reg, 0x19, 0x0, CPU_ALL },
+    { "or", op_reg_reg_reg, 0x1b, 0x0, CPU_ALL },
+    { "inv", op_reg_reg, 0x1d, 0x0, CPU_ALL },
+    { "xor", op_reg_reg_reg, 0x1f, 0x0, CPU_ALL },
 
     /* pseudo ops */
-    { "db", pseudo_db, 0x0, 0x0  },
-    { "dw", pseudo_dw, 0x0, 0x0  },
-    { "ds", pseudo_ds, 0x0, 0x0  },
-    { "align", pseudo_align, 0x0, 0x0  },
-    { "macro", pseudo_macro, 0x0, 0x0  },
-    { "endm", pseudo_macro, 0x0, 0x0  },
-    { "equ", pseudo_equ, 0x0, 0x0  },
-    { "proc", pseudo_proc, 0x0, 0x0  },
-    { "endp", pseudo_proc, 0x0, 0x0  },
-    { "global",pseudo_proc, 0x0, 0x0  },
-    { "org", pseudo_org, 0x0, 0x0  },
-    { "include", pseudo_include, 0x0, 0x0 },
-    { "chksum", pseudo_chksum, 0x0, 0x0 },
-    { "if", pseudo_if, 0x0, 0x0 },
-    { "ifdef", pseudo_ifdef, 0x0, 0x0 },
-    { "ifndef", pseudo_ifndef, 0x0, 0x0 },
-    { "else", pseudo_else, 0x0, 0x0 },
-    { "endif", pseudo_endif, 0x0, 0x0 },
-    { "extern", pseudo_extern, 0x0, 0x0 },
-    { "public", pseudo_public, 0x0, 0x0 },
-    { "entry", pseudo_entry, 0x0, 0x0 },
+    { "db", pseudo_db, 0x0, 0x0, CPU_ALL },
+    { "dw", pseudo_dw, 0x0, 0x0, CPU_ALL },
+    { "ds", pseudo_ds, 0x0, 0x0, CPU_ALL },
+    { "align", pseudo_align, 0x0, 0x0, CPU_ALL },
+    { "macro", pseudo_macro, 0x0, 0x0, CPU_ALL },
+    { "endm", pseudo_macro, 0x0, 0x0, CPU_ALL },
+    { "equ", pseudo_equ, 0x0, 0x0, CPU_ALL },
+    { "proc", pseudo_proc, 0x0, 0x0, CPU_ALL },
+    { "endp", pseudo_proc, 0x0, 0x0, CPU_ALL },
+    { "global",pseudo_proc, 0x0, 0x0, CPU_ALL },
+    { "org", pseudo_org, 0x0, 0x0, CPU_ALL },
+    { "include", pseudo_include, 0x0, 0x0, CPU_ALL },
+    { "chksum", pseudo_chksum, 0x0, 0x0, CPU_ALL },
+    { "if", pseudo_if, 0x0, 0x0, CPU_ALL },
+    { "ifdef", pseudo_ifdef, 0x0, 0x0, CPU_ALL },
+    { "ifndef", pseudo_ifndef, 0x0, 0x0, CPU_ALL },
+    { "else", pseudo_else, 0x0, 0x0, CPU_ALL },
+    { "endif", pseudo_endif, 0x0, 0x0, CPU_ALL },
+    { "extern", pseudo_extern, 0x0, 0x0, CPU_ALL },
+    { "public", pseudo_public, 0x0, 0x0, CPU_ALL },
+    { "entry", pseudo_entry, 0x0, 0x0, CPU_ALL },
+    { "cpu", pseudo_cpu, 0x0, 0x0, CPU_ALL },
 };
 
 typedef struct Register {
@@ -1875,7 +1888,36 @@ static int do_asm(FILE *inf, char *line)
 //fprintf(stderr, ">>>%s\n", line);
 //fprintf(stderr, "OPCODE: %s %d %X %X\n", opcode->name, opcode->type, opcode->op, opcode->ext_op);
 
-        if (opcode && !strcmp(opcode->name, "include")) {
+        if (opcode && !(opcode->cpus & CPU_MASK(target_cpu))) {
+            status_printf("Opcode '%s' is not supported by CPU '%s'\n",
+                          opcode->name, cpu_name(target_cpu));
+            error = UNSUPPORTED_CPU_OPCODE;
+            return 1;
+        }
+
+        if (opcode && opcode->type == pseudo_cpu) {
+            SKIP_BLANK(str);
+            char *name = str;
+            SKIP_TOKEN(str);
+            char tail = *str;
+            *str = 0;
+            int required_cpu = parse_cpu(name);
+            if (label || required_cpu != target_cpu) {
+                status_printf("Source requires CPU '%s'; selected CPU is '%s'\n",
+                              name, cpu_name(target_cpu));
+                error = CPU_MISMATCH;
+                return 1;
+            }
+            if (tail) {
+                str++;
+                SKIP_BLANK(str);
+                if (*str) {
+                    error = EXTRA_SYMBOLS;
+                    return 1;
+                }
+            }
+            print_listing_line(line);
+        } else if (opcode && !strcmp(opcode->name, "include")) {
             char name[512];
             if (label) {
                 error = SYNTAX_ERROR;
@@ -2176,7 +2218,7 @@ static int do_asm(FILE *inf, char *line)
                     SKIP_BLANK(str);
                 }
 
-                if (opcode->type == op_reg_const) {
+                if (opcode->type == op_reg_const || opcode->type == op_reg_context) {
                     char *tmp = str;
                     unsigned int reloc_offset = output_addr + 1;
                     reset_expr_reloc();
@@ -2185,6 +2227,23 @@ static int do_asm(FILE *inf, char *line)
                         return 1;
                     }
 
+                    int is_context = opcode->type == op_reg_context;
+                    int is_ldi8 = !strcmp(opcode->name, "ldi8");
+                    if ((is_context || is_ldi8) && expr_reloc_label) {
+                        error = EXTERN_NOT_ALLOWED_HERE;
+                        return 1;
+                    }
+                    if (!to_second_pass || src_pass == 2) {
+                        int limit = target_cpu == CPU_UCODE ? 63 : 31;
+                        if (is_context && (val < 0 || val > limit)) {
+                            error = INVALID_CONTEXT_INDEX;
+                            return 1;
+                        }
+                        if (is_ldi8 && (val < 0 || val > 255)) {
+                            error = INVALID_LDI8_CONSTANT;
+                            return 1;
+                        }
+                    }
                     if (src_pass == 2 && expr_reloc_label) {
                         add_reloc(expr_high_byte ? RELOC_MSB : RELOC_LSB,
                                   reloc_offset, expr_reloc_label);
@@ -2230,12 +2289,12 @@ static int do_asm(FILE *inf, char *line)
                                     add_label(&refs, tmp, output_addr + 1,
                                               src_line);
                                 }
-                                to_second_pass = 0;
-
-                                if (val > 16) {
+                                if ((!to_second_pass || src_pass == 2) &&
+                                        (target_cpu == CPU_UCODE ? (val < 0 || val > 15) : val > 16)) {
                                     error = CONSTANT_VALUE_TOO_BIG;
                                     return 1;
                                 }
+                                to_second_pass = 0;
                                 arg3 = ((val & 0x0f) << 1) | 0x01;
                             }
                         }
@@ -2247,6 +2306,22 @@ static int do_asm(FILE *inf, char *line)
                 if (strlen(str) > 0) {
                     error = EXTRA_SYMBOLS;
                 }
+            }
+
+            /* Stores/GSET read PC; comparisons encode a condition, not Rd.
+             * The new engine only supports explicit MOV/GGET jumps. */
+            if (target_cpu == CPU_UCODE && arg1 == 0 &&
+                    (opcode->type == op_reg_const ||
+                     opcode->type == op_reg_context ||
+                     opcode->type == op_reg ||
+                     opcode->type == op_reg_reg ||
+                     opcode->type == op_reg_reg_reg) &&
+                    opcode->op != 0x10 && opcode->op != 0x12 &&
+                    opcode->op != 0x18 && opcode->op != 0x14 &&
+                    opcode->op != 0x1a && opcode->op != 0x02 &&
+                    opcode->op != 0x06) {
+                error = UNSUPPORTED_PC_DESTINATION;
+                return 1;
             }
 
             if (opcode->type == pseudo_db || opcode->type == pseudo_ds
@@ -2465,13 +2540,13 @@ static int output_object(FILE *outf)
     }
 
     write_u16(outf, 0x5aa5);
-    write_u16(outf, 0x0001);
+    write_u16(outf, target_cpu == CPU_ORIGINAL ? 0x0001 : 0x0002);
     write_u16(outf, ent_count);
     write_u16(outf, ext_count);
     write_u16(outf, code_len);
     write_u32(outf, code_offset);
     write_u16(outf, entry_offset);
-    write_u16(outf, 0);
+    write_u16(outf, target_cpu);
     for (int i = 0; i < 14; i++) {
         fputc(0, outf);
     }
@@ -2581,7 +2656,8 @@ static char *get_error_string(int error)
     case EXPECTED_ARG_3:
         return "Expected argument 3";
     case CONSTANT_VALUE_TOO_BIG:
-        return "Constant value too big (> 16)";
+        return target_cpu == CPU_UCODE ? "4-bit constant must be in 0..15" :
+               "Constant value too big (> 16)";
     case MISSED_NAME_FOR_EQU:
         return "Missed name for equ";
     case MISSED_NAME_FOR_PROC:
@@ -2632,6 +2708,16 @@ static char *get_error_string(int error)
         return "Syntax error";
     case CANNOT_OPEN_FILE:
         return "Cannot open file";
+    case UNSUPPORTED_CPU_OPCODE:
+        return "Opcode is not supported by the selected CPU";
+    case CPU_MISMATCH:
+        return "Source CPU does not match --cpu";
+    case INVALID_CONTEXT_INDEX:
+        return "Context index out of range (j11: 0..31; ucode: 0..63)";
+    case INVALID_LDI8_CONSTANT:
+        return "LDI8 constant must be in 0..255";
+    case UNSUPPORTED_PC_DESTINATION:
+        return "ucode allows PC destinations only with MOV, GGET or GGETR";
     default:
         return "No error";
     }
@@ -2682,10 +2768,10 @@ static int set_listing_file(char *name)
 static void print_usage(char *prog)
 {
     status_printf(
-        "Usage: %s [-verilog|-binary|-object] [--list <file|->] "
+        "Usage: %s [--cpu original|j11|ucode] [-verilog|-binary|-object] [--list <file|->] "
         "[-D name[=expr]|--define name[=expr]] [-U name|--undef name] "
         "<input_file> [output_file]\n"
-        "       %s [-verilog|-binary|-obj] [--list=<file|->] "
+        "       %s [--cpu=original|j11|ucode] [-verilog|-binary|-obj] [--list=<file|->] "
         "[-Dname[=expr]|--define=name[=expr]] [-Uname|--undef=name] "
         "<input_file> [output_file]\n",
         prog, prog);
@@ -2813,7 +2899,31 @@ int main(int argc, char *argv[])
     }
 
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-verilog")) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            print_usage(argv[0]);
+            return 0;
+        } else if (!strcmp(argv[i], "--list-cpus")) {
+            status_printf("original  rtl/cpu.v (default)\n"
+                          "j11       rtl/j11_microengine.v\n"
+                          "ucode     rtl/ucode_cpu.v\n");
+            return 0;
+        } else if (!strcmp(argv[i], "--cpu") || !strncmp(argv[i], "--cpu=", 6)) {
+            const char *name;
+            if (!strcmp(argv[i], "--cpu")) {
+                if (++i >= argc) {
+                    print_usage(argv[0]);
+                    return 1;
+                }
+                name = argv[i];
+            } else {
+                name = argv[i] + 6;
+            }
+            target_cpu = parse_cpu(name);
+            if (target_cpu < 0) {
+                status_printf("Unknown CPU '%s'; choose original, j11 or ucode\n", name);
+                return 1;
+            }
+        } else if (!strcmp(argv[i], "-verilog")) {
             out_type = OUT_VERILOG;
         } else if (!strcmp(argv[i], "-binary")) {
             out_type = OUT_BINARY;
@@ -2873,6 +2983,9 @@ int main(int argc, char *argv[])
                 print_usage(argv[0]);
                 return 1;
             }
+        } else if (argv[i][0] == '-') {
+            status_printf("Unknown option: %s\n", argv[i]);
+            return 1;
         } else if (!input_name) {
             input_name = argv[i];
         } else if (!output_name) {
@@ -2886,6 +2999,20 @@ int main(int argc, char *argv[])
     if (!input_name) {
         print_usage(argv[0]);
         return 1;
+    }
+
+    const char *cpu_symbols[] = {
+        "__CPU_ORIGINAL__", "__CPU_J11__", "__CPU_UCODE__"
+    };
+    for (int cpu = 0; cpu < CPU_COUNT; cpu++) {
+        char define[64];
+        if (find_label(&equs, (char *)cpu_symbols[cpu])) {
+            status_printf("Reserved CPU symbol: %s\n", cpu_symbols[cpu]);
+            return 1;
+        }
+        snprintf(define, sizeof(define), "%s=%d",
+                 cpu_symbols[cpu], cpu == target_cpu);
+        if (add_cmdline_define(define)) return 1;
     }
 
     start_addr = 0;

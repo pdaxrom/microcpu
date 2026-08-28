@@ -1,9 +1,10 @@
+`include "include/j11_test_target.vh"
 `timescale 1ns/1ps
 
 // Fast, deterministic bus for the large assembled FIS arithmetic corpus.
 // The same guest harness also runs through tb_j11_cpu_io's actual SPI FRAM.
 module tb_j11_fis;
-	parameter UCODE_FILE = "build/j11_ucode.words";
+	parameter UCODE_FILE = `J11_UCODE_FILE;
 	reg clk = 0, rst = 1, ready = 0, error = 0;
 	wire req, wr, byte_access, bank;
 	wire [15:0] address, wdata;
@@ -13,7 +14,7 @@ module tb_j11_fis;
 	integer i, cycles, max_cycles = 10000000;
 	integer fault_read = -1, fault_write = -1;
 	wire injected_error = (!wr && address == fault_read) || (wr && address == fault_write);
-	j11_microengine #(.UROM_WORDS(`J11_UROM_WORDS), .UCODE_FILE(UCODE_FILE)) dut (
+	`J11_ENGINE_MODULE #(.UROM_WORDS(`J11_UROM_WORDS), .UCODE_FILE(UCODE_FILE)) dut (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr),
 		.guest_byte(byte_access), .guest_bank(bank), .guest_address(address),
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),

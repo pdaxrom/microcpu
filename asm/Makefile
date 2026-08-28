@@ -12,6 +12,8 @@ MICROASM_OBJS = microasm.o
 MICROLINK_OBJS = microlink.o
 MICRODIS_OBJS = microdis.o
 
+$(MICROASM_OBJS) $(MICROLINK_OBJS) $(MICRODIS_OBJS): cpu_target.h
+
 microasm: $(MICROASM_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
@@ -29,3 +31,9 @@ clean:
 
 codestyle:
 	astyle --style=kr --indent=spaces=4 --add-braces *.c
+
+PYTHON ?= python3
+.PHONY: test
+test: all
+	sh scripts/test-asm-smoke.sh
+	$(PYTHON) tests/test_cpu_profiles.py
