@@ -18,7 +18,7 @@ mechanism, not a second implementation of J-11 architectural behavior.
 - banked kernel/supervisor/user stack pointers (follow-up to the V1 milestone)
 - guest RAM backed by the board's 128 KiB SPI FRAM
 - integer instruction set first
-- FP11, CIS, and memory management deferred; FIS conditional on remaining uROM
+- FIS compatibility extension in microcode; FP11, CIS, and MMU deferred
 
 The agreed priority instruction checklist and active acceptance work are in
 [`TODO.md`](../TODO.md#j-11-v1-active-plan-no-mmu). The user-authorized follow-up
@@ -36,7 +36,7 @@ and FIS only if it fits. MMU and FP11 remain outside the active scope.
 ```
 
 Microcode instruction fetches never use the guest bus. The current uROM is
-**3584 x 16 bits**, with **3002 words occupied and 582 free**. `ucode/config.mk`
+**3584 x 16 bits**, with **3391 words occupied and 193 free**. `ucode/config.mk`
 supplies the image size to both Makefiles; the engine and board defaults agree.
 Guest memory transactions use a separate request/ready interface.
 
@@ -226,17 +226,62 @@ injecting architectural state. The reference runner now verifies CPUERR,
 PIRQ and CCR as well as R0..R7, PSW, inactive SP banks and guest RAM:
 **201/201** selected J-11 no-MMU snapshots, including **29 EIS** cases.
 
-### FIS budget decision
+### FIS fits: 389 words including decoding
 
-All four FIS instructions remain **unimplemented**. The CPU I/O checkpoint had
-only 70 free words in a simulated 3072-word ROM. The approved HC1200 memory
-repacking now fits 3584 words in Diamond, leaving **582 words**. A full
-FADD/FSUB/FMUL/FDIV implementation including normalization, rounding and
-overflow/underflow/divide-by-zero handling must be assessed against that budget;
-its fit is not yet claimed.
-`fis_unavailable.asm` verifies that all four assembled opcodes enter reserved
-vector `010` without reading operands. This is a missing-feature test, not a
-FIS arithmetic test. FIS is distinct from FP11; ODT remains a later task.
+The user-requested FIS compatibility extension is resident in
+`ucode/j11_fis.asm`: **FADD, FSUB, FMUL, FDIV**. It adds **389 words** to the
+3002-word baseline, for **3391/3584 words**, leaving **193 words**. There is no
+uROM enlargement, new native opcode, RTL arithmetic unit, or additional EBR.
+Memory-helper scratch is reused only while no memory call is active; native
+v0 is restored to the guest PC before calls so bus faults save the proper PC.
+
+The four operations share unpacking, normalization, rounding, packing and
+error handling. Mantissas are processed as integer register pairs, not host
+`float`: all eight exponent bits are supported. Results use nearest rounding
+with halfway magnitudes rounded away from zero; exponent-zero inputs are
+canonicalized to clean zero. Six guard positions and sticky alignment retain
+small operands. Arithmetic errors do not consume operands/Rn before entering
+`0244` with NZVC `02` (overflow), `012` (underflow), or `013` (divide by zero).
+Successful operations store at `4(Rn)`/`6(Rn)`, then advance Rn by four.
+Ordinary memory errors use `004`; a failed second result write leaves the
+already completed first write, without advancing Rn or committing NZVC.
+
+Format, rounding and error conventions were checked against DEC's
+[KE11-E/KE11-F User's Manual, sections 3.2.2–3.2.3](https://ftpmirror.your.org/pub/misc/bitsavers/www.computer.museum.uq.edu.au/pdf/EK-KE11E-OP-001%20KE11-E%20and%20KE11-F%20Instruction%20Set%20Options%20User%27s%20Manual.pdf)
+and [Technical Manual, sections 3.2.3 and 4.7.4](https://ftpmirror.your.org/pub/misc/bitsavers/www.computer.museum.uq.edu.au/pdf/EK-KE11E-TM-002%20KE11-E%20and%20KE11-F%20Instruction%20Set%20Options%20Manual.pdf).
+This is not a cycle/guard-bit-exact KE11-F hardware replica: unlike its
+documented 24-place add-alignment shortcut, this extension retains smaller
+operands when they affect correctly rounded F-format results. The reference
+tests explicitly define this arithmetic behavior; the complete historical
+KE11-F diagnostic suite has not been run. FIS is an extension to this J-11
+configuration, not the native J-11 FP11 instruction set.
+
+The C-core is not the floating-point oracle: its host `float` conversion loses
+part of the DEC exponent range, and its error path saves only an error word.
+Here the existing mode-aware trap preserves the **full PSW**, including IPL
+and mode, with the FIS error flags. The independent oracle uses exact Python
+`Fraction` arithmetic and one final rounding. Generated vectors are assembly
+compiled by `microasm11`, not opcodes injected by the testbench.
+
+`make -C testbench j11-fis-test` runs handwritten arithmetic, all Rn including
+SP/PC, user-SP trap/return, TRACE, dirty zero, odd/reserved opcode and injected
+read/write-fault tests. Arithmetic/stack smoke tests use actual SPI FRAM.
+`j11-fis-reference-test` runs 4040 directed/random cases on a fast flat bus,
+including 1024 seeded random samples and rounding/exponent boundaries.
+The exact same production image is tested against Lattice's seven-bank EBR
+model by `j11-ebr-test`. These are local simulation checks, not a new Diamond
+place-and-route or physical-board test.
+
+FIS is enabled by default. A separate `J11_DISABLE_FIS` assembly define keeps
+all four opcodes reserved; `j11-nofis-test` checks that profile without
+overwriting the production board image. FP11 and ODT remain deferred.
+
+Final verification on 2026-08-28 passes **4040/4040** exact-reference cases
+(1235 each FADD/FSUB, 785 each FMUL/FDIV), including 151 overflow, 139 underflow
+and 92 divide-by-zero cases. The complete local regression and **201/201**
+selected J-11 no-MMU snapshots pass. The EBR path passes all 3584 ROM words,
+the assembled instruction/CPU/FIS suites and the same 201/201 snapshots.
+Board/testbench images are identical. The strict no-FIS profile passes too.
 
 ### Microcoded timer and reference difference
 
@@ -293,8 +338,10 @@ Words are stored little-endian.
   notifications, unmapped I/O, and service-bank checks
 - `testbench/tb_j11_peripherals.v`: assembled guest CSR/IRQ/WAIT/RESET tests,
   actual UART pin decoding, deterministic ticks and private-address isolation
-- `testbench/tb_j11_cpu_io.v`: assembled CPU-register, stack, PIRQ and reserved
-  FIS tests; optional raw-bus error injection for NXM/emergency-stack failure
+- `testbench/tb_j11_cpu_io.v`: assembled CPU-register, stack, PIRQ and FIS
+  tests over SPI FRAM; raw-bus error injection for NXM/emergency-stack failure
+- `testbench/tb_j11_fis.v`: fast flat-bus FIS corpus and bus-abort tests;
+  `run_fis_reference.py` generates microasm11 source from an exact oracle
 - `testbench/board/tb_board_j11_microcomp.v`: verifies the same transaction
   through the actual HC1200 top-level package pins
 
@@ -345,6 +392,10 @@ TRACE and JED export in an isolated Ubuntu checkout:
 | Registers (PFU + PIO) | 377 | 1346 | 969 |
 | Microcode words | 3002 | 3584 | 582 |
 
+This is the last **Diamond hardware checkpoint, before FIS**. The current
+FIS image uses 3391 words (193 free) in those same seven banks. It changes
+initialization data only; Diamond place-and-route has not been repeated for it.
+
 The previous checkpoint (`0522437`) used 1279 LUTs and 462 registers. The
 follow-up saves **141 LUTs and 85 registers**, without changing the native ISA,
 microinstruction cycle count, guest microcode, uROM capacity or board pinout:
@@ -383,9 +434,9 @@ no disk registers, DMA, card initialization, or disk-image handling are present.
 
 SDHC/SDXC transfers use 512-byte blocks; see the SD Association's
 [Physical Layer specification, section 7](https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver5.10.pdf).
-All EBRs are currently reserved for uROM. Keeping the 582-word microcode reserve
-(including the pending FIS assessment) rules out simply dedicating an extra EBR
-to a sector buffer in this configuration.
+All EBRs are currently reserved for uROM. The FIS image occupies 3391 words,
+which itself requires all seven banks; the remaining reserve is 193 words.
+An EBR cannot simply be reassigned to a sector buffer in this configuration.
 
 A candidate to evaluate is a separate SD SPI connection, a small byte/word
 FIFO, and streamed transfers to/from FRAM with explicit bus arbitration and

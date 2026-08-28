@@ -119,7 +119,7 @@ needed for this acceptance step. Deferred work below remains deferred.
     and WAIT, nominally 60 Hz at 26.6 MHz. It has no guest timer CSR or IRQ vector.
   - [x] Verify equal-IPL masking, BR6 over BR4, RX over TX, request ACK versus
     DONE, IE re-arm, RESET flags/state, private-address isolation and odd words.
-- [ ] FIS (`FADD`, `FSUB`, `FMUL`, `FDIV`): add all four instructions with
+- [x] FIS (`FADD`, `FSUB`, `FMUL`, `FDIV`): add all four instructions with
   rounding/error tests if they fit the remaining current uROM after SP/I/O work.
   Do not confuse FIS with FP11 or silently enlarge the FIS budget.
   - [x] Recheck budget after CPU/SP/I/O work: **3002/3072 words, 70 free**.
@@ -127,8 +127,23 @@ needed for this acceptance step. Deferred work below remains deferred.
     this remainder. It is not implemented; no partial arithmetic is claimed.
     `fis_unavailable.asm` checks all four opcodes still trap through `010`.
   - [x] Approved uROM expansion fits Diamond: **3002/3584 words, 582 free**.
-  - [ ] Reassess all four FIS instructions against the recovered 582 words;
-    their arithmetic/rounding/error handling is not implemented yet.
+  - [x] Reassess all four instructions against the recovered 582 words:
+    **389 additional words**, **3391/3584 occupied**, **193 free**. All four
+    are resident in `ucode/j11_fis.asm`; no production RTL or capacity change.
+    Integer register-pair arithmetic covers the full DEC exponent range,
+    normalization, nearest/ties-away rounding, clean/dirty zero and `0244`
+    arithmetic errors. FIS is a compatibility extension, not FP11 or a
+    guard-bit-exact KE11-F hardware clone; details are in `docs/fpga-j11.md`.
+  - [x] Add microasm11 guest tests for arithmetic/rounding/errors, R0..R7,
+    user SP and trap frames, TRACE, reserved/odd cases, and partial bus faults.
+    Use an independent exact rational oracle instead of the C host-float FIS
+    path. The diagnostic profile `J11_DISABLE_FIS` retains reserved opcodes.
+  - [x] Final Mac verification (2026-08-28): **4040/4040** FIS reference
+    cases, the full `j11-test` suite, and **201/201** no-MMU core snapshots.
+    The actual seven-bank EBR model passes all 3584 ROM words, assembled
+    instruction/CPU/FIS tests, and the same 201/201 snapshots (29 EIS).
+    `j11-nofis-test` also passes. Board/testbench images match; no Diamond
+    rerun, device programming or generated-file commit was performed.
 - [x] Move the 8x16 host and 32x16 context arrays to distributed RAM; check
   3584x16 uROM packing, total LUT/EBR use and timing on HC1200 in Diamond.
 - [x] Full local regression and source-only checkpoint for CPU I/O/stack work.
@@ -196,9 +211,10 @@ Lattice's simulation models.
   FIFO: no EBR sector buffer is available while retaining the 3584-word uROM.
   Do not claim the entire disk controller fits from the RISC saving alone.
 
-The microcode remains **3002/3584 words**. FIS is still pending against the
-582-word reserve; ODT remains deferred. No disk controller or SD access has
-been implemented and no board programming was performed.
+At that RISC checkpoint the microcode was **3002/3584 words**. The subsequent
+FIS fit check adds 389 words, for **3391/3584 words** and **193 free**. ODT
+remains deferred. No disk controller or SD access has been implemented and
+no board programming was performed.
 
 ### Deferred: not part of the active follow-up
 

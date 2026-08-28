@@ -99,6 +99,12 @@ decode
 	beq subtract_one_branch, v3, sp	; 077RNN: SOB
 	sub sp, sp, 3
 	beq exclusive_or, v3, sp	; 074RDD: XOR
+	ifndef J11_DISABLE_FIS
+	mov v3, v1
+	shr v3, v3, 5
+	set v4, $03d0		; preserve sp's zero high byte for branch decoding
+	fbeq fis_entry, v3, v4	; 075000..075037 only
+	endif
 
 	setl sp, $80
 	bltu decode_single_operand, v2, sp
@@ -1963,3 +1969,6 @@ previous_sp_same_mode
 	include j11_peripherals.asm
 	include j11_cpu_io.asm
 	include j11_stack.asm
+	ifndef J11_DISABLE_FIS
+	include j11_fis.asm
+	endif

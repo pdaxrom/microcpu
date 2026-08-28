@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 
 module tb_j11_cpu_io;
+	parameter UCODE_FILE = "build/j11_ucode.words";
 	reg clk = 0, rst = 1;
 	wire req, wr, byte_access, bank, ready, error, guest_reset, irq;
 	wire [2:0] level;
@@ -8,7 +9,7 @@ module tb_j11_cpu_io;
 	wire [15:0] address, wdata, rdata;
 	wire tx, cs, sck, mosi, miso;
 	reg [1023:0] program_file;
-	integer cycles, expected_cause = 3, expected_cpuerr = -1;
+	integer cycles, max_cycles = 2000000, expected_cause = 3, expected_cpuerr = -1;
 	integer fault_read_address = -1, fault_write_address = -1;
 	wire injected_error = ready && ((!wr && address == fault_read_address) ||
 		(wr && address == fault_write_address));
@@ -16,7 +17,7 @@ module tb_j11_cpu_io;
 	// All architectural assertions are assembled guest code, not testbench
 	// mutations of processor state. Use the real board UART/time/FRAM path.
 	j11_microengine #(.UROM_WORDS(`J11_UROM_WORDS),
-		.UCODE_FILE("build/j11_ucode.words")) engine (
+		.UCODE_FILE(UCODE_FILE)) engine (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr),
 		.guest_byte(byte_access), .guest_bank(bank), .guest_address(address),
 		.guest_wdata(wdata), .guest_rdata(rdata), .guest_ready(ready),
@@ -48,11 +49,12 @@ module tb_j11_cpu_io;
 		if ($value$plusargs("FAULT_WRITE=%o", fault_write_address)) begin end
 		if ($value$plusargs("EXPECT_CAUSE=%d", expected_cause)) begin end
 		if ($value$plusargs("EXPECT_CPUERR=%o", expected_cpuerr)) begin end
+		if ($value$plusargs("TIMEOUT=%d", max_cycles)) begin end
 		#1;
 		$readmemh(program_file, fram.memory);
 		repeat (4) @(negedge clk);
 		rst = 0;
-		for (cycles = 0; cycles < 2000000 && engine.cause_reg < 3; cycles = cycles + 1)
+		for (cycles = 0; cycles < max_cycles && engine.cause_reg < 3; cycles = cycles + 1)
 			@(negedge clk);
 		if (engine.cause_reg != expected_cause || engine.jctx[0] !== 16'o012345 ||
 				(expected_cpuerr >= 0 && (engine.jctx[23] >> 8) !== expected_cpuerr)) begin

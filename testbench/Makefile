@@ -120,7 +120,7 @@ board-mcu-bootload-rx: build/board_mcu_bootload.vvp build/bootldr-mcu-board.hex 
 board-microcomp-memmap: build/board_microcomp.vvp build/microcomp_memmap.hex
 	$(VVP) build/board_microcomp.vvp +SRAM_HEX=build/microcomp_memmap.hex
 
-j11-test: j11-alu-test j11-pc-test j11-shift-test j11-ebr-pack-test j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-cpu-io-test j11-board-test j11-board-execute-test j11-board-ucode
+j11-test: j11-alu-test j11-pc-test j11-shift-test j11-ebr-pack-test j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-cpu-io-test j11-fis-test j11-board-test j11-board-execute-test j11-board-ucode
 
 .PHONY: j11-shift-test
 build/tb_j11_shift.vvp: tb_j11_shift.v ../rtl/j11_microengine.v | build
@@ -151,13 +151,44 @@ j11-ebr-pack-test:
 build/tb_j11_cpu_io.vvp: $(J11_CPU_IO_VSRC) ../ucode/config.mk | build
 	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o $@ $(J11_CPU_IO_VSRC)
 
-j11-cpu-io-test: build/tb_j11_cpu_io.vvp build/j11_ucode.words build/guest_cpu_registers.hex build/guest_cpu_psw.hex build/guest_cpu_pirq.hex build/guest_cpu_stack.hex build/guest_cpu_nxm.hex build/guest_fis_unavailable.hex
+j11-cpu-io-test: build/tb_j11_cpu_io.vvp build/j11_ucode.words build/guest_cpu_registers.hex build/guest_cpu_psw.hex build/guest_cpu_pirq.hex build/guest_cpu_stack.hex build/guest_cpu_nxm.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_registers.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_psw.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_pirq.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_stack.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154
-	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_fis_unavailable.hex
+
+.PHONY: j11-fis-test j11-fis-reference-test j11-nofis-test
+build/tb_j11_fis.vvp: tb_j11_fis.v ../rtl/j11_microengine.v ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_fis -o $@ $(filter %.v,$^)
+
+build/guest_fis.bin: j11_programs/fis_test.inc
+
+j11-fis-test: build/tb_j11_cpu_io.vvp build/tb_j11_fis.vvp build/j11_ucode.words build/guest_fis.hex build/guest_fis_edges.hex build/guest_fis_faults.hex build/guest_fis_partial_write.hex
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest test_fis_reference
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_fis.hex
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_fis_edges.hex
+	$(VVP) build/tb_j11_fis.vvp +PROGRAM=build/guest_fis_faults.hex +FAULT_READ=06006
+	$(VVP) build/tb_j11_fis.vvp +PROGRAM=build/guest_fis_faults.hex +FAULT_WRITE=06004
+	$(VVP) build/tb_j11_fis.vvp +PROGRAM=build/guest_fis_partial_write.hex +FAULT_WRITE=06006
+
+# Larger arithmetic corpus is separate from the quick regression target.
+j11-fis-reference-test: build/tb_j11_fis.vvp build/j11_ucode.words check-microasm11
+	$(PYTHON) run_fis_reference.py --asm11 $(ASM11) --vvp $(VVP)
+
+# Optional strict profile keeps FIS opcodes reserved; never overwrites the
+# production ROM or the generated board image.
+build/j11_nofis.bin: $(J11_UCODE_ASM) $(wildcard ../ucode/j11_*.asm ../ucode/j11_*.inc) ../asm/include/pseudo.inc $(ASM) | build
+	$(ASM) -D J11_DISABLE_FIS -binary $< $@ > build/j11_nofis.asm.log 2>&1 || { cat build/j11_nofis.asm.log; exit 1; }
+
+build/j11_nofis.words: build/j11_nofis.bin ../ucode/config.mk
+	{ printf '@0000\n'; $(OD) -An -v -tx2 $<; printf '@%04x\n00b0\n' $$(( $(J11_UROM_WORDS) - 1 )); } > $@
+
+build/tb_j11_nofis.vvp: $(J11_CPU_IO_VSRC) ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -Ptb_j11_cpu_io.UCODE_FILE='"build/j11_nofis.words"' -o $@ $(J11_CPU_IO_VSRC)
+
+j11-nofis-test: build/tb_j11_nofis.vvp build/j11_nofis.words build/guest_fis_unavailable.hex
+	$(VVP) build/tb_j11_nofis.vvp +PROGRAM=build/guest_fis_unavailable.hex
 
 .PHONY: j11-peripherals-test
 build/tb_j11_peripherals.vvp: $(J11_PERIPHERAL_VSRC) ../ucode/config.mk | build
@@ -236,10 +267,14 @@ j11-ebr-test: j11-board-ucode build/j11_ucode.words build/core_reference_export 
 	$(IVERILOG) -g2012 -Wall -s tb_j11_execute -o build/tb_j11_execute_ebr.vvp $(J11_EBR_FLAGS) $(J11_EXECUTE_VSRC) $(J11_EBR_VSRC)
 	$(VVP) build/tb_j11_execute_ebr.vvp
 	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o build/tb_j11_cpu_io_ebr.vvp $(J11_EBR_FLAGS) $(J11_CPU_IO_VSRC) $(J11_EBR_VSRC)
-	@for test in cpu_registers cpu_psw cpu_pirq cpu_stack fis_unavailable; do \
+	@for test in cpu_registers cpu_psw cpu_pirq cpu_stack fis fis_edges; do \
 		$(VVP) build/tb_j11_cpu_io_ebr.vvp +PROGRAM=build/guest_$$test.hex || exit 1; \
 	done
 	$(VVP) build/tb_j11_cpu_io_ebr.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154
+	$(IVERILOG) -g2012 -Wall -s tb_j11_fis -o build/tb_j11_fis_ebr.vvp $(J11_EBR_FLAGS) tb_j11_fis.v ../rtl/j11_microengine.v $(J11_EBR_VSRC)
+	$(VVP) build/tb_j11_fis_ebr.vvp +PROGRAM=build/guest_fis_faults.hex +FAULT_READ=06006
+	$(VVP) build/tb_j11_fis_ebr.vvp +PROGRAM=build/guest_fis_faults.hex +FAULT_WRITE=06004
+	$(VVP) build/tb_j11_fis_ebr.vvp +PROGRAM=build/guest_fis_partial_write.hex +FAULT_WRITE=06006
 	$(IVERILOG) -g2012 -Wall -s tb_j11_core_reference -o build/tb_j11_core_reference_ebr.vvp $(J11_EBR_FLAGS) tb_j11_core_reference.v ../rtl/j11_microengine.v $(J11_EBR_VSRC)
 	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP) --banks --testbench build/tb_j11_core_reference_ebr.vvp
 

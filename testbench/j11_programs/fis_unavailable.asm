@@ -1,4 +1,4 @@
-	; FIS is deferred for lack of uROM, not silently mapped to FP11 or NOP.
+	; Strict optional J11_DISABLE_FIS profile: all four opcodes stay reserved.
 	cpu dcj-11
 	macro check
 	cmp #1, #2
