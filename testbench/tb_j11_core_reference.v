@@ -71,7 +71,11 @@ module tb_j11_core_reference;
 		// state, not its reset policy: hardware reset zeros both independent sets.
 		for (i = 0; i < 6; i = i + 1) deposit_context(32+i, fixture[32+i]);
 		if (fixture[24]) begin
+			`ifdef UCODE_WORD_PC
+			dut.word_pc = wait_pc[12:1];
+			`else
 			dut.upc = wait_pc;
+			`endif
 			deposit_cpu_io();
 		end
 		started = fixture[24] != 0;

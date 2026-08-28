@@ -355,7 +355,7 @@ clean:
 
 # New specialized CPU, separate RTL, firmware and output paths.
 J11_V2_DEPS = $(wildcard ../ucode/v2/*.asm ../ucode/v2/*.inc) ../ucode/config.mk
-J11_V2_FLAGS = -DJ11_ENGINE_MODULE=ucode_cpu -DJ11_BOARD_MODULE=ucode_hc1200_microcomp \
+J11_V2_FLAGS = -DUCODE_WORD_PC -DJ11_ENGINE_MODULE=ucode_cpu -DJ11_BOARD_MODULE=ucode_hc1200_microcomp \
 	-DJ11_UCODE_FILE='"build/j11_ucode_v2.words"'
 J11_V2_COMMON = ../rtl/ucode_cpu.v ../rtl/spi_fram_guest_ram.v \
 	../boards/hc1200-microcomp/uart.v ../boards/hc1200-microcomp/j11_guest_bus.v spi_fram_model.v
@@ -383,9 +383,10 @@ build/ucode_native.words: build/ucode_native.bin ../ucode/make_urom_ebr.py ../uc
 	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
 
 .PHONY: ucode-test ucode-native-test ucode-j11-test ucode-core-test ucode-fis-reference-test ucode-nofis-test
-ucode-native-test: build/ucode_ucode_native.vvp build/ucode_native.words build/ucode_j11_alu.vvp
+ucode-native-test: build/ucode_ucode_native.vvp build/ucode_native.words build/ucode_j11_alu.vvp build/ucode_ucode_datapath.vvp
 	$(VVP) build/ucode_ucode_native.vvp
 	$(VVP) build/ucode_j11_alu.vvp
+	$(VVP) build/ucode_ucode_datapath.vvp
 
 ucode-j11-test: $(addprefix build/ucode_,$(addsuffix .vvp,$(filter-out j11_core_reference,$(J11_V2_TESTS)))) build/ucode_board.vvp build/j11_ucode_v2.words $(J11_GUEST_HEXES)
 	$(VVP) build/ucode_j11_fetch.vvp

@@ -104,7 +104,10 @@ module ucode_cpu #(
 
 	reg [15:0] uir;
 	wire [15:0] memory_read_data;
-	reg [15:0] upc;
+	// Native code is an 8-KiB, word-aligned window. Firmware labels, LR and
+	// debug ports still use byte addresses; no byte-PC incrementer is needed.
+	reg [11:0] word_pc;
+	wire [15:0] upc = {3'b0, word_pc, 1'b0};
 	reg [15:0] host_read_data;
 	reg [15:0] operand_a;
 	reg [15:0] operand_b;
@@ -134,7 +137,7 @@ module ucode_cpu #(
 	wire [5:0] context_index = uir[13:8];
 	wire absolute_transfer = kind == INST_CALL || kind == INST_JMP;
 	wire [15:0] absolute_target = {3'b0, uir[3:0], uir[15:8], 1'b0};
-	wire [15:0] exec_pc = upc + 1'b1;
+	wire [15:0] exec_pc = {3'b0, word_pc, 1'b1};
 	// The read address stays at dest after ST_READ_D, so the synchronous RAM
 	// output already holds the destination operand throughout ST_EXEC.
 	wire [15:0] operand_dest = dest == 0 ? exec_pc : host_read_data;
@@ -142,10 +145,11 @@ module ucode_cpu #(
 	// signed branches. Other instructions always select the ordinary +2.
 	wire relative_branch = !op[0] && kind == INST_B;
 	wire conditional_skip = op[0] && (kind == ALU_CMP || kind == ALU_BIT);
-	wire [15:0] pc_step = relative_branch ?
-		{{4{dest[2]}}, dest, immediate8, 1'b0} :
-		(conditional_skip && skip_taken ? 16'd4 : 16'd2);
-	wire [15:0] next_pc = upc + pc_step;
+	wire [11:0] pc_step = relative_branch ?
+		{dest[2], dest, immediate8} :
+		(conditional_skip && skip_taken ? 12'd2 : 12'd1);
+	wire [11:0] next_word_pc = word_pc + pc_step;
+	wire [15:0] next_pc = {3'b0, next_word_pc, 1'b0};
 	localparam integer UROM_ADDR_WIDTH = $clog2(UROM_WORDS);
 	localparam integer CONTEXT_BASE = UROM_WORDS - 64;
 	wire [UROM_ADDR_WIDTH-1:0] fetch_address =
@@ -434,7 +438,7 @@ module ucode_cpu #(
 
 	always @(posedge clk) begin
 		if (rst) begin
-			upc <= 0;
+			word_pc <= 0;
 			uir <= 0;
 			state <= ST_CLEAR;
 			clear_index <= 0;
@@ -502,7 +506,7 @@ module ucode_cpu #(
 
 			ST_EXEC: begin
 				if (absolute_transfer) begin
-					upc <= absolute_target;
+					word_pc <= absolute_target[12:1];
 					state <= ST_FETCH;
 				end else if (!op[0]) begin
 					case (kind)
@@ -521,16 +525,16 @@ module ucode_cpu #(
 					INST_SETL,
 					INST_SETH,
 					INST_LDI8: begin
-						upc <= next_pc;
+						word_pc <= next_word_pc;
 						state <= ST_FETCH;
 					end
 					INST_MOV: begin
-						upc <= dest == 0 ? operand_a : next_pc;
+						word_pc <= dest == 0 ? operand_a[12:1] : next_word_pc;
 						state <= ST_FETCH;
 					end
 					INST_GGET,
 					INST_GGETR: begin
-						upc <= dest == 0 ? context_read_value : next_pc;
+						word_pc <= dest == 0 ? context_read_value[12:1] : next_word_pc;
 						state <= ST_FETCH;
 					end
 					INST_GSET,
@@ -550,19 +554,19 @@ module ucode_cpu #(
 						end
 						default: begin end
 						endcase
-						upc <= next_pc;
+						word_pc <= next_word_pc;
 						state <= ST_FETCH;
 					end
 					INST_GETF: begin
-						upc <= next_pc;
+						word_pc <= next_word_pc;
 						state <= ST_FETCH;
 					end
 					INST_B: begin
-						upc <= next_pc;
+						word_pc <= next_word_pc;
 						state <= ST_FETCH;
 					end
 					default: begin
-						upc <= next_pc;
+						word_pc <= next_word_pc;
 						state <= ST_FETCH;
 					end
 					endcase
@@ -571,7 +575,7 @@ module ucode_cpu #(
 						alu_flags <= {
 							operand_a[15], operand_a == 0, 1'b0, 1'b0
 						};
-						upc <= next_pc;
+						word_pc <= next_word_pc;
 						state <= ST_FETCH;
 					end else begin
 						shift_count <= initial_shift_count;
@@ -581,7 +585,7 @@ module ucode_cpu #(
 					if (kind != ALU_CMP && kind != ALU_BIT) begin
 						alu_flags <= alu_next_flags;
 					end
-					upc <= next_pc;
+					word_pc <= next_word_pc;
 					state <= ST_FETCH;
 				end
 			end
@@ -592,7 +596,7 @@ module ucode_cpu #(
 						shifted_value[15], shifted_value == 0,
 						1'b0, shift_carry
 					};
-					upc <= next_pc;
+					word_pc <= next_word_pc;
 					shift_count <= 0;
 					state <= ST_FETCH;
 				end else begin
@@ -608,9 +612,9 @@ module ucode_cpu #(
 					guest_req <= 0;
 					if (guest_error) begin
 						cause_reg <= 16'h0001;
-						upc <= BUS_ERROR_PC;
+						word_pc <= BUS_ERROR_PC[12:1];
 					end else begin
-						upc <= next_pc;
+						word_pc <= next_word_pc;
 					end
 					state <= ST_FETCH;
 				end

@@ -237,4 +237,36 @@ memory words, 1152 context writes, native/guest tests and the same 209 core
 snapshots. The original and preserved J-11 RTL/firmware are byte-identical
 to `d4dabf1`.
 
-Word-addressed internal uPC and carry-chain instructions are the next stage.
+## Word-addressed uPC and rejected carry experiment (stage 3)
+
+The new engine now stores a 12-bit **word PC**, with a 12-bit relative adder.
+Firmware labels, indirect targets, LR and debug addresses still use bytes.
+Reading native PC at address A returns A+1 by concatenation, without an
+extra incrementer. Fall-through, skips and branches wrap inside the 8-KiB
+native code window. MOV/GGET/GGETR-to-PC discard address bits 15:13 and bit 0.
+Only even instruction addresses in this window are valid firmware entry
+points; this change does not affect guest addresses or preserved engines.
+
+Independent whole-board Diamond runs (same device, strategy and 26.6-MHz
+constraint; all through JED with zero setup/hold violations):
+
+| Variant | Code words | LUT4 | Slices | Registers | EBR | TRACE MHz |
+|---|---:|---:|---:|---:|---:|---:|
+| Compact calls, byte PC | 2968 | 1013 | 510 | 385 | 7 | 48.195 |
+| **Word PC, retained** | **2968** | **959** | **482** | **381** | **7** | **45.708** |
+| Word PC + ADC/SBC, rejected | 2954 | 1016 | 513 | 382 | 7 | 42.385 |
+
+Word PC saves 54 LUTs and four registers. The experimental native ADC/SBC
+used opcodes 0x07/0x0d, consumed native carry/borrow and replaced five manual
+FIS carry chains. It passed native boundary/random arithmetic, assembled
+chains, 209 guest core snapshots and 4040 exact FIS cases, but cost **57 additional LUTs for only
+14 code words**, with worse timing. It is not part of the shipped ISA; FIS
+keeps its proven software carry chains. Guest PDP-11 ADC/SBC are unaffected.
+
+The retained PC regression checks all 4096 fall-through/skip positions,
+every signed branch displacement at six boundaries, all CALL/JMP targets
+and every 16-bit indirect target through both MOV and GGET: **163840 checks**.
+Native tests retain the six-clock ABI and memory wait/error behavior.
+The retained variant passes all guest/peripheral/HALT/no-FIS tests and
+209/209 core snapshots. Its assembler and firmware images match stage 2;
+only native PC storage and the corresponding test fixture injection change.

@@ -288,9 +288,10 @@ after verification; never commit generated images or program the board.
   TRACE 48.195 MHz. Assembler 11 smoke + 20 profile tests, native/guest tests,
   209 core snapshots, 4040 exact FIS cases and actual-EBR regression pass.
   Diamond through JED passes with no setup/hold violations at 26.6 MHz.
-- [ ] 3. Evaluate word-addressed uPC and native carry/borrow arithmetic
-  independently. Retain only measured improvements; verify and commit the
-  implementation or a documented negative experiment.
+- [x] 3. Word-addressed uPC retained: 959 LUTs (-54), 482 slices, 381 registers,
+  7 EBRs, TRACE 45.708 MHz; 163840 PC boundary/target checks. ADC/SBC measured
+  independently and rejected: +57 LUTs for only 14 code words, TRACE 42.385 MHz.
+  Guest ADC/SBC and FIS software carry chains remain intact.
 - [ ] 4. Full preserved/new CPU, guest/core/FIS and actual-EBR regression;
   isolated Diamond measurements and reproducible acceptance checks. Commit.
 - [ ] 5. Isolated SD/FRAM disk prototype for the already selected RK611/RH11
