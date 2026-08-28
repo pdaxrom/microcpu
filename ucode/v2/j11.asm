@@ -11,7 +11,11 @@ reset_entry
 ; Fixed microengine ABI entry: rtl/ucode_cpu.v redirects failed guest
 ; transactions to byte address 0002.  Trap mechanics remain in microcode.
 bus_error_entry
+	ifdef J11_DISK_PROTOTYPE
+	far_jump rh11_bus_error
+	else
 	far_jump cpu_bus_error
+	endif
 
 wait_instruction
 	ldi8 v1, 1
@@ -1994,4 +1998,7 @@ previous_sp_same_mode
 	include j11_stack.asm
 	ifndef J11_DISABLE_FIS
 	include j11_fis.asm
+	endif
+	ifdef J11_DISK_PROTOTYPE
+	include ../experimental/rh11_sd.asm
 	endif

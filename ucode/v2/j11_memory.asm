@@ -52,6 +52,14 @@ memory_aligned
 	beq memory_device, v2, sp
 	set sp, $e000
 	bltu memory_raw, v4, sp
+	ifdef J11_DISK_PROTOTYPE
+	set sp, $ffe0
+	and v2, v4, sp
+	set sp, $ff20
+	fbeq rh11_io, v2, sp
+	set sp, $fffe
+	and v2, v4, sp
+	endif
 	far_jump cpu_io_decode
 
 memory_console

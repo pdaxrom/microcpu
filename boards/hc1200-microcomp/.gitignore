@@ -6,3 +6,9 @@
 /j11_ucode_v2.bin
 /ucode_urom_ebr.v
 /impl1-ucode/
+/j11_sd.bin
+/j11_sd.mem
+/j11_sd_nofis.bin
+/j11_sd_nofis.mem
+/sd_nofis_urom_ebr.v
+/impl1-sd-nofis/

@@ -307,3 +307,13 @@ Final ROM SHA-256: `0ea83148ca9328b9a5afa4a42026e124724e07948874412457c4ab44d3b3
 Mac/Ubuntu hashes agree. Reports and JED files are ignored build artifacts.
 SD/RK experiments are separate from this accepted configuration; production
 pin assignments and physical I/O remain unverified.
+
+## Isolated disk experiment (stage 5)
+
+The [RK611/RH11-to-SPI-SD prototype](rk611-sd-prototype.md) implements disk
+registers and protocol in assembly, with generic SPI/FRAM services in RTL.
+It uses separate `Makefile.disk` targets and does not change the normal ROM.
+The complete explicit disk/no-FIS board fits at 1041 LUT4 and seven EBRs;
+disk plus FIS exceeds the code limit by 125 words and is simulation-only.
+Transfers currently block guest execution, so this is not yet a production
+disk configuration. All five planned stages are recorded in `TODO.md`.

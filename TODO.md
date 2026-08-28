@@ -298,12 +298,29 @@ after verification; never commit generated images or program the board.
   assembled benchmark: 903548 -> 814640 clocks (-9.84%, fast test bus).
   Final isolated Diamond confirms 959 LUTs, 482 slices, 381 registers,
   7 EBRs and 45.708 MHz. Source/ROM hashes match both hosts; no programming.
-- [ ] 5. Isolated SD/FRAM disk prototype for the already selected RK611/RH11
-  controller at octal 0177440, using `k1801vm1/lsi11/dev_rh11.c` as reference.
-  Measure complete-board fit, test reads/writes, transfer arbitration and
-  error paths; do not infer fit from CPU savings. No sector EBR is available.
-  SD pin assignment and physical writes require confirmation; simulation
-  and a separate synthesis top must not change the production board wiring.
+- [x] 5. Isolated microcoded RK611/RH11-to-SPI-SD prototype at octal 0177440,
+  using `k1801vm1/lsi11/dev_rh11.c` as reference. Reads, partial writes,
+  completion IRQs and error paths use a 512-byte cache in the upper FRAM bank;
+  only generic SPI and private FRAM-bank services are added in Verilog.
+  All 22 disk scenarios, 209/209 core snapshots and 4040/4040 FIS cases pass;
+  actual-EBR tests cover normal transfers, partial DMA and cache-fill faults.
+  Complete disk/no-FIS board: 1041 LUTs, 523 slices, 423 registers, 7 EBRs,
+  TRACE 41.943 MHz; 3298 code + 64 context + 222 free words. Disk + FIS needs
+  3645 code words, exceeding the 3520-word limit by 125. The ordinary FIS
+  image is byte-identical to stage 4; no silent feature removal or truncation.
+  No SD pin assignment, JED export or board/card programming for this prototype.
+  See `docs/rk611-sd-prototype.md` for reproducible checks and limitations.
+
+Disk follow-up, beyond this measured prototype:
+
+- [ ] Recover at least 125 code words or design explicit overlays to retain
+  FIS with the disk in seven EBRs.
+- [ ] Make long commands cooperative/asynchronous: the prototype blocks guest
+  execution during transfers and can overrun the UART receive buffer.
+- [ ] Extend controller/card compatibility and data CRC checks as needed;
+  diagnostic registers and several RK611 operations remain placeholders.
+- [ ] Confirm SD electrical connections, pin constraints and external I/O
+  timing before physical-board tests or any real-card writes.
 
 The controller type is already chosen by the user; earlier entries calling
 it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.

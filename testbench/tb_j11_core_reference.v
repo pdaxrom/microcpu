@@ -34,6 +34,12 @@ module tb_j11_core_reference;
 		if (!rst && req && !ready) begin
 			ready <= 1;
 			error <= !byte_access && address[0];
+			// The disk prototype's extra native SPI/bank services are not guest
+			// RAM. This flat-bus core test only needs their reset-time writes.
+			`ifdef J11_DISK_TEST
+			if (address[15:3] == 13'h1e01) rdata <= 0;
+			else
+			`endif
 			if (byte_access || !address[0]) begin
 				if (wr) begin
 					memory[address] <= wdata[7:0];

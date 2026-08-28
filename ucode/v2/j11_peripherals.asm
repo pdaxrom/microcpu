@@ -15,11 +15,24 @@ peripherals_reset
 	set sp, $f004
 	ldr v2, sp, 0
 	gset v2, 24
+	ifdef J11_DISK_PROTOTYPE
+	gset lr, 63
+	call rh11_reset
+	gget lr, 63
+	endif
 	rts
 
 ; Called only at an instruction boundary / WAIT loop, never inside an access
 ; helper. Preserves v0 (guest PC), v1 (WAIT flag), lr (return address).
 peripherals_poll
+	ifdef J11_DISK_PROTOTYPE
+	gget v2, 40
+	bmask_clear rh11_poll_done, v2, 1
+	gset lr, 63
+	call rh11_poll
+	gget lr, 63
+rh11_poll_done
+	endif
 	; Board notifications use the otherwise ineligible BR0/vector0. Avoid
 	; native bus reads on ordinary instructions with no new UART/time event.
 	gget v2, 11
@@ -92,6 +105,14 @@ peripherals_select_ltc
 	set v2, $8e40		; software tag bit 11, BR6, vector 100 octal
 	b peripherals_selected
 peripherals_select_uart
+	ifdef J11_DISK_PROTOTYPE
+	bgtu rh11_select_done, v4, 5
+	gget sp, 56
+	bmask_clear rh11_select_done, sp, 2
+	set v2, $8d88           ; software BR5, vector 0210
+	b peripherals_selected
+rh11_select_done
+	endif
 	bgeu peripherals_selected, v4, 4
 	set sp, $100
 	gget v3, 20
@@ -109,6 +130,16 @@ peripherals_selected
 peripherals_ack
 	ldi8 v3, $ff
 	and sp, v2, v3
+	ifdef J11_DISK_PROTOTYPE
+	ldi8 v3, $88
+	bne rh11_ack_done, sp, v3
+	gget v2, 56
+	set v3, $fffd
+	and v2, v2, v3
+	gset v2, 56
+	jmp trap_entry
+rh11_ack_done
+	endif
 	ldi8 v3, $a0
 	fbeq trap_entry, sp, v3	; PIRQ stays asserted until software clears it
 	ldi8 v3, $40
