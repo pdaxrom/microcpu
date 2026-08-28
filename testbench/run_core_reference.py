@@ -76,7 +76,9 @@ def main():
         write_bytes(directory / "expected.hex", expected)
         state = (case["before"] + case["after"] + case["banks_before"] +
                  case["banks_after"] + [case["wait_before"], case["wait_after"]] +
-                 case["cpu_io_before"] + case["cpu_io_after"])
+                 case["cpu_io_before"] + case["cpu_io_after"] +
+                 case["inactive_before"] + case["inactive_after"] +
+                 [case["regset_valid"]])
         (directory / "state.hex").write_text("\n".join(f"{value:04x}" for value in state) + "\n")
         cmd = [args.vvp, args.testbench,
                f"+FETCH_PC={labels['fetch_instruction']:x}",

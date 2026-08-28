@@ -120,7 +120,15 @@ board-mcu-bootload-rx: build/board_mcu_bootload.vvp build/bootldr-mcu-board.hex 
 board-microcomp-memmap: build/board_microcomp.vvp build/microcomp_memmap.hex
 	$(VVP) build/board_microcomp.vvp +SRAM_HEX=build/microcomp_memmap.hex
 
-j11-test: j11-alu-test j11-pc-test j11-shift-test j11-ebr-pack-test j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-cpu-io-test j11-fis-test j11-board-test j11-board-execute-test j11-board-ucode
+j11-test: j11-alu-test j11-pc-test j11-shift-test j11-ebr-pack-test j11-fram-test j11-engine-test j11-fetch-test j11-execute-test j11-bus-test j11-peripherals-test j11-cpu-io-test j11-halt-test j11-fis-test j11-board-test j11-board-execute-test j11-board-ucode
+
+.PHONY: j11-halt-test
+build/tb_j11_halt.vvp: tb_j11_halt.v ../rtl/j11_microengine.v ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_halt -o $@ $(filter %.v,$^)
+
+j11-halt-test: build/tb_j11_halt.vvp build/tb_j11_cpu_io.vvp build/j11_ucode.words build/guest_halt_console.hex build/guest_halt_privileged.hex
+	$(VVP) build/tb_j11_halt.vvp
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_halt_privileged.hex
 
 .PHONY: j11-shift-test
 build/tb_j11_shift.vvp: tb_j11_shift.v ../rtl/j11_microengine.v | build
@@ -151,9 +159,10 @@ j11-ebr-pack-test:
 build/tb_j11_cpu_io.vvp: $(J11_CPU_IO_VSRC) ../ucode/config.mk | build
 	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o $@ $(J11_CPU_IO_VSRC)
 
-j11-cpu-io-test: build/tb_j11_cpu_io.vvp build/j11_ucode.words build/guest_cpu_registers.hex build/guest_cpu_psw.hex build/guest_cpu_pirq.hex build/guest_cpu_stack.hex build/guest_cpu_nxm.hex
+j11-cpu-io-test: build/tb_j11_cpu_io.vvp build/j11_ucode.words build/guest_cpu_registers.hex build/guest_cpu_psw.hex build/guest_cpu_pirq.hex build/guest_cpu_stack.hex build/guest_cpu_nxm.hex build/guest_register_sets.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_registers.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_psw.hex
+	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_register_sets.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_pirq.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_stack.hex
 	$(VVP) build/tb_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154
@@ -264,10 +273,12 @@ j11-ebr-test: j11-board-ucode build/j11_ucode.words build/core_reference_export 
 	@test -f "$(LATTICE_SIM_DIR)/PDPW8KC.v" || { echo "Set LATTICE_SIM_DIR to Diamond's MachXO2 Verilog models"; exit 1; }
 	$(IVERILOG) -g2012 -Wall -s tb_j11_urom_ebr -o build/tb_j11_urom_ebr.vvp $(J11_EBR_FLAGS) tb_j11_urom_ebr.v $(J11_EBR_VSRC)
 	$(VVP) build/tb_j11_urom_ebr.vvp
+	$(IVERILOG) -g2012 -Wall -s tb_j11_halt -o build/tb_j11_halt_ebr.vvp $(J11_EBR_FLAGS) tb_j11_halt.v ../rtl/j11_microengine.v $(J11_EBR_VSRC)
+	$(VVP) build/tb_j11_halt_ebr.vvp
 	$(IVERILOG) -g2012 -Wall -s tb_j11_execute -o build/tb_j11_execute_ebr.vvp $(J11_EBR_FLAGS) $(J11_EXECUTE_VSRC) $(J11_EBR_VSRC)
 	$(VVP) build/tb_j11_execute_ebr.vvp
 	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o build/tb_j11_cpu_io_ebr.vvp $(J11_EBR_FLAGS) $(J11_CPU_IO_VSRC) $(J11_EBR_VSRC)
-	@for test in cpu_registers cpu_psw cpu_pirq cpu_stack fis fis_edges; do \
+	@for test in cpu_registers cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
 		$(VVP) build/tb_j11_cpu_io_ebr.vvp +PROGRAM=build/guest_$$test.hex || exit 1; \
 	done
 	$(VVP) build/tb_j11_cpu_io_ebr.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154

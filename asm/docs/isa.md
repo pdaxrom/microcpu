@@ -482,23 +482,25 @@ continues to interpret those groups as mode-control instructions.
 #### gget
 - Syntax: `gget R, I8`
 - Encoding: op = 0x12, op_reg_const
-- Microengine semantics: `R[dest] = JCTX[I8 & 0x0f]`
+- Microengine semantics: `R[dest] = JCTX[I8 & 0x1f]`
 
 #### gset
 - Syntax: `gset R, I8`
 - Encoding: op = 0x14, op_reg_const
-- Microengine semantics: `JCTX[I8 & 0x0f] = R[src]`
+- Microengine semantics: `JCTX[I8 & 0x1f] = R[src]`
 
 #### ggetr
 - Syntax: `ggetr Rdest, Rindex`
 - Encoding: op = 0x18, op_reg_reg
-- Microengine semantics: `Rdest = JCTX[Rindex & 0x0f]`
+- Microengine semantics: `Rdest = JCTX[Rindex & 0x3f]`
 - The original `cpu.v` continues to use this opcode group for `setp`.
 
 #### gsetr
 - Syntax: `gsetr Rsrc, Rindex`
 - Encoding: op = 0x1a, op_reg_reg
-- Microengine semantics: `JCTX[Rindex & 0x0f] = Rsrc`
+- Microengine semantics: `JCTX[Rindex & 0x3f] = Rsrc`
+- Indexed access reaches all 64 context words. Immediate `gget`/`gset`
+  retain their five-bit index (0..31); context meanings remain firmware-defined.
 - The original `cpu.v` continues to use this opcode group for `getp`.
 
 #### getf

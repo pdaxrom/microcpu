@@ -122,12 +122,12 @@ module tb_j11_microengine;
 			$finish_and_return(1);
 		end
 
-		$display("PASS: J-11 microengine 32-word context and FRAM guest bus");
+		$display("PASS: J-11 microengine 64-word context and FRAM guest bus");
 		$finish_and_return(0);
 	end
 
 	initial begin
-		#300000;
+		#600000;
 		$display("FAIL: timeout upc=%04x gr0=%04x cause=%04x",
 			debug_upc, debug_guest_r0, debug_cause);
 		$finish_and_return(1);

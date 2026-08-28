@@ -58,7 +58,8 @@ and `srampages`.
   `ADC/ADCB`, `SBC/SBCB`, `ROR/RORB`, `ROL/ROLB`, `ASR/ASRB`, `ASL/ASLB`,
   `TST/TSTB`, `SWAB`, `SXT`, `MFPS`, `MTPS`, `MFPT`, `SPL`, `WAIT`, `RESET`,
   `RTT`, `MARK`, `TSTSET`, `WRTLCK`, `MUL`, `DIV`, `ASH`, `ASHC`, `SOB`, the
-  software-trap group, and an assembled guest write to the physical DL11 UART. The
+  software-trap group, both R0..R5 sets, HALT/Proceed, and an assembled guest
+  write to the physical DL11 UART. The
   double-operand test includes borrow, carry,
   signed-overflow, byte-width, and
   memory-destination/autoincrement cases. `bic_bis.asm` additionally verifies
@@ -119,16 +120,30 @@ replaying it on `j11_microengine`. Intentionally illegal JMP/JSR register-direct
 encodings use documented `dw` directives, because the assembler rejects them.
 The script normalizes upstream disassembler spelling for MARK and MFPI/MFPD.
 
-Replay checks R0..R7, all PSW bits, every RAM byte and valid inactive SP banks
+Replay checks R0..R7, all PSW bits, every RAM byte and valid inactive SP/R0..R5 banks
 at the next instruction boundary, after any synchronous trace/trap. It uses
 a flat, deterministic RAM bus; `j11-test` separately covers actual SPI FRAM
 and the HC1200 guest bus. Failed cases keep their individual inputs/expectations.
 
-Initial coverage: 187 instruction snapshots, including 29 EIS cases. This is
+Current coverage: 209 instruction snapshots, including 29 EIS cases, CPU I/O,
+SP transitions and the existing general-register-set banking test. This is
 **not** the complete upstream test suite: VM1/VM2, FP11/FIS, MMU/split I/D,
-alternate general-register sets and C backend-only tests are not selected.
-Processor I/O, external IRQ fixtures and stack-limit errors are follow-up work.
+and C backend-only tests are not selected. Console HALT is checked against the
+DEC manual, not the C `handle_halt` placeholder.
 One MTPS subcase injects the C-only `fTrap` state; its C assertions run but its
 RTL replay is explicitly skipped. Uninitialized C-model SP banks are not
 compared until the C fixture marks them valid. `j11-core-test` runs the base
 selection without the explicit bank-transition cases/checks.
+
+The C fixture lazily clones SP banks at its first mode switch (after a frame
+pop for RTI/RTT), and R0..R5 at its first RS switch. Replay explicitly seeds
+that latent state without changing the C reference. This is not a hardware
+reset requirement: independent assembly tests verify zeroed alternate state.
+
+`register_sets.asm` runs through SPI FRAM in `j11-cpu-io-test`. The separate
+`make -C testbench j11-halt-test` runs `halt_console.asm` with a testbench
+driver for the private microcode console mailbox, and `halt_privileged.asm`
+through SPI FRAM. It covers saved PC/PSW/banks, no bus/reset activity during
+HALT, pending IRQs, Proceed, held-request single-step, user WAIT, TRACE and
+illegal HALT in S/U with either RS. It adds no guest I/O address or board pin.
+The same programs run in `j11-ebr-test` against Lattice's actual ROM model.

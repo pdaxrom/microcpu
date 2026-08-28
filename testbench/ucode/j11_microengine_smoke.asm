@@ -4,7 +4,7 @@ org $0000
 
 	; All extended context words must reset to zero.
 	set v2, 16
-	set v4, 32
+	set v4, 64
 context_clear_check
 	ggetr v1, v2
 	bne failed, v1, 0
@@ -27,7 +27,7 @@ context_write_check
 
 	set v0, $1234
 	gset v0, 7
-	; Immediate access uses the same five-bit context index as GGETR/GSETR.
+	; Immediate access still addresses 0..31; indexed access reaches 0..63.
 	gset v0, 23
 	set v2, 23
 	ggetr v1, v2

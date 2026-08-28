@@ -36,16 +36,30 @@ static void export_registers(const regs *r)
     printf(",%u]", r->psw);
 }
 
-static void export_banks(const regs *r)
+static void export_banks(const regs *r, unsigned lazy_pop)
 {
-    printf("[%u,%u,%u]", r->sp_mode_init ? r->sp_mode[0] : r->r[6],
-           r->sp_mode_init ? r->sp_mode[1] : r->r[6],
-           r->sp_mode_init ? r->sp_mode[3] : r->r[6]);
+    /* C initializes an as-yet-unused SP bank on first switch, after RTI/RTT
+     * has popped its frame. Seed that latent fixture state, not hardware's
+     * zero-on-reset banks. The reference itself is not modified. */
+    word initial = (word)(r->r[6] + lazy_pop);
+    printf("[%u,%u,%u]", r->sp_mode_init ? r->sp_mode[0] : initial,
+           r->sp_mode_init ? r->sp_mode[1] : initial,
+           r->sp_mode_init ? r->sp_mode[3] : initial);
 }
 
 static void export_cpu_io(const regs *r)
 {
     printf("[%u,%u,%u]", r->J11_CPUERR, r->J11_PIRQ, r->J11_CCR);
+}
+
+static void export_inactive_registers(const regs *r)
+{
+    unsigned inactive = ((r->psw >> 11) & 1) ^ 1;
+    putchar('[');
+    for (unsigned i = 0; i < 6; ++i)
+        printf("%s%u", i ? "," : "",
+               r->rset_bank_init ? r->rset_bank[inactive][i] : r->r[i]);
+    putchar(']');
 }
 
 static void export_memory(const byte *mem)
@@ -90,7 +104,9 @@ static int capture_step(regs *r)
     printf(",\"pc\":%u,\"length\":%u,\"before\":", pc, (word)(end - pc));
     export_registers(r);
     fputs(",\"banks_before\":", stdout);
-    export_banks(r);
+    export_banks(r, (opcode == 000002 || opcode == 000006) ? 4 : 0);
+    fputs(",\"inactive_before\":", stdout);
+    export_inactive_registers(r);
     fputs(",\"cpu_io_before\":", stdout);
     export_cpu_io(r);
     fputs(",\"memory_before\":", stdout);
@@ -100,7 +116,10 @@ static int capture_step(regs *r)
     fputs(",\"after\":", stdout);
     export_registers(r);
     fputs(",\"banks_after\":", stdout);
-    export_banks(r);
+    export_banks(r, 0);
+    fputs(",\"inactive_after\":", stdout);
+    export_inactive_registers(r);
+    printf(",\"regset_valid\":%u", r->rset_bank_init);
     fputs(",\"cpu_io_after\":", stdout);
     export_cpu_io(r);
     fputs(",\"memory_after\":", stdout);
@@ -160,6 +179,8 @@ int main(int argc, char **argv)
     failed += test_dcj11_trace_priority_over_yellow_stack();
     if (banks) {
         failed += test_dcj11_mode_stack_banking();
+        failed += test_dcj11_register_set_banking();
+        failed += test_dcj11_rti_user_sets_high_psw_bits();
         failed += test_dcj11_mxpi_prev_mode2_uses_user_sp();
         failed += test_dcj11_rti_user_restricts_psw();
     }

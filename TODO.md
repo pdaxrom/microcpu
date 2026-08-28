@@ -9,7 +9,7 @@ follow-up is recorded separately; do not infer authorization for other features.
 ### Constraints
 
 - Base board: `boards/hc1200-microcomp`; 128 KiB SPI FRAM backs guest memory.
-- No MMU or split I/D, one register set. The follow-up now adds banked SPs.
+- No MMU or split I/D; banked SPs and the newly requested two R0..R5 sets.
 - Implement instructions in `ucode/j11.asm`; no guest-RAM instruction emulator.
 - Keep J-11-specific register decoding, masks, PSW/CPUERR/PIRQ effects,
   and guest timer semantics in assembly microcode too. Do not add a J-11 MMIO
@@ -216,6 +216,34 @@ FIS fit check adds 389 words, for **3391/3584 words** and **193 free**. ODT
 remains deferred. No disk controller or SD access has been implemented and
 no board programming was performed.
 
+### Register sets and console HALT (requested 2026-08-28)
+
+- [x] Verify PSW.RS and console HALT/Proceed against DCJ11 UG sections 1.5,
+  5.3.2–5.3.4; do not copy the C HALT placeholder or K1801VM2 H-mode.
+- [x] Extend only generic context storage/indexing to 64 words; no J-11 bank
+  selection, PSW masks or HALT state machine in RTL. Keep 3584-word uROM.
+- [x] Swap active/inactive R0..R5 in microcode on effective PSW.RS changes:
+  explicit byte/word writes, trap/IRQ and protected RTI/RTT; SP/PC stay separate.
+- [x] Console stop retains PC/PSW/banks, performs no guest bus accesses and
+  cannot be woken by IRQ. Private firmware HALT/Proceed mailbox supports one
+  instruction before events and held-request stepping, including WAIT/TRACE.
+  The mailbox is groundwork for ODT, not an external pin or guest register.
+- [x] Add microasm11 register/privileged-HALT/console tests; expand C replay
+  to 209 snapshots (29 EIS), including inactive R0..R5 state where valid.
+  Explicitly account for C's lazy bank initialization only in fixture seeding.
+- [x] Diamond fit in an isolated Ubuntu copy: 1213/1280 LUT, 609/640 slices,
+  378/1346 registers, 7/7 EBR; 26.6 MHz passes (maximum 27.715 MHz,
+  setup +1.513 ns, hold +0.289 ns). No board programming or pin changes.
+- [x] Final Mac regression and 209/209 no-MMU snapshots (29 EIS); all 4040
+  exact-reference FIS cases pass. The real seven-bank Lattice ROM passes all
+  3584 word/enable checks, guest/CPU/FIS/RS/HALT programs, and 209/209 snapshots.
+  The extra HALT vector-priority test also passes on that ROM. Diamond/local
+  ROM words agree (only `od` whitespace differs); commit source files only.
+
+Current microcode: **3463/3584 words, 121 free**, including FIS. The two sets
+and console groundwork use 72 words beyond the FIS checkpoint. Fabric has
+67 LUTs free; this is not a guarantee that a full SD controller will fit.
+
 ### Deferred: not part of the active follow-up
 
 - [ ] Full `MFPI`, `MTPI`, `MFPD`, `MTPD` previous-mode/space semantics.
@@ -226,7 +254,8 @@ no board programming was performed.
 - [ ] FP11: not requested; no FP11 instructions have been implemented.
 - [ ] ODT console/monitor: explicitly postponed by the user; DL11-compatible
   polling and serial framing are ready, but ODT itself is not implemented.
-- [ ] Alternate R0..R5 register sets (distinct from the now-requested SP banks).
+- [ ] ODT front end / board HALT request source and fatal double-abort recovery.
+  Console execution state is implemented above; no UART command parser yet.
 - [ ] CIS.
 - [ ] SPI sequential-read buffering and broader randomized differential tests:
   future candidates beyond the requested existing core tests.

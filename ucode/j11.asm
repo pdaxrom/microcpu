@@ -29,6 +29,11 @@ fetch_events
 	far_call peripherals_poll
 	blt interrupt_priority, v2, 0
 fetch_no_interrupt
+	set sp, 38
+	ggetr v2, sp
+	bmask_clear fetch_no_halt, v2, 1 ; HALT has lower priority than traps/IRQs
+	far_jump halt_stopped
+fetch_no_halt
 	bne wait_instruction, v1, 0
 fetch_instruction
 	fetchw v1, v0, 0		; internal CPU registers are not executable
@@ -487,7 +492,7 @@ move
 	shr v2, v2, 6
 	set sp, $3f
 	and v2, v2, sp
-	bsr ea_resolve
+	far_call ea_resolve
 	beq move_source_register, v2, 0
 	blt move_source_byte_memory, v1, 0
 	readw v3, v4, 0
@@ -505,7 +510,7 @@ move_source_register
 	mov v2, v1
 	set sp, $3f
 	and v2, v2, sp
-	bsr ea_resolve
+	far_call ea_resolve
 	gget sp, 12
 	ggetr v3, sp
 	bge move_register_source_ready, v1, 0
@@ -517,7 +522,7 @@ move_destination
 	mov v2, v1
 	set sp, $3f
 	and v2, v2, sp
-	bsr ea_resolve
+	far_call ea_resolve
 move_destination_resolved
 	beq move_destination_register, v2, 0
 	blt move_destination_byte_memory, v1, 0
@@ -646,7 +651,7 @@ double_logic_write_byte_register
 
 double_logic_flags_byte
 	sxt v3, sp
-	b move_flags
+	far_jump move_flags
 
 double_logic_write_word
 	beq double_logic_write_word_register, v2, 0
@@ -658,7 +663,7 @@ double_logic_write_word_register
 
 double_logic_flags_word
 	mov v3, sp
-	b move_flags
+	far_jump move_flags
 
 double_compare
 	blt double_compare_byte, v1, 0
@@ -675,7 +680,7 @@ double_bit
 	sxt lr, lr
 double_bit_flags
 	mov v3, lr
-	b move_flags		; BIT clears V and preserves C like MOV
+	far_jump move_flags	; BIT clears V and preserves C like MOV
 
 double_arithmetic_flags
 	getf v2
@@ -780,6 +785,11 @@ reserved_instruction
 ; the trapping instruction.  The stack frame has old PC at (SP) and old PSW at
 ; 2(SP), ready for RTI or RTT.
 trap_entry
+	; HALT is highest priority during vector service (DCJ11 UG section 1.5).
+	; Check before touching either SP bank or the interrupted register state.
+	set v2, 38
+	ggetr v2, v2
+	bmask_set halt_stopped, v2, 1
 	gget v4, 6
 	gget v3, 8
 	mov lr, v3
@@ -817,7 +827,7 @@ trap_entry_stack_ready
 	set sp, $0fff		; vector enters kernel mode with old CM in PM
 	and v3, v3, sp
 	or v3, v3, lr
-	gset v3, 8
+	far_call cpu_commit_psw
 	b fetch_far
 
 return_interrupt
@@ -879,9 +889,9 @@ return_new_mode_ready
 
 return_stack_ready
 	gset v0, 7
-	gset v3, 8
-	and v3, v3, lr
-	gset v3, 14
+	and v2, v3, lr
+	gset v2, 14
+	far_call cpu_commit_psw
 	clr v2
 	gset v2, 10
 	b fetch_far
@@ -908,10 +918,24 @@ halt
 
 halt_stopped
 	set v2, 3
-	gset v2, 10		; cause 3: HALT until console mode exists
+	gset v2, 10		; debugger-visible console stop; guest state is untouched
 
 stopped
-	b stopped
+	; Private firmware mailbox, NOT a guest register or a board pin:
+	; context 38 bit 0 = held HALT request, bit 1 = Proceed command.
+	; Do not poll guest IRQs, touch RAM, or reset peripherals while stopped.
+	set sp, 38
+	ggetr v2, sp
+	bmask_clear stopped, v2, 2
+console_proceed
+	and v2, v2, 1
+	gsetr v2, sp		; consume Proceed, retain the held HALT request
+	clr v2
+	gset v2, 10
+	gset v2, 14		; HALT itself does not cause TRACE on continuation
+	gget v0, 7
+	; DCJ11 Proceed fetches one instruction before servicing pending events.
+	far_jump fetch_instruction
 
 complement_operand
 	mov v2, v1
@@ -1893,7 +1917,7 @@ lock_operand_merge_flags
 
 move_from_previous
 	; With no MMU or split I/D, MFPI and MFPD share the current unified address
-	; space and the single guest register set. EA and stack ordering remain J-11.
+	; space and current RS-selected R0..R5. R6 uses PM; EA ordering remains J-11.
 	shl v1, v1, 1		; MFPD has bit 15 set but remains word-width
 	shr v1, v1, 1
 	shl v2, v1, 10

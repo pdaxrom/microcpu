@@ -14,7 +14,7 @@ mechanism, not a second implementation of J-11 architectural behavior.
 
 - 16-bit PDP-11 address space
 - no MMU or split I/D space
-- one J-11 register set
+- two independent R0..R5 sets, selected by PSW bit 11 (RS)
 - banked kernel/supervisor/user stack pointers (follow-up to the V1 milestone)
 - guest RAM backed by the board's 128 KiB SPI FRAM
 - integer instruction set first
@@ -22,8 +22,9 @@ mechanism, not a second implementation of J-11 architectural behavior.
 
 The agreed priority instruction checklist and active acceptance work are in
 [`TODO.md`](../TODO.md#j-11-v1-active-plan-no-mmu). The user-authorized follow-up
-adds existing C-core fixture replay, SP banks, processor-owned I/O registers,
-and FIS only if it fits. MMU and FP11 remain outside the active scope.
+adds C-core fixture replay, SP banks, processor-owned I/O registers, FIS,
+alternate general registers and console HALT/Proceed groundwork. ODT itself,
+MMU and FP11 remain outside the active scope.
 
 ## Data paths
 
@@ -36,12 +37,13 @@ and FIS only if it fits. MMU and FP11 remain outside the active scope.
 ```
 
 Microcode instruction fetches never use the guest bus. The current uROM is
-**3584 x 16 bits**, with **3391 words occupied and 193 free**. `ucode/config.mk`
+**3584 x 16 bits**, with **3463 words occupied and 121 free**. `ucode/config.mk`
 supplies the image size to both Makefiles; the engine and board defaults agree.
 Guest memory transactions use a separate request/ready interface.
 
-The 8x16 host and 32x16 guest-context arrays now use distributed RAM. Diamond
-otherwise spent three EBRs on just 80 bytes. Automatic ROM inference rounded
+The 8x16 host and 64x16 guest-context arrays use distributed RAM. Diamond
+previously spent three EBRs on just 80 bytes in the smaller 32-word-context
+configuration. Automatic ROM inference rounded
 3584 words up to eight EBRs, so `ucode/make_urom_ebr.py` instead packs the
 assembled binary into seven explicit PDPW8KC banks in 512x18 mode, using
 16 data bits per location. This uses all seven HC1200 EBRs without changing
@@ -57,12 +59,14 @@ Unsupported guest opcodes retain the reserved-instruction trap path.
 
 ## Guest context
 
-The microengine provides thirty-two 16-bit context words in one synchronous
-context RAM. Immediate and register-indexed accesses both use a five-bit index:
+The microengine provides sixty-four 16-bit context words in synchronous
+distributed RAM. Immediate accesses retain a five-bit index (0..31);
+register-indexed accesses use six bits (0..63). Reset clears every word.
 
 | Index | Meaning |
 |---:|---|
-| 0..7 | J-11 R0..R7 |
+| 0..5 | active J-11 R0..R5, selected by PSW.RS |
+| 6, 7 | active SP and unbanked PC |
 | 8 | J-11 PSW |
 | 9 | current J-11 instruction word |
 | 10 | latched cause: `1` bus/address error, `2` reserved instruction, `3` HALT, `4` double abort |
@@ -78,10 +82,59 @@ context RAM. Immediate and register-indexed accesses both use a five-bit index:
 | 24 | last observed native tick sequence |
 | 25..30 | non-reentrant memory/stack-helper scratch and return state |
 | 31 | CCR; implemented mask `003377` |
+| 32..37 | inactive R0..R5; swap with 0..5 whenever PSW.RS changes |
+| 38 | private console mailbox: bit 0 held HALT request, bit 1 Proceed |
+| 39 | non-reentrant PSW/RS commit routine return link |
+| 40..63 | reserved for future firmware, cleared at reset |
 
 `GGET` and `GSET` are microengine-only aliases for the old `SWS` and `SWU`
 opcode groups. They move values between RISC registers and the guest context.
 The original `cpu.v` behavior is unchanged.
+
+### Register sets and console HALT
+
+`cpu_commit_psw` in `ucode/j11_cpu_io.asm` exchanges the six active and inactive
+words only when RS changes. Explicit word/high-byte PSW writes, trap/IRQ
+vector PSWs and effective RTI/RTT PSWs all use it. R6 still selects KSP/SSP/USP
+by current mode; R7 is never banked. Low-byte writes/MTPS cannot select RS.
+RTI/RTT outside kernel can set, but not clear, RS. MFPI/MFPD/MTPI/MTPD register
+operands R0..R5 use the current set; their previous-mode R6 handling is separate.
+Both sets start independently zeroed; switching does not clone them.
+
+HALT follows DEC's [DCJ11 guide, sections 1.5 and 5.3](https://www.bitsavers.org/pdf/dec/pdp11/1173/EK-DCJ11-UG-PRE_J11ug_Oct83.pdf):
+kernel HALT enters a console stop, without vector 004, stack pushes, PSW/RS
+changes, or peripheral RESET. PC points past the HALT. Supervisor/user HALT
+sets CPUERR.HALT and traps through 004. This board profile enables kernel
+HALT (halt option zero); power-up option selection is not implemented.
+
+The stop loop and continuation are microcode, not a halted Verilog clock.
+Cause 3 reports the stop. While stopped, no guest instructions or guest bus
+transactions run, and interrupts cannot wake the guest. Native IRQ latching
+continues. For the future ODT, context 38 is a **private firmware mailbox**:
+
+- Bit 0 requests HALT at an instruction/WAIT boundary, independently of CM.
+  Traps/IRQs normally precede it; vector entry checks it before changing the
+  interrupted state, allowing escape from repeated vector faults.
+- Write bit 1 only when cause is 3 to Proceed. It is consumed, preserving bit
+  0. The saved PC/PSW/RS/SP are retained and one guest instruction is fetched
+  before pending events are serviced. Keeping bit 0 set provides single-step.
+- HALT itself does not trigger TRACE on Proceed; the next instruction uses
+  the saved T bit normally. Fatal double-abort cause 4 is a separate terminal
+  fault; its console recovery remains deferred.
+
+This is the execution-state groundwork, **not an ODT implementation**. The
+mailbox has no guest I/O address, external HALT pin, UART command parser, or
+board-side writer yet. Tests drive only this console control word; architectural
+setup and assertions are assembled guest programs. No K1801VM2 H bit or
+saved-PC/saved-PSW I/O aliases are introduced. The C core's current DCJ11
+`handle_halt` instead pushes a frame and uses vector 004; that placeholder is
+not used as the HALT reference and has not been changed.
+
+`register_sets.asm` checks all six registers, byte/RMW PSW writes, destination
+auto-increment ordering, previous-mode moves, nested traps, IRQs, RTI/RTT and
+EIS. `halt_console.asm` checks context retention, IRQ deferral, Proceed,
+single-step, vector-entry priority, user WAIT and TRACE. `halt_privileged.asm` checks illegal HALT in
+both S/U modes and both register sets through SPI FRAM.
 
 ## Guest bus
 
@@ -180,13 +233,13 @@ used for matching no-MMU fixtures, not as authority over the manual.
 | `177752` | HITMISS | Read-only zero; no cache activity |
 | `177766` | CPUERR | Read mask `000374`; any write clears |
 | `177772` | PIRQ | Request bits 15..9, encoded highest priority; vector `240` |
-| `177776` | PSW | Explicit writes preserve T; mode changes switch SP banks |
+| `177776` | PSW | Preserve T; CM selects SP, RS selects R0..R5 |
 
 MEMERR/MAINT are board-profile registers, not extra devices inside the DCJ11.
 Byte lanes are implemented for CCR, PIRQ and PSW. Any CPUERR byte/word write
 clears the entire register; RESET preserves CPUERR/CCR but clears PIRQ.
 Explicit PSW writes preserve T and suppress that instruction's automatic NZVC
-commit. Word/high-byte mode changes select KSP/SSP/USP. Instruction fetches
+commit. Word/high-byte changes select KSP/SSP/USP and the R0..R5 set. Instruction fetches
 from internal registers raise CPUERR.ADR and vector `004`.
 
 PIRQ reads encode the highest request in bits 7:5 and 3:1. Low-byte writes do
@@ -230,7 +283,8 @@ PIRQ and CCR as well as R0..R7, PSW, inactive SP banks and guest RAM:
 
 The user-requested FIS compatibility extension is resident in
 `ucode/j11_fis.asm`: **FADD, FSUB, FMUL, FDIV**. It adds **389 words** to the
-3002-word baseline, for **3391/3584 words**, leaving **193 words**. There is no
+3002-word baseline: the FIS-only checkpoint used **3391/3584 words**. The
+subsequent RS/HALT work uses 72 more, for **3463 words / 121 free**. FIS needed no
 uROM enlargement, new native opcode, RTL arithmetic unit, or additional EBR.
 Memory-helper scratch is reused only while no memory call is active; native
 v0 is restored to the guest PC before calls so bus faults save the proper PC.
@@ -340,6 +394,8 @@ Words are stored little-endian.
   actual UART pin decoding, deterministic ticks and private-address isolation
 - `testbench/tb_j11_cpu_io.v`: assembled CPU-register, stack, PIRQ and FIS
   tests over SPI FRAM; raw-bus error injection for NXM/emergency-stack failure
+- `testbench/tb_j11_halt.v`: assembled HALT/Proceed, IRQ, step and TRACE tests
+  with a private firmware-mailbox driver (no guest register-state injection)
 - `testbench/tb_j11_fis.v`: fast flat-bus FIS corpus and bus-abort tests;
   `run_fis_reference.py` generates microasm11 source from an exact oracle
 - `testbench/board/tb_board_j11_microcomp.v`: verifies the same transaction
@@ -379,7 +435,7 @@ make -C boards j11-diamond DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
 It never programs a device. The result is
 `boards/hc1200-microcomp/impl1-j11/microcomp-j11_impl1.jed`.
 
-### HC1200 resource checkpoint (2026-08-28)
+### HC1200 RISC optimization checkpoint (before FIS/RS, 2026-08-28)
 
 Diamond 3.14 / Synplify, MachXO2-1200HC-4SG32C, completed synthesis, MAP, PAR,
 TRACE and JED export in an isolated Ubuntu checkout:
@@ -392,9 +448,8 @@ TRACE and JED export in an isolated Ubuntu checkout:
 | Registers (PFU + PIO) | 377 | 1346 | 969 |
 | Microcode words | 3002 | 3584 | 582 |
 
-This is the last **Diamond hardware checkpoint, before FIS**. The current
-FIS image uses 3391 words (193 free) in those same seven banks. It changes
-initialization data only; Diamond place-and-route has not been repeated for it.
+This is the historical **Diamond checkpoint before FIS and register sets**.
+The current RS/HALT result is recorded below.
 
 The previous checkpoint (`0522437`) used 1279 LUTs and 462 registers. The
 follow-up saves **141 LUTs and 85 registers**, without changing the native ISA,
@@ -426,6 +481,25 @@ the configuration report confirms CFG, with no UFM pages used. The existing
 JTAG/GPIO multiplexing policy is unchanged; programming requires the board's
 normal JTAGENB arrangement. No FPGA or FRAM programming was performed.
 
+### HC1200 register-set/HALT checkpoint (2026-08-28)
+
+Diamond 3.14 completed synthesis, MAP, PAR, TRACE and JED export in an isolated
+Ubuntu copy, with the same RTL and ROM contents used by Mac tests:
+
+| Resource | Used | Available | Free |
+|---|---:|---:|---:|
+| LUT4 | 1213 | 1280 | 67 |
+| Slices | 609 | 640 | 31 |
+| EBR | 7 | 7 | 0 |
+| Registers (PFU + PIO) | 378 | 1346 | 968 |
+| Microcode words (including FIS) | 3463 | 3584 | 121 |
+
+The generic context expansion costs 75 LUTs and one flip-flop versus the
+32-word RISC checkpoint; 120 LUTs now implement distributed RAM. No guest
+register selection or HALT state machine was added to RTL. Internal timing
+passes at 26.6 MHz: maximum 27.715 MHz, setup +1.513 ns, hold +0.289 ns.
+External I/O timing remains unconstrained; no board was programmed.
+
 ### SD-backed disk: feasibility, not an implemented device
 
 The user requested saving logic for a future Verilog disk controller backed by
@@ -434,8 +508,8 @@ no disk registers, DMA, card initialization, or disk-image handling are present.
 
 SDHC/SDXC transfers use 512-byte blocks; see the SD Association's
 [Physical Layer specification, section 7](https://www.sdcard.org/cms/wp-content/themes/sdcard-org/dl.php?f=Part1_Physical_Layer_Simplified_Specification_Ver5.10.pdf).
-All EBRs are currently reserved for uROM. The FIS image occupies 3391 words,
-which itself requires all seven banks; the remaining reserve is 193 words.
+All EBRs are currently reserved for uROM. The FIS/RS/HALT image occupies 3463
+words, which requires all seven banks; the remaining reserve is 121 words.
 An EBR cannot simply be reassigned to a sector buffer in this configuration.
 
 A candidate to evaluate is a separate SD SPI connection, a small byte/word
@@ -481,7 +555,7 @@ latches the three-bit BR level with the vector and accepts it only when that
 level is strictly greater than `PSW[7:5]`; a masked request remains pending.
 All vector entries force the current mode to kernel and copy the interrupted
 current mode into the previous-mode field. A non-kernel `HALT` enters vector
-`004`; a kernel `HALT` stops the engine. Outside kernel mode, `RTI` and `RTT`
+`004`; a kernel `HALT` enters the microcoded console stop. Outside kernel mode, `RTI` and `RTT`
 treat `PSW[15:11]` as set-only and preserve the old interrupt priority. The
 reserved current-mode encoding 2 follows the DCJ11 rule and is treated as
 kernel. Mode changes save the outgoing SP and select KSP/SSP/USP. Trap frames
@@ -539,7 +613,7 @@ pre-EA dividend sampling, and the DCJ11 odd-register result convention.
 single-master guest bus keeps each microcoded read/modify/write instruction
 uninterrupted at guest instruction boundaries.
 Without an MMU or split I/D, `MFPI/MFPD/MTPI/MTPD` deliberately use the same
-unified guest address space and single register set. Their EA-before-stack
+unified guest address space and current RS-selected R0..R5. Their EA-before-stack
 ordering, push/pop behavior, SP/PC aliases, and condition codes remain
 architectural, leaving only mode-space selection for a future MMU version.
 Register-direct SP accesses select the previous-mode bank, with PM=2 selecting
@@ -598,8 +672,8 @@ byte subtractions), 109,360 PC/branch/skip cases and 900 shift cases with exact
 cycle counts. The assembly microengine smoke test covers byte register writes,
 word/byte loads into PC and stable requests during long FRAM waits. SPI timing
 and data tests run with dividers 1, 2, 3, 5 and 17. Three Python tests verify
-EBR packing and bounds. All twelve simulation suites and 201/201 no-MMU
-C-core snapshots (29 EIS) pass on the Mac after the area optimizations.
+EBR packing and bounds. The current Mac regression includes register-set and
+HALT/Proceed tests plus 209/209 no-MMU C-core snapshots (29 EIS).
 To verify the generated hardware ROM using the installed vendor models:
 
 ```sh
@@ -607,13 +681,14 @@ make -C testbench j11-ebr-test LATTICE_SIM_DIR=/path/to/diamond/cae_library/simu
 ```
 
 This checks all 3584 words, bank boundaries and clock-enable holds, then runs
-the assembled guest instruction/CPU-I/O suites and the 201 no-MMU core
+the assembled guest instruction/CPU-I/O/FIS/HALT suites and the 209 no-MMU core
 snapshots through that same hardware ROM. Vendor library files remain
 external dependencies and are not copied into the repository.
-The final run after the RISC area changes passes all 3584 hardware-ROM word
-checks, guest instruction/CPU-I/O suites and 201/201 reference snapshots
-(including 29 EIS). The synthesized RTL and generated ROM hashes match the
-files tested on the Mac.
+The final register-set/HALT run passes all 3584 hardware-ROM word checks,
+guest/CPU/FIS/RS/HALT tests, and 209/209 reference snapshots (29 EIS).
+The independent FIS corpus also passes 4040/4040 cases on the updated engine.
+The synthesized RTL hashes and generated ROM words match the files tested on
+the Mac (Linux/macOS `od` differ only in whitespace).
 
 ## Deferred follow-up candidates
 

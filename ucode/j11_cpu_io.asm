@@ -133,11 +133,38 @@ cpu_psw_new_mode
 	ggetr sp, v4
 	gset sp, 6
 cpu_psw_commit
-	gset v3, 8
+	far_call cpu_commit_psw
 	gget v2, 14
 	or v2, v2, 8		; suppress the writing instruction's implicit CC
 	gset v2, 14
 	b memory_return
+
+; Commit v3=effective PSW, swapping active R0..R5 with the inactive set only
+; when RS changes. SP banks are handled by the caller; PC is never banked.
+; Preserve v0 (fault PC), v1 (IR) and v3; clobber sp/v2/v4 and native flags.
+; Own return slot 39 is separate from the non-reentrant memory-helper frame.
+cpu_commit_psw
+	set sp, 39
+	gsetr lr, sp
+	gget v2, 8
+	xor v2, v2, v3
+	set sp, $0800
+	bmask_clear cpu_commit_psw_done, v2, sp
+	clr v2
+cpu_swap_register
+	set sp, 32
+	add sp, sp, v2
+	ggetr v4, v2
+	ggetr lr, sp
+	gsetr v4, sp
+	gsetr lr, v2
+	inc v2
+	bne cpu_swap_register, v2, 6
+cpu_commit_psw_done
+	gset v3, 8
+	set sp, 39
+	ggetr lr, sp
+	rts
 
 cpu_error_register
 	bmask_set cpu_address_error, lr, 4

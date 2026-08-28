@@ -13,7 +13,7 @@ module tb_j11_core_reference;
 	reg error = 0;
 	reg [7:0] memory [0:65535];
 	reg [7:0] expected [0:65535];
-	reg [15:0] fixture [0:31];
+	reg [15:0] fixture [0:44];
 	integer fetch_pc, wait_pc, check_banks;
 	integer i, cycles, started, done, failures, active_mode;
 
@@ -53,7 +53,7 @@ module tb_j11_core_reference;
 		repeat (4) @(negedge clk);
 		rst = 0;
 		while (dut.state != dut.ST_FETCH) @(negedge clk);
-		// Deposit fixture state only after the engine's EBR clear sequence.
+		// Deposit fixture state only after the engine's context clear sequence.
 		for (i = 0; i < 9; i = i + 1) dut.jctx[i] = fixture[i];
 		dut.guest_r0_mirror = fixture[0];
 		dut.guest_pc_mirror = fixture[7];
@@ -61,6 +61,9 @@ module tb_j11_core_reference;
 		dut.jctx[16] = fixture[18];
 		dut.jctx[17] = fixture[19];
 		dut.jctx[19] = fixture[20];
+		// C lazily clones R0..R5 on the first RS change. Reproduce that fixture
+		// state, not its reset policy: hardware reset zeros both independent sets.
+		for (i = 0; i < 6; i = i + 1) dut.jctx[32+i] = fixture[32+i];
 		if (fixture[24]) begin
 			dut.upc = wait_pc;
 			deposit_cpu_io();
@@ -80,6 +83,15 @@ module tb_j11_core_reference;
 		if (!done) $fatal(1, "Timeout: uPC=%04h PC=%06o cause=%04h",
 			dut.upc, dut.jctx[7], dut.cause_reg);
 		failures = 0;
+		if (fixture[44]) begin
+			for (i = 0; i < 6; i = i + 1) begin
+				if (dut.jctx[32+i] !== fixture[38+i]) begin
+					$display("inactive R%0d: got %06o expected %06o", i,
+						dut.jctx[32+i], fixture[38+i]);
+					failures = failures + 1;
+				end
+			end
+		end
 		if ((dut.jctx[23] >> 8) !== fixture[29] ||
 				(dut.jctx[21] & 16'hfe00) !== fixture[30] || dut.jctx[31] !== fixture[31]) begin
 			$display("CPU I/O: CPUERR=%06o/%06o PIRQ=%06o/%06o CCR=%06o/%06o (got/expected)",

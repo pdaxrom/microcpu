@@ -95,12 +95,12 @@ module j11_microengine #(
 	localparam [2:0] CMP_GEU = 3'd7;
 
 	/*
-	 * Reserve EBRs for microcode. The 80-byte register/context state belongs
+	 * Reserve EBRs for microcode. The 144-byte register/context state belongs
 	 * in distributed RAM; synchronous reads keep the serialized operand ABI.
 	 */
 	reg [15:0] r [0:7]
 		/* synthesis syn_ramstyle = "distributed" */;
-	reg [15:0] jctx [0:31]
+	reg [15:0] jctx [0:63]
 		/* synthesis syn_ramstyle = "distributed" */;
 
 	wire [15:0] uir;
@@ -111,7 +111,7 @@ module j11_microengine #(
 	reg [15:0] operand_b;
 	reg [3:0] alu_flags;
 	reg [3:0] state;
-	reg [4:0] clear_index;
+	reg [5:0] clear_index;
 
 	reg [4:0] shift_count;
 
@@ -158,12 +158,14 @@ module j11_microengine #(
 		endcase
 	end
 
-	wire [4:0] dynamic_context_index = operand_a[4:0];
+	// Immediate instructions retain their five-bit encoding. Indexed access
+	// reaches all 64 words; their meaning and bank switching stay in firmware.
+	wire [5:0] dynamic_context_index = operand_a[5:0];
 	wire context_is_dynamic =
 		kind == INST_GGETR || kind == INST_GSETR;
-	wire [4:0] context_access_index = context_is_dynamic ?
-		dynamic_context_index : context_index;
-	wire [4:0] context_read_address = context_access_index;
+	wire [5:0] context_access_index = context_is_dynamic ?
+		dynamic_context_index : {1'b0, context_index};
+	wire [5:0] context_read_address = context_access_index;
 	wire [15:0] context_read_value =
 		context_access_index == CTX_CAUSE ? cause_reg :
 		context_access_index == CTX_PENDING ? pending_irq_reg :
@@ -176,7 +178,7 @@ module j11_microengine #(
 	reg [15:0] host_write_data;
 
 	reg context_write_enable;
-	reg [4:0] context_write_address;
+	reg [5:0] context_write_address;
 	reg [15:0] context_write_data;
 
 	reg [16:0] alu_result;
@@ -453,7 +455,7 @@ module j11_microengine #(
 
 			case (state)
 			ST_CLEAR: begin
-				if (clear_index == 31) begin
+				if (clear_index == 63) begin
 					clear_index <= 0;
 					state <= ST_FETCH;
 				end else begin
