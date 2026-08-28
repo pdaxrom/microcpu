@@ -350,6 +350,31 @@ Disk follow-up, beyond this measured prototype:
 The controller type is already chosen by the user; earlier entries calling
 it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.
 
+### RT-11 disk boot acceptance (requested 2026-08-28)
+
+- [x] Use the user's unchanged `lsi11/disks/rt11v503.dsk` through the SPI
+  card model. Read-only backing file, bounded RAM overlay for writes, before/
+  after SHA-256 checks, and synthetic partial-write/fault regression.
+- [x] Express the RH0 bootstrap in microasm11 assembly. No OS/preloaded boot
+  block in FRAM; verify two real SPI sectors and entry at `000604` in Icarus.
+- [x] Fix no-MMU presence detection in `ucode/v2` only: MMU register accesses
+  now time out instead of falsely acknowledging unimplemented mappings.
+  Test all 100 addresses / 600 access forms. Preserve original/j11 profiles.
+  Disk+FIS now occupies 3471 code + 64 context, leaving 49 of 3584 words free.
+- [x] Reach RT-11FB V05.03 startup and the KMON `.` prompt using the complete
+  microengine + board UART + SPI FRAM/SD testbench.
+- [x] Complete scripted UART `SHOW CONFIGURATION` / directory acceptance and
+  final regression: 1,627,665,662 clocks, 232 sector reads, 6 writes to the
+  volatile overlay, 43/43 input bytes received, source-image hash unchanged.
+  Both core images pass 209/209 snapshots, FIS 4040/4040, disk scenarios 22/22;
+  real-EBR disk/FIS/absent-MMU tests pass. See `docs/rt11-boot.md`.
+- [x] Record user wiring: PL9B CS, PR5C MOSI, PT12D SCLK, PT12C MISO. Pin
+  activation/electrical verification and physical bootstrap provisioning are
+  later work; no Diamond run, board programming or real-card writes here.
+- [ ] Before physical use, align the image's 50-Hz clock setting with the
+  native time-source configuration (currently 60 Hz); boot is not timekeeping
+  validation. Continue to treat sustained UART input / long DMA as future work.
+
 ### Deferred: not part of the active follow-up
 
 - [ ] Full `MFPI`, `MTPI`, `MFPD`, `MTPD` previous-mode/space semantics.

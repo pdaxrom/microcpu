@@ -170,3 +170,20 @@ into the last 64 words (including the one-word-over boundary).
 than keeping a shadow context in the engine. Its only deposits are the existing
 C-fixture seeding and private HALT/Proceed stimulus. Guest instruction and
 peripheral semantics continue to be tested by `microasm11` programs.
+
+## RT-11 boot from a raw SD image
+
+```sh
+make -C testbench -f Makefile.disk rt11-boot-fast
+make -C testbench -f Makefile.disk rt11-bootstrap-test
+```
+
+The full test uses Verilator and the same SPI FRAM/SD/UART RTL as the board.
+The shorter independent Icarus test checks the two bootstrap sectors and the
+entry into RT-11 code. `RT11_IMAGE` defaults to the sibling
+`k1801vm1/lsi11/disks/rt11v503.dsk`; no disk image is distributed here. The input
+is read-only, with a volatile sector overlay for guest writes, and the runner
+checks its SHA-256 before and after simulation. The full console scenario
+requires `SHOW CONFIGURATION`, the `RT11FB.SYS` directory entry, and a new
+prompt after each command. See [RT-11 bring-up](../docs/rt11-boot.md) for logs,
+limits, the no-MMU probe correction, SD wiring and physical-board follow-up.

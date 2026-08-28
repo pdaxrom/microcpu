@@ -284,9 +284,12 @@ the documented mask, and its PIRQ-first polling can outrank higher external
 levels. Independent assembly tests check the documented mask and priority
 ordering instead of silently changing or copying those C behaviors.
 
-MMR0/1/2 at `177572/177574/177576`, MMR3 at `172516`, and the S/K/U PAR/PDR
-ranges are intentionally zero-read/write-ignore stubs for this **no-MMU**
-configuration, not an implementation of memory management. The C-only MMR3
+In the preserved `j11` profile, MMR0/1/2 at `177572/177574/177576`, MMR3 at
+`172516`, and the S/K/U PAR/PDR ranges remain zero-read/write-ignore stubs,
+not an implementation of memory management. The specialized `ucode` profile
+instead reports these addresses absent (vector 4, CPUERR.TMO), following the
+[RT-11 boot correction](rt11-boot.md#no-mmu-correction-found-by-this-boot).
+Zero/ignore stubs falsely pass RT-11's MMU-presence probe. The C-only MMR3
 alias `177516`, programmable STKLIM at `177774`, and optional reserved
 registers remain unmapped.
 

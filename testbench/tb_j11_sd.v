@@ -12,6 +12,7 @@ module tb_j11_sd;
 	integer scenario = 0, i, sector, word_index, cycles;
 	reg [15:0] pattern;
 	reg [1023:0] program_file;
+	integer custom_program = 0;
 	wire injected_fault = req && ((scenario == 7 && !wr && address == 16'o6002 && !bus.bank_override) ||
 		(scenario == 10 && wr && address == 2 && bus.bank_override && card.read_count == 2));
 	assign ready = injected_fault || bus_ready;
@@ -52,6 +53,7 @@ module tb_j11_sd;
 	initial begin
 		if ($value$plusargs("SCENARIO=%d", scenario)) begin end
 		program_file = scenario == 0 ? "build/guest_rh11_disk.hex" : "build/guest_rh11_disk_error.hex";
+		custom_program = $value$plusargs("PROGRAM=%s", program_file);
 		for (i = 0; i < 131072; i = i + 1) fram.memory[i] = 0;
 		for (sector = 0; sector < 256; sector = sector + 1)
 			for (word_index = 0; word_index < 256; word_index = word_index + 1) begin
@@ -69,9 +71,14 @@ module tb_j11_sd;
 				scenario, context_words[5], context_words[7], dut.upc, dut.cause_reg,
 				context_words[40], context_words[41], context_words[42], context_words[44], context_words[46], context_words[56]);
 		if (bus.bank_override || !sd_cs || sd_sck) $fatal(1, "Completion left private bank/card active");
+		if (custom_program) begin
+			$display("PASS: %0s on full SD/FRAM bus (%0d clocks)", program_file, cycles);
+			$finish;
+		end
 		if (scenario == 8 && card.argument != 32'd4325375) $fatal(1, "24-bit RK LBA calculation");
 		// Entire media comparison catches lost tails, wrong LBA and accidental writes.
-		for (sector = 0; sector < 256; sector = sector + 1)
+		for (sector = 0; sector < 256; sector = sector + 1) begin
+			card.load_sector(sector);
 			for (word_index = 0; word_index < 256; word_index = word_index + 1) begin
 				pattern = (sector << 8) ^ word_index ^ 16'ha55a;
 				if (scenario == 0 && sector == 21 && word_index == 0) pattern = 16'o12345;
@@ -80,9 +87,10 @@ module tb_j11_sd;
 				if ((scenario == 4 || scenario == 9) && sector == 0 && word_index == 1) pattern = 16'o67770;
 				if (scenario == 10 && sector == 0) pattern = word_index == 0 ? 16'o12345 :
 					word_index == 1 ? 16'o67770 : 16'b0;
-				if ({card.memory[sector*512+word_index*2+1], card.memory[sector*512+word_index*2]} !== pattern)
+				if ({card.image_sector[word_index*2+1], card.image_sector[word_index*2]} !== pattern)
 					$fatal(1, "Media mismatch sector=%0d word=%0d", sector, word_index);
 			end
+		end
 		$display("PASS: RK611/SD scenario %0d; %0d clocks, commands=%0d reads=%0d writes=%0d", scenario, cycles,
 			card.command_count, card.read_count, card.writes);
 		$finish;

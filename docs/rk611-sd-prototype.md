@@ -12,9 +12,14 @@ context RAM. The code limit is therefore **3520 words**.
 
 | Configuration | Code | Context | Free code words | EBR required |
 |---|---:|---:|---:|---:|
-| Normal ucode + FIS, no disk | 2852 | 64 | 668 | 7 allocated |
-| Explicit disk + FIS | 3501 | 64 | **19** | **7; fits** |
-| Explicit disk/no-FIS prototype | 3181 | 64 | 339 | 7 |
+| Normal ucode + FIS, no disk | 2822 | 64 | 698 | 7 allocated |
+| Explicit disk + FIS | 3471 | 64 | **49** | **7; fits** |
+| Explicit disk/no-FIS prototype | 3151 | 64 | 369 | 7 |
+
+The RT-11 boot follow-up removes 30 words of misleading MMU stubs; see
+[the no-MMU correction and testbench boot](rt11-boot.md). The Diamond numbers
+below were measured before that firmware-only correction and have not been
+remeasured. The supplied SD wiring is recorded there but not activated yet.
 
 The complete disk+FIS board, not just the SPI block, uses **1099/1280 LUT4,
 552/640 slices, 429 registers, 7/7 EBRs and 17 PIO + JTAGENB**. TRACE reports

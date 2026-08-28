@@ -194,6 +194,7 @@ build/tb_j11_fis.vvp: tb_j11_fis.v ../rtl/j11_microengine.v ../ucode/config.mk |
 	$(IVERILOG) -g2012 -Wall -s tb_j11_fis -o $@ $(filter %.v,$^)
 
 build/guest_fis.bin: j11_programs/fis_test.inc
+build/guest_cpu_registers_no_mmu.bin: j11_programs/cpu_registers.asm
 
 j11-fis-test: build/tb_j11_cpu_io.vvp build/tb_j11_fis.vvp build/j11_ucode.words build/guest_fis.hex build/guest_fis_edges.hex build/guest_fis_faults.hex build/guest_fis_partial_write.hex
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest test_fis_reference
@@ -397,8 +398,8 @@ ucode-j11-test: $(addprefix build/ucode_,$(addsuffix .vvp,$(filter-out j11_core_
 	$(VVP) build/ucode_j11_peripherals.vvp
 	$(VVP) build/ucode_j11_halt.vvp
 	$(VVP) build/ucode_board.vvp
-	@set -e; for test in cpu_registers cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
-		$(VVP) build/ucode_j11_cpu_io.vvp +PROGRAM=build/guest_$$test.hex; \
+	@set -e; for test in cpu_registers_no_mmu cpu_mmu_absent cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
+		$(VVP) build/ucode_j11_cpu_io.vvp +PROGRAM=build/guest_$$test.hex +TIMEOUT=8000000; \
 	done
 	$(VVP) build/ucode_j11_cpu_io.vvp +PROGRAM=build/guest_cpu_nxm.hex +FAULT_READ=06000 +FAULT_WRITE=2 +EXPECT_CAUSE=4 +EXPECT_CPUERR=0154
 	$(VVP) build/ucode_j11_fis.vvp +PROGRAM=build/guest_fis_faults.hex +FAULT_READ=06006
@@ -465,8 +466,8 @@ ucode-ebr-test: ucode-board-ucode build/ucode_native_ebr.v build/j11_ucode_v2.wo
 		$(VVP) -i build/ucode_$${test}_ebr.vvp +TRACE_TESTS; \
 	done
 	$(IVERILOG) -g2012 -Wall -s tb_j11_cpu_io -o build/ucode_cpu_io_ebr.vvp $(J11_V2_EBR_FLAGS) tb_j11_cpu_io.v $(J11_V2_COMMON) $(J11_V2_EBR)
-	@set -e; for test in cpu_registers cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
-		$(VVP) build/ucode_cpu_io_ebr.vvp +PROGRAM=build/guest_$$test.hex; \
+	@set -e; for test in cpu_registers_no_mmu cpu_mmu_absent cpu_psw register_sets halt_privileged cpu_pirq cpu_stack fis fis_edges; do \
+		$(VVP) build/ucode_cpu_io_ebr.vvp +PROGRAM=build/guest_$$test.hex +TIMEOUT=8000000; \
 	done
 	$(IVERILOG) -g2012 -Wall -s tb_j11_core_reference -o build/ucode_core_ebr.vvp $(J11_V2_EBR_FLAGS) tb_j11_core_reference.v ../rtl/ucode_cpu.v $(J11_V2_EBR)
 	$(PYTHON) run_core_reference.py --asm11 $(ASM11) --vvp $(VVP) --banks --testbench build/ucode_core_ebr.vvp --listing build/j11_ucode_v2.lst --work-dir build/ucode_core_ebr

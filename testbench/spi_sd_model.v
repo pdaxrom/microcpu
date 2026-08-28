@@ -22,7 +22,61 @@ module spi_sd_model #(
 	reg initialized = 0, app_command = 0, hold_busy = 0;
 	reg [7:0] incoming;
 	reg [31:0] argument;
+	// Optional raw image is opened rb only. Writes use a bounded, sector-grained
+	// RAM overlay; the input file is NEVER opened for writing, even on failure.
+	integer image_fd = 0, image_sectors = SECTORS, dirty_count = 0;
+	integer dirty_lba [0:SECTORS-1];
+	reg [7:0] image_sector [0:511];
+	string image_path;
+	integer image_bytes, image_result;
 	assign miso = cs_n || absent ? 1'b1 : tx_shift[7];
+	initial begin
+		if ($value$plusargs("SD_IMAGE=%s", image_path)) begin
+			image_fd = $fopen(image_path, "rb");
+			if (image_fd == 0) $fatal(1, "Cannot open SD image: %s", image_path);
+			image_result = $fseek(image_fd, 0, 2);
+			image_bytes = $ftell(image_fd);
+			if (image_result != 0 || image_bytes <= 0 || image_bytes % 512 != 0)
+				$fatal(1, "SD image must contain whole 512-byte sectors");
+			image_sectors = image_bytes / 512;
+			$display("SD image: %s (%0d sectors), read-only backing, %0d-sector RAM overlay",
+				image_path, image_sectors, SECTORS);
+		end
+	end
+	function integer overlay_slot(input integer lba);
+		integer j;
+		begin
+			overlay_slot = -1;
+			for (j = 0; j < dirty_count; j = j + 1)
+				if (dirty_lba[j] == lba) overlay_slot = j;
+		end
+	endfunction
+	task load_sector(input integer lba);
+		integer slot, j, result;
+		begin
+			slot = image_fd != 0 ? overlay_slot(lba) : lba;
+			if (slot >= 0) begin
+				for (j = 0; j < 512; j = j + 1) image_sector[j] = memory[slot*512+j];
+			end else begin
+				result = $fseek(image_fd, lba*512, 0);
+				if (result != 0) $fatal(1, "SD image seek failed: LBA %0d", lba);
+				result = $fread(image_sector, image_fd);
+				if (result != 512) $fatal(1, "SD image short read: LBA %0d", lba);
+			end
+		end
+	endtask
+	task store_sector(input integer lba);
+		integer slot, j;
+		begin
+			slot = image_fd != 0 ? overlay_slot(lba) : lba;
+			if (slot < 0) begin
+				if (dirty_count == SECTORS) $fatal(1, "SD RAM overlay full");
+				slot = dirty_count; dirty_count = dirty_count + 1;
+				dirty_lba[slot] = lba;
+			end
+			for (j = 0; j < 512; j = j + 1) memory[slot*512+j] = write_buffer[j];
+		end
+	endtask
 
 	task enqueue;
 		input [7:0] value;
@@ -61,20 +115,21 @@ module spi_sd_model #(
 			13: begin enqueue(0); enqueue(bad_status ? 8'h04 : 8'h00); end
 			17: begin
 				read_count = read_count + 1;
-				if (!initialized || argument >= SECTORS) enqueue(8'h20);
+				if (!initialized || argument >= image_sectors) enqueue(8'h20);
 				else begin
 					enqueue(0); enqueue(8'hff); enqueue(8'hff);
 					if (fail_read) enqueue(8'h08);
 					else begin
+						load_sector(argument);
 						enqueue(8'hfe);
-						for (i = 0; i < 512; i = i + 1) enqueue(memory[argument*512+i]);
+						for (i = 0; i < 512; i = i + 1) enqueue(image_sector[i]);
 						enqueue(8'h12); enqueue(8'h34);
 					end
 				end
 			end
 			24: begin
 				write_commands = write_commands + 1;
-				if (!initialized || argument >= SECTORS) enqueue(8'h20);
+				if (!initialized || argument >= image_sectors) enqueue(8'h20);
 				else begin enqueue(0); write_lba = argument; write_count = -2; end
 			end
 			default: enqueue(8'h04);
@@ -94,7 +149,7 @@ module spi_sd_model #(
 					write_count = -1; head = 0; tail = 0;
 					enqueue(fail_write ? 8'h0d : 8'h05);
 					if (!fail_write) begin
-						for (i = 0; i < 512; i = i + 1) memory[write_lba*512+i] = write_buffer[i];
+						store_sector(write_lba);
 						writes = writes + 1;
 					end
 					busy_bytes = 4; hold_busy = stuck_busy;

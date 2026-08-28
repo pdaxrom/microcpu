@@ -60,3 +60,27 @@ disk-nofis-disabled-test: build/disk_nofis_cpu.vvp build/j11_sd_nofis.words buil
 
 # Keep these after the recipes: their $< must remain the Verilog source.
 build/disk.vvp build/disk_nofis.vvp build/disk_core.vvp build/disk_fis.vvp build/disk_nofis_cpu.vvp: Makefile.disk ../ucode/config.mk
+
+# User-supplied image is read-only; the simulated SD keeps writes in RAM.
+RT11_IMAGE ?= $(CORE_DIR)/lsi11/disks/rt11v503.dsk
+VERILATOR ?= verilator
+VERILATOR_JOBS ?= 4
+RT11_VERIFY_ARGS ?=
+build/rt11.vvp: tb_j11_rt11.v $(DISK_RTL) include/j11_context_probe.vh Makefile.disk ../ucode/config.mk | build
+	$(IVERILOG) -g2012 -Wall -s tb_j11_rt11 -o $@ $< $(DISK_RTL)
+build/rt11_verilator/Vtb_j11_rt11: tb_j11_rt11.v $(DISK_RTL) include/j11_context_probe.vh Makefile.disk ../ucode/config.mk | build
+	$(VERILATOR) --binary --timing -j $(VERILATOR_JOBS) -CFLAGS '-O3' -Wno-fatal -DJ11_UROM_WORDS=$(J11_UROM_WORDS) --top-module tb_j11_rt11 --Mdir build/rt11_verilator $< $(DISK_RTL) > build/rt11_verilator.log 2>&1 || { cat build/rt11_verilator.log; exit 1; }
+.PHONY: rt11-boot-test rt11-boot-fast rt11-bootstrap-test
+rt11-bootstrap-test: build/rt11.vvp build/j11_sd.words build/guest_rh11_boot.hex
+	$(PYTHON) run_rt11_boot.py --image "$(RT11_IMAGE)" --vvp "$(VVP)" --bootstrap-only --max-cycles 10000000 --work-dir build/rt11-bootstrap $(RT11_VERIFY_ARGS)
+rt11-boot-test: build/rt11.vvp build/j11_sd.words build/guest_rh11_boot.hex
+	$(PYTHON) run_rt11_boot.py --image "$(RT11_IMAGE)" --vvp "$(VVP)" --work-dir build/rt11-icarus $(RT11_VERIFY_ARGS)
+rt11-boot-fast: build/rt11_verilator/Vtb_j11_rt11 build/j11_sd.words build/guest_rh11_boot.hex
+	$(PYTHON) run_rt11_boot.py --image "$(RT11_IMAGE)" --binary build/rt11_verilator/Vtb_j11_rt11 --work-dir build/rt11-verilator $(RT11_VERIFY_ARGS)
+
+.PHONY: disk-image-test disk-no-mmu-test
+disk-image-test: build/disk.vvp build/j11_sd.words build/guest_rh11_disk.hex build/guest_rh11_disk_error.hex
+	$(PYTHON) test_sd_image.py --vvp "$(VVP)"
+disk-no-mmu-test: build/disk.vvp build/j11_sd.words build/guest_cpu_mmu_absent.hex build/guest_cpu_registers_no_mmu.hex
+	$(VVP) build/disk.vvp +PROGRAM=build/guest_cpu_mmu_absent.hex
+	$(VVP) build/disk.vvp +PROGRAM=build/guest_cpu_registers_no_mmu.hex

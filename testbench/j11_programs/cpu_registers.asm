@@ -47,6 +47,8 @@ start
 	check #03125, @#0177746
 
 	; Disabled-MMU stubs never become guest RAM or enable translation.
+	; Preserved j11 profile only; specialized ucode tests absent MMU separately.
+	ifndef NO_MMU
 	mov #3, r5
 	mov #0172200, r1
 	mov #0100, r2
@@ -68,6 +70,7 @@ u_mmu
 	check #0, @#0177572
 	check #0, @#0177574
 	check #0, @#0177576
+	endif
 
 	mov #4, r5
 	mov #0177777, @#0177772

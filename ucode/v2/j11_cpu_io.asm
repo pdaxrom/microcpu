@@ -18,25 +18,10 @@ cpu_io_decode
 	beq cpu_pirq, v2, sp
 	set sp, $fffe
 	beq cpu_psw, v2, sp
-	; Deliberately disabled MMU: reads zero, writes ignored. No C-only aliases
-	; for MMR3/STKLIM and no optional implementation-dependent reserved regs.
-	set sp, $ff7a
-	bltu cpu_mmu_banks, v2, sp
-	set sp, $ff7e
-	bleu cpu_internal_zero, v2, sp ; MMR0/1/2 at 177572/4/6
-cpu_mmu_banks
-	set sp, $f54e		; MMR3 at 172516
-	beq cpu_internal_zero, v2, sp
-	set sp, $ff80
-	and sp, v2, sp
-	set lr, $f480
-	beq cpu_internal_zero, sp, lr ; S/K PAR/PDR: 172200..172376
-	set sp, $ffc0
-	and sp, v2, sp
-	set lr, $ff80
-	beq cpu_internal_zero, sp, lr ; U PAR/PDR: 177600..177676
-	gget lr, 18
-	shr lr, lr, 4
+	; MMU is ABSENT in this profile, not an implemented but disabled unit.
+	; MMR/PAR/PDR addresses must time out on the ordinary unmapped-I/O path.
+	; Zero/ignore stubs fool RT-11's bus-trap probe into using MMU mappings and
+	; hang its extended-memory sizing loop. No translation is emulated here.
 	b memory_raw
 
 cpu_internal_zero
