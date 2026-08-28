@@ -2,8 +2,9 @@
 
 This is a **simulation/resource prototype, not a production disk controller**.
 It never replaces the accepted `j11` or `ucode` images. The normal ucode
-configuration still includes FIS. No SD pins have been assigned or board/card
-programming performed; the experimental Diamond script does not export JED.
+configuration still includes FIS. The supplied SD pins are recorded in the
+separate `sd.lpf`, but not electrically/timing-validated. No board/card
+programming is performed; the experimental Diamond script does not export JED.
 
 ## Resource result
 
@@ -13,13 +14,13 @@ context RAM. The code limit is therefore **3520 words**.
 | Configuration | Code | Context | Free code words | EBR required |
 |---|---:|---:|---:|---:|
 | Normal ucode + FIS, no disk | 2822 | 64 | 698 | 7 allocated |
-| Explicit disk + FIS | 3471 | 64 | **49** | **7; fits** |
-| Explicit disk/no-FIS prototype | 3151 | 64 | 369 | 7 |
+| Explicit disk + FIS + power-on bootstrap | 3497 | 64 | **23** | **7; fits** |
+| Explicit disk/no-FIS + power-on bootstrap | 3177 | 64 | 343 | 7 |
 
-The RT-11 boot follow-up removes 30 words of misleading MMU stubs; see
-[the no-MMU correction and testbench boot](rt11-boot.md). The Diamond numbers
-below were measured before that firmware-only correction and have not been
-remeasured. The supplied SD wiring is recorded there but not activated yet.
+The RT-11 follow-up removes 30 words of misleading MMU stubs, then adds
+26 words for the power-on bootstrap; see [cold boot and tests](rt11-boot.md).
+The Diamond numbers below predate these changes, the 50-Hz divisor, reset
+synchronizer and `sd.lpf`; they have not been remeasured.
 
 The complete disk+FIS board, not just the SPI block, uses **1099/1280 LUT4,
 552/640 slices, 429 registers, 7/7 EBRs and 17 PIO + JTAGENB**. TRACE reports
@@ -98,8 +99,8 @@ The firmware waits for power settling, supplies initial clocks, checks
 CMD0/CMD8, loops CMD55/ACMD41 and validates CMD58 CCS. Reads use CMD17;
 writes use CMD24, check the data response and BUSY release, then check CMD13
 status. Command responses are bounded to 16 byte polls; initialization,
-read-token and write-busy waits are bounded to 120 native ticks (two seconds
-at the standard tick rate), including counter wrap. CRC checking remains
+read-token and write-busy waits are bounded to 100 native ticks (about two seconds
+at the new 50-Hz tick rate), including counter wrap. CRC checking remains
 disabled in SPI default mode; CMD0/CMD8 use their required CRC values and
 read data CRC bytes are consumed but not verified. A write timeout or status
 error can occur after media has changed: failure does not promise rollback.
@@ -121,6 +122,10 @@ make -C testbench -f Makefile.disk disk-ebr-test disk-nofis-ebr-test LATTICE_SIM
 
 # Full SD+FIS .mem and vendor EBR initialization, with capacity checking:
 make -C boards -f Makefile.disk disk-ucode
+
+# Power-on boot/RESET/50-Hz WAIT and failed-card recovery, actual board top:
+make -C testbench -f Makefile.disk disk-cold-boot-fast
+make -C testbench -f Makefile.disk disk-cold-boot-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
 
 # In an isolated Ubuntu build directory; no SD JED export/programming:
 make -C boards -f Makefile.disk disk-diamond DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
@@ -145,14 +150,19 @@ partial DMA faults and next-sector cache faults with both images, plus FIS
 and FIS-edge programs on the full image. Native SPI tests cover 512 byte/speed combinations, held requests,
 read completion, alignment and reset during a transfer.
 
-The ordinary ucode native/guest/peripheral/core suites pass again. All nine
+The ordinary ucode native/guest/peripheral/core suites passed that run. All nine
 original/preserved profile source files still match `d4dabf1`. The new normal
 FIS ROM SHA-256 is
 `a874745b302008bcf6659f3f52bb67dddcefb79dc2e634a122d35de77a792781`.
-The final full disk+FIS ROM hash agrees between Mac simulation and the isolated
-Ubuntu Diamond build:
+The pre-RT-11 full disk+FIS ROM hash agreed between Mac simulation and the isolated
+Ubuntu Diamond build (historical image, not the current autoboot ROM):
 `234dc454156e3a1d4c0e402e85b171374f8fb43728c126177ecff71b1a2b97df`.
 Generated images and reports remain ignored build artifacts.
+
+The board disk builds now define `J11_SD_AUTOBOOT`. Diagnostic test images
+omit that definition to execute preloaded guest assembly; their generated
+EBR files are separate from the board's autoboot EBR. RT-11 and cold-boot
+tests use `j11_sd_boot.words`, byte-for-byte equal to the board `j11_sd.mem`.
 
 Remaining work before hardware use: make long transfers cooperative;
 extend controller/card compatibility as needed; add

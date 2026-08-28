@@ -6,7 +6,7 @@
 // no second master or hidden transaction which can race the FRAM port.
 module ucode_sd_guest_bus #(
 	parameter integer FRAM_CLK_DIV = 2,
-	parameter integer TICK_DIVISOR = 443333,
+	parameter integer TICK_DIVISOR = 532000, // 26.6 MHz / 50 Hz
 	parameter integer SD_SLOW_DIV = 68,
 	parameter integer SD_FAST_DIV = 2
 ) (

@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 
 // Integration boot: real microengine, native services, serial UART and both
-// wire-level SPI devices. Only an assembled bootstrap is deposited in FRAM.
+// wire-level SPI devices. FRAM starts empty; the uROM cold-start code boots SD.
 module tb_j11_rt11;
 	reg clk = 0, rst = 1, rx = 1;
 	wire req, wr, byte_access, bank, ready, error, guest_reset, irq;
@@ -16,7 +16,7 @@ module tb_j11_rt11;
 	integer bootstrap_sector, bootstrap_byte;
 	reg [7:0] tx_byte;
 	string line = "", console_path = "build/rt11_console.log", trace_path;
-	ucode_cpu #(.UROM_WORDS(`J11_UROM_WORDS), .UCODE_FILE("build/j11_sd.words")) dut (
+	ucode_cpu #(.UROM_WORDS(`J11_UROM_WORDS), .UCODE_FILE("build/j11_sd_boot.words")) dut (
 		.clk(clk), .rst(rst), .guest_req(req), .guest_write(wr), .guest_byte(byte_access),
 		.guest_bank(bank), .guest_address(address), .guest_wdata(wdata), .guest_rdata(rdata),
 		.guest_ready(ready), .guest_error(error), .irq(irq), .irq_level(irq_level),
@@ -24,7 +24,7 @@ module tb_j11_rt11;
 		.debug_upc(), .debug_guest_r0(), .debug_guest_pc(), .debug_guest_psw(),
 		.debug_guest_ir(), .debug_cause(), .debug_pending_irq()
 	);
-	// Board divisors, including 60-Hz native time at the 26.6-MHz clock.
+	// Board divisors, including 50-Hz native time at the 26.6-MHz clock.
 	ucode_sd_guest_bus bus (
 		.clk(clk), .rst(rst), .guest_reset(guest_reset), .req(req), .write(wr),
 		.byte_access(byte_access), .bank(bank), .address(address), .wdata(wdata),
@@ -42,13 +42,15 @@ module tb_j11_rt11;
 	always #5 clk = !clk; // cycles use board divisors; absolute simulator time is arbitrary
 	always @(negedge clk) if (!rst) begin
 		cycles = cycles + 1;
+		if (cycles == 26600001 && bus.base.ticks != 50)
+			$fatal(1, "Native clock must produce exactly 50 ticks per 26.6M clocks");
 		if (cycles % 5000000 == 0) begin
 			$display("\nRT11 progress: clocks=%0d PC=%06o IR=%06o uPC=%04h SD reads=%0d writes=%0d TX=%0d RX=%0d/%0d RCSR=%06o stage=%0d",
 				cycles, context_words[7], context_words[9], dut.upc, card.read_count, card.writes, tx_count,
 				rx_reads, rx_sent, context_words[20], stage);
 			$fflush();
 		end
-		if (cycles >= max_cycles || dut.cause_reg == 3 || dut.cause_reg == 4)
+		if (cycles >= max_cycles || dut.cause_reg >= 3)
 			$fatal(1, "RT11 stopped: clocks=%0d PC=%06o IR=%06o PSW=%06o uPC=%04h cause=%0d CS1=%06o WC=%06o BA=%06o ER=%06o",
 				cycles, context_words[7], context_words[9], context_words[8], dut.upc, dut.cause_reg,
 				context_words[40], context_words[41], context_words[42], context_words[46]);
@@ -120,11 +122,10 @@ module tb_j11_rt11;
 		if ($value$plusargs("TRACE=%s", trace_path)) trace_fd = $fopen(trace_path, "w");
 		#1;
 		if (card.image_fd == 0) $fatal(1, "RT11 test requires +SD_IMAGE=raw_disk_image");
-		$readmemh("build/guest_rh11_boot.hex", fram.memory);
+		// No guest bootstrap, disk sectors or registers are deposited here.
 		repeat (4) @(negedge clk); rst = 0;
 		if ($test$plusargs("BOOTSTRAP_ONLY")) begin
-			// Short independent Icarus check: real reads replaced the trampoline
-			// with both disk sectors and execution entered RT-11's own bootstrap.
+			// Real SPI reads filled empty FRAM and entered RT-11's bootstrap.
 			wait (context_words[7] == 16'o604);
 			if (card.read_count != 2 || card.writes != 0 || bus.bank_override)
 				$fatal(1, "Bootstrap did not complete exactly two SD reads");

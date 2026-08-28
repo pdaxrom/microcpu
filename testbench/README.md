@@ -176,14 +176,31 @@ peripheral semantics continue to be tested by `microasm11` programs.
 ```sh
 make -C testbench -f Makefile.disk rt11-boot-fast
 make -C testbench -f Makefile.disk rt11-bootstrap-test
+make -C testbench -f Makefile.disk disk-cold-boot-fast
+make -C testbench -f Makefile.disk disk-cold-boot-test # independent Icarus version
+make -C testbench -f Makefile.disk disk-cold-boot-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
 ```
 
 The full test uses Verilator and the same SPI FRAM/SD/UART RTL as the board.
-The shorter independent Icarus test checks the two bootstrap sectors and the
-entry into RT-11 code. `RT11_IMAGE` defaults to the sibling
+FRAM starts empty: the production microcode reads the two boot sectors, sets
+the RH0 register ABI and enters the disk code. The shorter independent Icarus
+test checks all 1024 loaded bytes and entry into RT-11 code.
+`RT11_IMAGE` defaults to the sibling
 `k1801vm1/lsi11/disks/rt11v503.dsk`; no disk image is distributed here. The input
 is read-only, with a volatile sector overlay for guest writes, and the runner
 checks its SHA-256 before and after simulation. The full console scenario
 requires `SHOW CONFIGURATION`, the `RT11FB.SYS` directory entry, and a new
 prompt after each command. See [RT-11 bring-up](../docs/rt11-boot.md) for logs,
 limits, the no-MMU probe correction, SD wiring and physical-board follow-up.
+
+`tb_sd_cold_boot` uses the actual SD board top, including its initialized reset
+synchronizer, with `res=1` from time zero. Its synthetic disk boot block is
+assembled from `j11_programs/sd_cold_boot.asm` by **microasm11** and is loaded
+only into the SD model, never FRAM. Seven scenarios cover empty/stale FRAM,
+absent card, first/second-sector failure, wrong OCR and wrong CMD8 echo.
+Each failure must stop before any guest instruction; fixing the card plus
+board reset must boot successfully. Guest RESET must not reread the disk or
+clear guest RAM. Two WAIT/vector-100 interrupts and 532000-clock tick periods
+verify the nominal 50-Hz source, including continuity across guest RESET.
+The real-EBR target uses the board's generated autoboot ROM, not a diagnostic
+image with the entry path bypassed.

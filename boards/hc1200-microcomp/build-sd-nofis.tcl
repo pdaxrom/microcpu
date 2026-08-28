@@ -1,4 +1,4 @@
-# Resource/timing experiment ONLY: no export/programming, SD pins unassigned.
+# Build/timing check ONLY: supplied sd.lpf pinout, no export/programming.
 cd [file dirname [file normalize [info script]]]
 if {[catch {
     prj_project open microcomp-sd-nofis.ldf

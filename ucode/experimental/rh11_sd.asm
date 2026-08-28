@@ -5,6 +5,39 @@
 ; scratch 25..30 is reused; never call guest memory helpers from this code.
 ; One 512-byte cache at FRAM bank 1 offset 0, inaccessible to guest DMA.
 
+	ifdef J11_SD_AUTOBOOT
+; Cold start ONLY: native reset cleared the context, peripherals_reset set up
+; RH0. No guest instruction or FRAM-resident bootstrap is needed. Guest RESET
+; calls peripherals_reset directly and must never enter this path.
+sd_boot
+	set v2, $fe00             ; -512 words: sectors 0 and 1 -> guest address 0
+	gset v2, 41
+	ldi8 v2, $11              ; RK611 READ + GO, unit/BA/DA/DC are already zero
+	gset v2, 40
+	call rh11_poll
+	gget v2, 40
+	blt sd_boot_failed, v2, 0
+	gget v2, 41
+	cbnz v2, sd_boot_failed
+	; RH0 bootstrap ABI (lsi11/main.c). R0/R2/R3/R5/PC remain reset to zero.
+	set v2, $ff20             ; R1 = 177440, controller CSR
+	gset v2, 1
+	set v2, $400              ; SP = 02000
+	gset v2, 6
+	setl v2, $10              ; R4 = 02020
+	gset v2, 4
+	ldi8 v2, 4                ; PSW after CLR PC: kernel, IPL 0, Z
+	gset v2, 8
+	jmp fetch
+sd_boot_failed
+	ldi8 v2, 5                ; private diagnostic cause: SD boot failed
+	gset v2, 10
+sd_boot_failed_stop
+	; No stale/partially loaded guest code may run. Board reset retries;
+	; console Proceed does not bypass a failed boot. RH status retains error.
+	b sd_boot_failed_stop
+	endif
+
 rh11_reset
 	clr v2
 	ldi8 sp, 40
@@ -409,7 +442,7 @@ sd_command_done
 
 sd_initialize
 	gset lr, 28
-	; Wait at least one complete 60-Hz interval before the first power-up
+	; Wait at least one complete 50-Hz interval before the first power-up
 	; clocks. Two tick transitions avoid a nearly-zero boundary interval.
 	set sp, $f004
 	ldr v0, sp, 0
@@ -466,7 +499,7 @@ sd_initialize_wait
 	ldr v0, sp, 0
 	gget v2, 60
 	sub v0, v0, v2
-	ldi8 v2, 120
+	ldi8 v2, 100              ; two seconds at 50 Hz
 	bltu sd_initialize_wait, v0, v2
 sd_initialize_bad
 	jmp rh11_sd_error
@@ -511,7 +544,7 @@ sd_read_token
 	ldr v0, sp, 0
 	gget v2, 60
 	sub v0, v0, v2
-	ldi8 v2, 120
+	ldi8 v2, 100              ; two seconds at 50 Hz
 	bltu sd_read_token, v0, v2
 	jmp rh11_sd_error
 sd_read_data
@@ -573,7 +606,7 @@ sd_write_busy
 	ldr v0, sp, 0
 	gget v2, 60
 	sub v0, v0, v2
-	ldi8 v2, 120
+	ldi8 v2, 100              ; two seconds at 50 Hz
 	bltu sd_write_busy, v0, v2
 	jmp rh11_sd_error
 sd_write_done

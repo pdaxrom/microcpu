@@ -5,10 +5,10 @@ SD_BIN = hc1200-microcomp/j11_sd.bin
 SD_NOFIS_BIN = hc1200-microcomp/j11_sd_nofis.bin
 .PHONY: disk-ucode disk-diamond disk-nofis-ucode disk-nofis-diamond
 
-$(SD_BIN): $(SD_DEPS) $(MICROASM)
-	$(MICROASM) --cpu ucode -D J11_DISK_PROTOTYPE -binary ../ucode/v2/j11.asm $@
-$(SD_NOFIS_BIN): $(SD_DEPS) $(MICROASM)
-	$(MICROASM) --cpu ucode -D J11_DISK_PROTOTYPE -D J11_DISABLE_FIS -binary ../ucode/v2/j11.asm $@
+$(SD_BIN): $(SD_DEPS) $(MICROASM) Makefile.disk
+	$(MICROASM) --cpu ucode -D J11_DISK_PROTOTYPE -D J11_SD_AUTOBOOT -binary ../ucode/v2/j11.asm $@
+$(SD_NOFIS_BIN): $(SD_DEPS) $(MICROASM) Makefile.disk
+	$(MICROASM) --cpu ucode -D J11_DISK_PROTOTYPE -D J11_SD_AUTOBOOT -D J11_DISABLE_FIS -binary ../ucode/v2/j11.asm $@
 hc1200-microcomp/j11_sd.mem: $(SD_BIN) ../ucode/make_urom_ebr.py ../ucode/config.mk Makefile.disk
 	$(PYTHON) ../ucode/make_urom_ebr.py $< --words $(J11_UROM_WORDS) --format mem > $@
 hc1200-microcomp/j11_sd_nofis.mem: $(SD_NOFIS_BIN) ../ucode/make_urom_ebr.py ../ucode/config.mk Makefile.disk

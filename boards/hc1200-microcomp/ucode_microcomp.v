@@ -4,7 +4,7 @@ module ucode_hc1200_microcomp #(
 	parameter integer UROM_WORDS = 3584,
 	parameter UCODE_FILE = "j11_ucode_v2.mem",
 	parameter integer FRAM_CLK_DIV = 2,
-	parameter integer TICK_DIVISOR = 443333
+	parameter integer TICK_DIVISOR = 532000 // 26.6 MHz / 50 Hz
 ) (
 	input  wire       res,
 	input  wire       rx,

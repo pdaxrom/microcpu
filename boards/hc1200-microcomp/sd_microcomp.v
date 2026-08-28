@@ -1,11 +1,11 @@
 `timescale 1ns/1ps
 
-// EXPERIMENTAL: resource-estimate top; SD package pins are not assigned.
+// EXPERIMENTAL: SD boot top; sd.lpf records the supplied, unverified SD pinout.
 module ucode_sd_microcomp #(
 	parameter integer UROM_WORDS = 3584,
 	parameter UCODE_FILE = "j11_sd.mem",
 	parameter integer FRAM_CLK_DIV = 2,
-	parameter integer TICK_DIVISOR = 443333,
+	parameter integer TICK_DIVISOR = 532000, // 26.6 MHz / 50 Hz
 	parameter integer SD_SLOW_DIV = 68,
 	parameter integer SD_FAST_DIV = 2
 ) (
@@ -32,7 +32,10 @@ module ucode_sd_microcomp #(
 );
 
 	wire clk;
-	reg  reset;
+	// GSR initializes this generic reset synchronizer at FPGA configuration.
+	// Start even if the active-low board reset button is never pressed.
+	reg [1:0] reset_sync = 2'b11;
+	wire reset = reset_sync[0];
 
 	wire        guest_req;
 	wire        guest_write;
@@ -64,8 +67,9 @@ module ucode_sd_microcomp #(
 		.OSC(clk)
 	);
 
-	always @(posedge clk) begin
-		reset <= !res;
+	always @(posedge clk or negedge res) begin
+		if (!res) reset_sync <= 2'b11;
+		else reset_sync <= {1'b0, reset_sync[1]};
 	end
 
 	/*

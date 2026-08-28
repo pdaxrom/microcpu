@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <BaliProject version="3.2" title="microcomp-sd-nofis" device="LCMXO2-1200HC-4SG32C" default_implementation="impl1">
     <Options/>
-    <Implementation title="impl1" dir="impl1-sd-nofis" description="EXPERIMENTAL RK611/SD, explicit no-FIS profile; SD pins unassigned" synthesis="synplify" default_strategy="Strategy1">
+    <Implementation title="impl1" dir="impl1-sd-nofis" description="EXPERIMENTAL RK611/SD, no FIS, 50 Hz and power-on SD bootstrap" synthesis="synplify" default_strategy="Strategy1">
         <Options def_top="ucode_sd_microcomp"/>
         <Source name="sd_microcomp.v" type="Verilog" type_short="Verilog">
             <Options top_module="ucode_sd_microcomp"/>
@@ -23,7 +23,7 @@
         <Source name="uart.v" type="Verilog" type_short="Verilog">
             <Options/>
         </Source>
-        <Source name="j11.lpf" type="Logic Preference" type_short="LPF">
+        <Source name="sd.lpf" type="Logic Preference" type_short="LPF">
             <Options/>
         </Source>
     </Implementation>

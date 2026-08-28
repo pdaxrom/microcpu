@@ -90,7 +90,7 @@ are reserved, not used as authoritative service state.
 | 6, 7 | active SP and unbanked PC |
 | 8 | J-11 PSW |
 | 9 | current J-11 instruction word |
-| 10 | latched cause: `1` bus/address error, `2` reserved instruction, `3` HALT, `4` double abort |
+| 10 | latched cause: `1` bus/address error, `2` reserved instruction, `3` HALT, `4` double abort; disk autoboot adds `5` SD boot failure |
 | 11 | pending IRQ: bit 15 valid, bits 10..8 level, bits 7..0 vector |
 | 12..13 | reserved microcode scratch/state |
 | 14 | bit 0 yellow pending, 1 yellow inhibit, 2 vector push, 3 explicit PSW write, 4 pre-instruction T, 5 red recovery |
@@ -389,13 +389,18 @@ acknowledgement clears only the request. The new assembly tests use the
 documented board behavior; the reference C device has not been changed.
 
 Guest timer registers, enables and interrupt processing are microcode. A raw
-counter advances once per `TICK_DIVISOR` FPGA clocks (default 443333, nominally
-60 Hz at 26.6 MHz) independently of SPI stalls and WAIT. Guest RESET does not
+counter advances once per `TICK_DIVISOR` FPGA clocks (the active `ucode` and
+SD board tops use **532000**, nominally **50 Hz at 26.6 MHz**; the preserved
+`j11` top retains 443333/60 Hz) independently of SPI stalls and WAIT. Guest RESET does not
 reset elapsed time. Firmware coalesces missed ticks into LCM, handles the
 16-bit sequence wrap, and acknowledges LCM before entering vector `100`.
 BR6 outranks UART BR4; equal or higher PSW IPL masks a request. A masked WAIT
 does not fetch the following instruction. This adds no changes to `cpu.v` or
 `j11_microengine.v`.
+
+The explicit SD build also includes a [power-on bootstrap](rt11-boot.md#power-on-bootstrap).
+It loads the first two SD sectors through microcode before any guest fetch;
+there is no bootstrap to install in FRAM. Guest RESET does not reboot.
 
 The controller uses the command sequence already used by the bootloader:
 

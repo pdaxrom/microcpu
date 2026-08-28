@@ -16,6 +16,10 @@ make -C testbench -f Makefile.disk rt11-boot-fast \
 # Independent, shorter Icarus check of both bootstrap sectors and entry PC.
 make -C testbench -f Makefile.disk rt11-bootstrap-test
 
+# Actual board top: power-on reset, safe SD failures and RESET/50-Hz WAIT.
+make -C testbench -f Makefile.disk disk-cold-boot-fast
+make -C testbench -f Makefile.disk disk-cold-boot-ebr-test LATTICE_SIM_DIR=/path/to/machxo2/models
+
 # The same complete boot/console scenario with Icarus (substantially slower).
 make -C testbench -f Makefile.disk rt11-boot-test
 
@@ -41,9 +45,12 @@ The complete test requires the RT-11FB V05.03 banner, the response to
 `SHOW CONFIGURATION` (DM0:RT11FB, 56 KB), and the `RT11FB.SYS` directory entry.
 Reaching `$finish` or printing an initial banner alone is not success.
 
-Observed complete run on 2026-08-28: **1,627,665,662 clocks**, **232 sector
-reads**, **6 sector writes**, **5 dirty overlay sectors**, and all **43** input
-bytes consumed. Both commands return to KMON. Relevant serial output:
+Cold-boot / 50-Hz acceptance on 2026-08-28: **1,574,968,301 clocks**, **232
+sector reads**, **6 sector writes**, **5 dirty overlay sectors**, and all **43**
+input bytes consumed. Both commands return to KMON, all runner checks pass,
+and the source-image hash is unchanged. This run's logs are in
+`testbench/build/rt11-50hz-autoboot/` (selected with
+`RT11_VERIFY_ARGS='--work-dir build/rt11-50hz-autoboot'`). Relevant output:
 
 ```
 RT-11FB (S) V05.03
@@ -59,11 +66,19 @@ RT11FB.SYS   103P 26-Jan-1999
 .
 ```
 
-The entire scripted sequence represents about **61.2 seconds** at the board's
+The entire scripted sequence represents about **59.2 seconds** at the board's
 26.6-MHz microengine clock. This is a functional bring-up, not a throughput
 claim. In particular, long DMA commands still suspend guest execution.
 
-Regression results for the firmware correction:
+The independent two-sector Icarus check reaches RT-11's `000604` entry in
+**1,688,185 clocks** with all 1024 bytes matching the disk. The seven board-top
+cold-boot scenarios pass both Verilator and Icarus; the normal path (including
+RESET and two clock interrupts) takes **2,679,094 clocks**. The same normal
+and second-sector-failure/recovery paths pass with the actual Lattice EBR
+models and the board ROM. The optional no-FIS board ROM also cold-boots and
+passes RESET/WAIT checks in Icarus.
+
+The preceding MMU correction's broader regression results (`fc96c39`):
 
 - Ordinary `ucode` guest/peripheral/HALT/CPU-I/O suites pass; the ordinary
   and disk images each pass **209/209** core snapshots (29 EIS cases).
@@ -76,26 +91,70 @@ Regression results for the firmware correction:
 - All nine original/preserved RTL and firmware files still match `d4dabf1`;
   the preserved profile's original MMU-stub/register test passes as well.
 
+For the cold-boot follow-up, ordinary guest/peripheral/FIS/HALT/CPU-I/O tests,
+both 209-snapshot core configurations, all 22 disk scenarios, image/overlay
+tests and the 600 absent-MMU accesses were rerun successfully. The exhaustive
+4040-case FIS sweep above belongs to the preceding commit; FIS arithmetic has
+not changed. The current board and cold-boot test ROM SHA-256 agrees:
+
+```
+988397799b643e75985317c53b59b0f5f6e87479cf58acb6856bc97b32f23a41
+```
+
+## Power-on bootstrap
+
+`make -C boards -f Makefile.disk disk-ucode` builds **SD + FIS + autoboot**.
+The explicit no-FIS disk build also boots from SD. Both define
+`J11_SD_AUTOBOOT`; regular CPU/disk diagnostics omit it to enter their
+preloaded guest tests. `testbench/build/j11_sd_boot.words` matches the board
+`j11_sd.mem`, and the EBR cold-boot test uses the board's generated EBR file.
+
+The SD board top initializes a two-stage generic reset synchronizer at FPGA
+configuration. After context clearing, the initial microcode entry resets
+peripherals and jumps to `sd_boot` in `ucode/experimental/rh11_sd.asm`:
+
+1. Set RH0 WC to `-01000` (512 words), BA/DA/DC/unit already zero; READ + GO.
+2. Initialize SDHC/SDXC and read **sectors 0 and 1**, through the existing SD
+   command/cache/DMA routines, into guest FRAM `000000..001777`.
+3. Require completion without RH errors and WC zero. Set R1=`177440`,
+   SP=`02000`, R4=`02020`, PSW=`4`; R0/R2/R3/R5/PC retain reset zero.
+4. Fetch guest code at address 0. **Nothing needs to be installed in FRAM.**
+
+This is the entry ABI of `lsi11/main.c` / `j11_programs/rh11_boot.asm` after
+its `CLR PC`. The latter remains an assembled reference, but is no longer
+deposited by either RT-11 test. The bootstrap adds **26 native code words**.
+Guest `RESET` calls only the peripheral reset path, never `sd_boot`.
+
+Transport failure, including a failed second sector, stops in a microcode
+loop with private diagnostic **cause 5** and RH error/WC/BA status retained.
+SD CS is released and the FRAM bank override is off. No stale/partially loaded
+guest instruction runs, and console Proceed cannot bypass the failure.
+Fixing/inserting the card and asserting the board reset retries the boot.
+There is no boot-menu/ODT/error-message UI or filesystem/signature validation.
+
 ## What is actually simulated
 
-`j11_programs/rh11_boot.asm` is assembled by **microasm11**. It expresses the
-RH0 bootstrap in `lsi11/main.c`: code at octal `02000`, entry `02002`, controller
-at `177440`, WC `-01000` (512 words = **two** 512-byte sectors), load address 0,
-then `CLR PC`. A small jump at reset address 0 initially enters this bootstrap.
-That jump is overwritten by the real disk read. No OS or disk boot block is
-preloaded into guest RAM. The shorter Icarus test compares all 1024 loaded
-bytes against the image before RT-11's own code at `000604` runs.
+The RT-11 tests now begin with **empty FRAM**, not a deposited bootstrap.
+The shorter Icarus test compares all 1024 loaded bytes against the image before
+RT-11's own code at `000604` runs. A separate board-top test never asserts
+external reset on power-on and also boots from stale `A5`-filled FRAM.
+Its disk boot block (`sd_cold_boot.asm`) is assembled by **microasm11**.
+It checks boot registers, guest RESET without disk reload/RAM loss and two
+WAIT/vector-100 interrupts. Five fault scenarios cover absent SD, first/second
+sector errors, wrong OCR and wrong CMD8 echo, followed by reset/recovery.
 
 The full test uses the real `ucode_cpu`, assembled disk+FIS microcode, native
 bus services, SPI FRAM controller and serial UART. The SD card model parses
 SPI command/data frames and reads sectors from the supplied raw file. Board
 clock divisors are retained, not a fast-memory or direct-RH11 substitute.
 The test clock's nanosecond scale is arbitrary; physical time is the reported
-clock count divided by 26.6 MHz. The raw time source retains the board default
-of 60 ticks/second. A monitor's printed clock/configuration text is not a
-measurement of this time source or proof of every advertised hardware option.
-This image prints **50 Cycle System Clock**: align the clock configuration to
-50 Hz before relying on guest wall-clock time on a physical board. Its printed
+clock count divided by 26.6 MHz. Active `ucode`/SD tops now use **532000 clocks
+per tick: nominally 50 Hz**. The full test checks 50 native ticks per 26.6M
+clocks; the board test checks consecutive intervals and continuity across
+guest RESET. SD timeouts are 100 ticks (~2 seconds), power settling waits two
+tick transitions. Long synchronous DMA still coalesces missed guest clock
+interrupts: this does **not** yet guarantee accurate RT-11 time under disk load.
+A monitor's printed text is not proof of every advertised hardware option. Its printed
 `Cache Memory` / `FPU support` lines do not mean that this prototype acquired
 a data cache or FP11; FP11 is still out of scope.
 
@@ -133,9 +192,10 @@ there is no new J-11 register or exception logic in Verilog.
 `cpu_mmu_absent.asm` checks 100 addresses × six word/byte read/write forms,
 600 traps in total. Existing processor-register tests still run; the preserved
 `j11` profile separately retains its historical zero/ignore tests. Removing the
-misleading stubs saves 30 code words: **3471 code + 64 context + 49 free = 3584**
-for disk+FIS. The last Diamond resource/timing numbers refer to the preceding
-firmware, not a rerun of this change.
+misleading stubs saves 30 code words; adding autoboot spends 26. The resulting
+disk+FIS image is **3497 code + 64 context + 23 free = 3584**. The last Diamond
+resource/timing numbers predate these changes and the new reset/divider/pins;
+they are not current hardware acceptance results.
 
 ## Supplied SD connections — not yet electrically verified
 
@@ -146,9 +206,10 @@ firmware, not a rerun of this change.
 | PT12D | SCLK | `sd_sck` |
 | PT12C | MISO | `sd_miso` |
 
-These connections are recorded for the later physical-board step. No Diamond
-run, programming, real-card write or new pin-constraint activation is part of
-this test. Boot provisioning on the physical board remains separate: the
-testbench deposits the assembled bootstrap in FRAM, not in production uROM.
+Both disk projects now select `sd.lpf` with these supplied locations; the
+ordinary/preserved projects are unchanged. No Diamond run, programming or
+real-card write is part of this test, and physical I/O timing/electrical
+verification is still required. Once configured, the SD top's reset and uROM
+bootstrap do not depend on preexisting FRAM contents or an external loader.
 The disk still requires a raw RK image at SD LBA 0, not a file in a FAT volume.
 See [controller scope and remaining limitations](rk611-sd-prototype.md).

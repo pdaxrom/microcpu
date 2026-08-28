@@ -1,5 +1,6 @@
 ; Same RH0 bootstrap as k1801vm1/lsi11/main.c, expressed as assembly.
-; Only the bootstrap is deposited in FRAM: NO OS/boot block is preloaded.
+; Reference for the former FRAM-deposited bootstrap. Current RT-11 tests use
+; sd_boot in native microcode instead and never deposit a guest bootstrap.
 	cpu dcj-11
 	org 0
 	jmp @#boot

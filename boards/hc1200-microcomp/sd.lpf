@@ -1,0 +1,29 @@
+# SD profile: existing J-11 board signals plus the user-supplied SD wiring.
+# This pinout still needs a Diamond timing/electrical check before programming.
+BLOCK RESETPATHS ;
+BLOCK ASYNCPATHS ;
+FREQUENCY NET "clk" 26.6 MHz ;
+IOBUF ALLPORTS IO_TYPE=LVCMOS33 ;
+IOBUF PORT "res" PULLMODE=UP ;
+IOBUF PORT "rx" PULLMODE=NONE ;
+IOBUF PORT "gpio_miso" PULLMODE=NONE ;
+IOBUF PORT "sd_miso" PULLMODE=UP ;
+IOBUF PORT "sd_cs_n" PULLMODE=UP ;
+LOCATE COMP "res" SITE "PL9A" ;
+LOCATE COMP "rx" SITE "PT15D" ;
+LOCATE COMP "tx" SITE "PT17D" ;
+LOCATE COMP "gpio_miso" SITE "PB6D" ;
+LOCATE COMP "gpio_mcs" SITE "PB4C" ;
+LOCATE COMP "gpio_mosi" SITE "PB20D" ;
+LOCATE COMP "gpio_msck" SITE "PB6C" ;
+LOCATE COMP "gpio_reg_latch" SITE "PR5D" ;
+LOCATE COMP "gpio_din" SITE "PB20C" ;
+LOCATE COMP "gpio_clk" SITE "PB9B" ;
+LOCATE COMP "gpio_ce" SITE "PB11B" ;
+LOCATE COMP "gpio_blank" SITE "PB11A" ;
+LOCATE COMP "gpio_rs" SITE "PB9A" ;
+LOCATE COMP "sd_cs_n" SITE "PL9B" ;
+LOCATE COMP "sd_mosi" SITE "PR5C" ;
+LOCATE COMP "sd_sck" SITE "PT12D" ;
+LOCATE COMP "sd_miso" SITE "PT12C" ;
+SYSCONFIG CONFIGURATION=CFG JTAG_PORT=DISABLE MUX_CONFIGURATION_PORTS=ENABLE ;

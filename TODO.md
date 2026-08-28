@@ -116,7 +116,8 @@ needed for this acceptance step. Deferred work below remains deferred.
     the reference C device or pretend these two models already agree.
   - [x] Provide deterministic tick tests, including wrap and repeated WAIT
     wakeups. The approved raw time counter advances independently of bus stalls
-    and WAIT, nominally 60 Hz at 26.6 MHz. It has no guest timer CSR or IRQ vector.
+    and WAIT. Active `ucode` boards now use nominal 50 Hz at 26.6 MHz; the
+    preserved `j11` profile retains 60 Hz. It has no guest timer CSR or IRQ vector.
   - [x] Verify equal-IPL masking, BR6 over BR4, RX over TX, request ACK versus
     DONE, IE re-arm, RESET flags/state, private-address isolation and odd words.
 - [x] FIS (`FADD`, `FSUB`, `FMUL`, `FDIV`): add all four instructions with
@@ -360,7 +361,8 @@ it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.
 - [x] Fix no-MMU presence detection in `ucode/v2` only: MMU register accesses
   now time out instead of falsely acknowledging unimplemented mappings.
   Test all 100 addresses / 600 access forms. Preserve original/j11 profiles.
-  Disk+FIS now occupies 3471 code + 64 context, leaving 49 of 3584 words free.
+  This correction reduced disk+FIS to 3471 code + 64 context, leaving 49 words
+  before the following power-on bootstrap addition.
 - [x] Reach RT-11FB V05.03 startup and the KMON `.` prompt using the complete
   microengine + board UART + SPI FRAM/SD testbench.
 - [x] Complete scripted UART `SHOW CONFIGURATION` / directory acceptance and
@@ -368,12 +370,29 @@ it undecided are historical. ODT, MMU/split I/D and FP11 remain deferred.
   volatile overlay, 43/43 input bytes received, source-image hash unchanged.
   Both core images pass 209/209 snapshots, FIS 4040/4040, disk scenarios 22/22;
   real-EBR disk/FIS/absent-MMU tests pass. See `docs/rt11-boot.md`.
-- [x] Record user wiring: PL9B CS, PR5C MOSI, PT12D SCLK, PT12C MISO. Pin
-  activation/electrical verification and physical bootstrap provisioning are
-  later work; no Diamond run, board programming or real-card writes here.
-- [ ] Before physical use, align the image's 50-Hz clock setting with the
-  native time-source configuration (currently 60 Hz); boot is not timekeeping
-  validation. Continue to treat sustained UART input / long DMA as future work.
+- [x] Add user wiring to the SD-only `sd.lpf`: PL9B CS, PR5C MOSI, PT12D SCLK,
+  PT12C MISO. Both disk projects select it; original/j11 pinouts are unchanged.
+  Electrical/timing verification is later work; no Diamond run, board
+  programming or real-card writes in this follow-up.
+- [x] Match the image's 50-Hz clock: active `ucode` board tops divide 26.6 MHz
+  by 532000. SD timeouts use 100 ticks (~2 seconds). Verify actual periods,
+  repeated WAIT/vector-100 interrupts and time-source continuity across RESET.
+- [x] Power-on SD bootstrap in assembly microcode: no guest RAM bootstrap or
+  state injection. Load sectors 0/1, set RH0 register ABI, execute from PC 0.
+  Generic board reset starts it without pressing a button. Guest RESET only
+  resets peripherals. Transport failure stops with private cause 5; board
+  reset retries. Disk+FIS: **3497 code + 64 context + 23 free = 3584**.
+- [x] Test empty/stale FRAM, absent card, first/second-sector read failure,
+  bad OCR/CMD8 echo, safe stop and recovery after fixing the card + board reset.
+  All seven scenarios pass Verilator and Icarus. Actual EBR models pass normal
+  boot and partial-load failure/recovery; no-FIS board ROM passes cold boot.
+- [x] Repeat full RT-11 boot from empty FRAM at 50 Hz: **1,574,968,301 clocks**,
+  232 reads / 6 volatile-overlay writes / 43 UART input bytes. Both commands
+  return to KMON; input hash unchanged. Both core profiles: 209/209;
+  22 disk scenarios, image/overlay and 600 MMU-absence checks pass again.
+- [ ] Physical-board timing/pin/electrical acceptance and programming.
+  Sustained UART input, cooperative long DMA and guest timekeeping under
+  disk load remain future work: missed guest ticks are still coalesced.
 
 ### Deferred: not part of the active follow-up
 

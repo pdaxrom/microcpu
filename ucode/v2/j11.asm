@@ -23,6 +23,9 @@ wait_instruction
 
 reset_initialize
 	far_call peripherals_reset
+	ifdef J11_SD_AUTOBOOT
+	far_jump sd_boot
+	endif
 
 fetch
 	clr v1
