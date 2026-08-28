@@ -1,22 +1,194 @@
-# CPU Testbench
+# Verilog simulators and CPU tests
 
-Run the CPU regression suite with:
+[Legacy CPU](../README.md) · [Preserved J-11 engine](../docs/fpga-j11.md) ·
+[Specialized engine](../docs/ucode-cpu.md) · [Diamond](../docs/diamond.md)
+
+All commands below run from the repository root unless stated otherwise.
+These tests run on macOS/Linux without Diamond, an FPGA or physical media.
+Icarus is the main regression simulator; Verilator provides compiled
+wire-level SD/RT-11 tests. Neither is a substitute for synthesis, place/route,
+timing checks or a physical-board test.
+
+## Dependencies and paths
+
+- make, a C compiler, Python 3 and Icarus Verilog (`iverilog` plus `vvp`).
+- Verilator and a C++ toolchain for targets ending in `-fast`, the complete
+  diagnostic suites and boot-trace tests. These use `--binary --timing`.
+- Tcl (`tclsh`) for the static board tests that exercise the Diamond scripts
+  with mocked commands; they do not invoke Diamond.
+- The sibling `k1801vm1/microasm11` assembler for guest PDP-11 programs.
+  The Makefile checks that it exists; it does not build it for you.
+- The sibling `k1801vm1/core` and `tests/core_tests.c` for C-reference replay.
+- Optional Lattice MachXO2 Verilog models for the explicit `*-ebr-test` targets.
+- Your raw RT-11 disk image for RT-11 boot tests; none is distributed here.
+
+The local verified tools are Icarus **12.0** and Verilator **5.050**. These are
+tested versions, not a claim that every older release works. Installation and
+general tool usage are covered by the official
+[Icarus documentation](https://steveicarus.github.io/iverilog/usage/index.html)
+and [Verilator installation guide](https://verilator.org/guide/latest/install.html).
+An old Verilator without the timing-enabled binary flow is insufficient.
 
 ```sh
-make -C testbench test
+make -C asm
+asm/microasm --list-cpus
+iverilog -V
+verilator --version
+python3 --version
+
+# Build the guest assembler in its own checkout, if not already built.
+make -C /Users/sash/Work/PROJECTS/k1801vm1/microasm11
+
+# Override sibling paths when your checkout layout differs.
+make -C testbench ucode-core-test \
+  ASM11=/absolute/path/k1801vm1/microasm11/microasm11 \
+  CORE_DIR=/absolute/path/k1801vm1
 ```
 
-The top-level shortcut is:
+Default `ASM11` is `../../../PROJECTS/k1801vm1/microasm11/microasm11`,
+and `CORE_DIR` is `../../../PROJECTS/k1801vm1`, both relative to
+**testbench/**. Prefer absolute override paths. `MICROASM11_DIR` can also
+override the directory used to derive `ASM11`. Simulator commands can be
+overridden with `IVERILOG`, `VVP` and `VERILATOR`; Python with `PYTHON`.
+
+## Select a CPU and test scope
+
+| Target | CPU / scope | Simulator |
+|---|---|---|
+| `run-smoke_pass`, `run-isa_alu`, `board-smoke` | Legacy `rtl/cpu.v` | Icarus |
+| `test` (also root `make test`) | Legacy native/bootloader/board tests **plus preserved j11** | Icarus |
+| `j11-test` | Preserved microengine, guest instructions, FRAM, peripherals, banks, HALT and directed FIS | Icarus |
+| `j11-core-banks-test` / `j11-fis-reference-test` | Preserved engine: 209 selected core snapshots / 4040 exact FIS cases | Icarus + C/Python reference |
+| `ucode-test` | Specialized native engine + guest suites + no-FIS traps, no disk | Icarus |
+| `ucode-core-test` / `ucode-fis-reference-test` | Specialized engine: the same selected core / exhaustive FIS checks | Icarus + C/Python reference |
+| `profile-acceptance` | Ordered original + preserved + specialized acceptance, including assembler and preservation checks | Icarus + C/Python reference |
+| `profile-acceptance-ebr` | Above plus both microengines' actual vendor EBR models | Icarus + vendor models |
+
+These targets belong to `testbench/Makefile`. **Plain `make -C testbench`
+only compiles the original `tb.vvp`; it does not execute a test.** Root
+`make test` does not include the specialized `ucode` or SD/RT-11 suites.
+
+### Legacy CPU: quick run and waveform
 
 ```sh
-make test
+make -C testbench run-smoke_pass
+make -C testbench run-isa_alu
+make -C testbench board-smoke
+make -C testbench vcd-isa_alu
 ```
 
-The testbench builds assembly programs from `testbench/programs/`, loads them
-into a behavioral 64 KiB memory with `$readmemh`, and exits through the
-test-only status register at `$fffe`.
+The last command produces `testbench/build/isa_alu.vcd`, viewable in a VCD
+viewer such as GTKWave. `run-NAME` / `vcd-NAME` select
+`testbench/programs/NAME.asm`, assembled for the original native ISA.
+They do not select guest J-11 programs.
 
-## Test-only MMIO
+To rerun an already built original test manually, run **inside testbench/**:
+
+```sh
+vvp tb.vvp +PROGRAM=build/isa_alu.hex +TIMEOUT=200000 +VCD=build/isa_alu.vcd
+```
+
+`+PROGRAM` is required; `+TIMEOUT` and `+VCD` are optional. This VCD option
+belongs to the original harness, not every J-11/Verilator testbench.
+
+### Preserved and specialized engines
+
+```sh
+make -C testbench j11-test j11-core-banks-test j11-nofis-test
+make -C testbench ucode-test ucode-core-test
+make -C testbench ucode-fis-reference-test FIS_JOBS=4
+
+# Complete profile comparison, intentionally ordered by the Makefile.
+make -C testbench profile-acceptance FIS_JOBS=4
+```
+
+`ucode-test` expands to `ucode-native-test`, `ucode-j11-test` and
+`ucode-nofis-test`. The `j11` prefix in the latter guest-test names does
+not change the selected native engine. Guest tests in `j11_programs/` are
+assembled with **microasm11 --cpu dcj-11**; engine firmware uses
+**microasm --cpu j11/ucode**. Never interchange these assemblers or native ROMs.
+
+Run these suite commands sequentially, without outer `make -j`: core
+fixtures and some generated outputs are shared. Use `FIS_JOBS` for the FIS
+runner's own parallelism and `VERILATOR_JOBS` for Verilator compilation.
+They change host parallelism, not simulated clock rates.
+The preservation check compares nine original/reference RTL and assembly
+sources against commit `d4dabf1`; it needs that commit in the local Git history.
+
+### Actual Lattice EBR models
+
+```sh
+make -C testbench ucode-ebr-test \
+  LATTICE_SIM_DIR=/path/to/diamond/cae_library/simulation/verilog/machxo2
+make -C testbench profile-acceptance-ebr FIS_JOBS=4 \
+  LATTICE_SIM_DIR=/path/to/diamond/cae_library/simulation/verilog/machxo2
+```
+
+The directory must contain `PDPW8KC.v` and its dependencies. On macOS use
+a local copy from an installed Diamond; the default path is
+`$HOME/.local/lscc/diamond/3.14/cae_library/simulation/verilog/machxo2`.
+Normal tests use behavioral memory. EBR targets use the generated initializer
+and Lattice primitive models but still run **Icarus**, not Diamond or a
+post-route netlist. The complete EBR suites are slower and print case progress.
+
+## SD, RT-11 and diagnostics
+
+These use the specialized `ucode` engine and separate Makefiles:
+
+```sh
+# Icarus: wire-level card/FRAM and absent-MMU regression.
+make -C testbench -f Makefile.disk disk-test disk-nofis-test
+make -C testbench -f Makefile.disk disk-image-test disk-no-mmu-test
+make -C testbench -f Makefile.disk disk-core-test disk-fis-test FIS_JOBS=4
+make -C testbench -f Makefile.disk hc1200-sd-test
+
+# Same seven synthetic cold-boot cases, two independent simulators.
+make -C testbench -f Makefile.disk disk-cold-boot-fast VERILATOR_JOBS=4
+make -C testbench -f Makefile.disk disk-cold-boot-test
+
+# Native transport diagnostic: Verilator suite / single Icarus smoke.
+make -C testbench -f Makefile.diag diag-test
+make -C testbench -f Makefile.diag diag-smoke
+
+# NOFIS guest boot trace: Verilator suite.
+make -C testbench -f Makefile.boot-trace boot-trace-test
+```
+
+Diagnostic suites include a normal run with the real 50-Hz divider and fault
+runs with an explicitly accelerated timer. CPU/UART/SPI clocks are unchanged.
+See [transport diagnostics](../docs/hc1200-diagnostics.md) and
+[boot trace](../docs/hc1200-boot-trace.md) for scenarios and EBR targets.
+
+The full RT-11 scenario, below, retains board divisors and takes about ten
+host minutes in the recorded Verilator run; Icarus is substantially slower.
+`rt11-bootstrap-test` checks only the first two sectors and entry PC, not a
+complete operating-system boot. No generic `SIM=verilator` switch exists:
+choose the implemented target for the desired simulator.
+
+## Outputs and failure diagnosis
+
+Generated binaries, listings, memory images and simulation logs live under
+`testbench/build/`; they are not source files. `*.asm.log` records assembly
+errors and `*.lst` maps microcode labels to addresses. Microcode `*.words`
+is a 16-bit image from the production EBR packer; guest/native test `*.hex`
+is a byte-addressed image. Do not substitute one format for the other.
+
+A test must print its pass result and exit successfully; a compiled `.vvp`,
+a running executable, or a lone RT-11 banner is not a pass. Check the first
+`FAIL` / `$fatal`, assembly log or Verilator build log. For a long RT-11 run,
+inspect `simulation.log`, `console.log` and `result.json`. Instruction traces
+are enabled with `RT11_VERIFY_ARGS='--trace'`, not the original harness's
+`+VCD` switch. Copy any logs you need before `make clean`, which removes
+`build/` and generated simulation files.
+
+## Original harness details
+
+The original CPU testbench builds assembly programs from `programs/`, loads
+them into behavioral 64-KiB memory with `$readmemh`, and exits through the
+test-only status register at `$fffe`. The following MMIO is a **test harness**
+interface, not the J-11 guest's I/O map.
+
+### Test-only MMIO
 
 - `$fff4..$fff7`: expected read transaction queue
 - `$fff8..$fffb`: expected write transaction queue
@@ -35,7 +207,7 @@ The harness also models the board MMIO blocks used by the programs:
 Bootloader smoke tests assemble `bootloader/bootldr-mcu.asm` and exercise the
 banner, `S` save, `G` go, and `L` load command paths through the UART model.
 
-## Board Smoke Tests
+### Legacy board smoke tests
 
 `make -C testbench board-smoke` compiles selected board top-levels with real
 board UART/GPIO/timer modules and behavioral stubs for Lattice `OSCH`, `sram`,
@@ -49,7 +221,10 @@ and `srampages`.
 - `board-microcomp-memmap` loads `board_programs/microcomp_memmap.asm` into the
   `hc1200-microcomp` zero-page SRAM and verifies memory page boundaries,
   memory-map interrupts for both remap slots, dirty flags, and UART pass byte.
-- `j11-test` assembles the microengine firmware with `microasm` and guest
+
+## Preserved J-11 instruction coverage
+
+`j11-test` assembles the microengine firmware with `microasm` and guest
   PDP-11 programs under `j11_programs/` with `microasm11 --cpu dcj-11`. It
   covers FRAM transactions, the HC1200 I/O overlay and DL11, guest fetch,
   condition-code operations, all PDP-11 conditional branches, all addressing

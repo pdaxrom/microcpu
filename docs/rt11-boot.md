@@ -5,6 +5,15 @@ and the physical HC1200. Use the `ucode` disk+FIS build selected by the main
 `microcomp.ldf`. The original CPU and preserved `j11` profile remain
 unchanged. No RT-11 disk image or generated microcode is committed.
 
+**Stable J11 / RT-11 SD boot** is the `microcomp.ldf` configuration, source
+`a985039`, that passed FLASH program/verify and the user's physical-board
+boot. The exact flashed JED has checksum `5C98`; see
+[baseline identity and build selection](hc1200-microcomp-ucode.md).
+
+CPU and hardware setup: [specialized engine](ucode-cpu.md),
+[specialized microcomp](hc1200-microcomp-ucode.md),
+[Diamond](diamond.md), [Icarus / Verilator](../testbench/README.md).
+
 ## Reproduce on the Mac
 
 From the repository root:
@@ -105,7 +114,7 @@ bits 7:4 also read zero and made RT-11 print `Unknown Processor`. RT-11's separa
 `Floating Point Microcode` line is its no-FPA description; it does not mean
 that FP11 has been implemented. FIS is detected and printed separately.
 
-### KDJ11-A-compatible identification (simulation, 2026-08-28)
+### KDJ11-A-compatible identification (2026-08-28)
 
 The specialized `ucode` profile now returns octal `000020` from MAINT
 (`177750`): module-ID bits 7:4 are 1, while the FPA bit and all other bits
@@ -151,9 +160,40 @@ the testbench's autoboot image, is:
 486059bae5ee65f89711de00d553445f555c0a310c3c72682eec0ea9da2abc60
 ```
 
-The hardware and Diamond results above belong to the earlier zero-MAINT
-image. No Diamond build or physical-board test was performed for this
-identification change; regenerate the JED before testing it on the board.
+Source **`a985039cbc407746ed2ad38eb44c76b28821eb7c`** was subsequently built
+from a clean archive with Diamond 3.14: synthesis, MAP, PAR, setup/hold TRACE
+and JED export all passed. Resources remain 1095 LUT4, 548 slices, 431
+registers and seven EBRs; internal timing passes at 26.6 MHz. Reports and
+the exact image are retained under the ignored
+`boards/hc1200-microcomp/impl1-sdboot/kdj11a-a985039/` directory on both hosts.
+
+The new JED passed a separate read-only ID check, then **FLASH
+Erase,Program,Verify** through FT2232 channel A (200-kHz TCK, 19 seconds).
+The user then captured the **same SHOW CONFIGURATION output above from the
+physical HC1200**, with `PDP 11/73A Processor`, FIS and the 50-cycle clock,
+and a returned KMON prompt. Thus identification is now confirmed on hardware,
+not only in simulation. The directory check reported above is simulation
+evidence; it was not repeated in the supplied hardware transcript. See
+[the exact JED/hash and programming evidence](hc1200-sd-diamond.md).
+
+#### Why RT-11 still prints Floating Point Microcode
+
+MAINT bit 8 (octal mask `000400`) reports the optional **FPA accelerator**,
+not FIS and not a separate switch for disabling built-in FP11 microcode.
+For a J-11, this image's `RESORC.SAV` chooses between:
+
+| FPA bit | RT-11 description |
+|---|---|
+| 0 (our firmware) | `Floating Point Microcode` |
+| 1 | `Floating Point Accelerator Unit` |
+
+The real J-11 includes floating-point microcode; RT-11 assumes that from the
+processor family. This message is not an execution test of our FP11 subset
+(there is none). FIS is detected and printed separately. Setting the FPA bit
+would falsely advertise an accelerator and merely change the text. The
+register stays `000020`, FPA absent; the RT-11 disk/RESORC was not patched.
+See the DEC [KDJ11-A User's Guide](https://ftpmirror.your.org/pub/misc/bitsavers/www.computer.museum.uq.edu.au/pdf/EK-KDJ1A-UG-001%20KDJ11-A%20CPU%20Module%20User%27s%20Guide.pdf)
+for the maintenance-register definition.
 
 ### Other simulation coverage
 

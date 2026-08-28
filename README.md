@@ -4,6 +4,41 @@
 
 # MICROCPU - 16-bit RISC CPU (Version 2)
 
+This is the **legacy/original RISC CPU** documentation: [rtl/cpu.v](rtl/cpu.v),
+native assembly programs and the UART bootloader. `microasm` defaults to
+`--cpu original`. The two derived microengines have their own documentation:
+
+| Version | CPU documentation | HC1200 microcomp hardware |
+|---|---|---|
+| `original` (legacy, main reference) | This README | [Original RISC microcomp](docs/hc1200-microcomp.md) |
+| `j11` (preserved microengine) | [J-11 reference engine](docs/fpga-j11.md) | [Reference J-11 microcomp](docs/hc1200-microcomp-j11.md) |
+| `ucode` (specialized microengine) | [Specialized engine](docs/ucode-cpu.md) | [Specialized microcomp; stable J11 / RT-11 SD boot](docs/hc1200-microcomp-ucode.md) |
+
+Shared guides: [CPU-profile comparison](docs/cpu-profiles.md),
+[Diamond build/programming](docs/diamond.md),
+[Icarus and Verilator simulations](testbench/README.md).
+These are native CPU profiles; guest PDP-11 tests use the separate
+`microasm11 --cpu dcj-11` assembler.
+
+Legacy quick start, from the repository root:
+
+```sh
+make -C asm
+asm/microasm --list-cpus
+make -C testbench run-smoke_pass   # Icarus; original CPU only
+
+# Ubuntu / Diamond 3.14: generate the original board's SRAM.
+make -C boards/hc1200-microcomp original \
+  DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
+```
+
+For legacy hardware open **`microcomp-original.ldf`**. The current
+`microcomp.ldf` and the board Makefile's default target still select the
+specialized SD-boot system; documenting legacy first does not change those
+build defaults. Plain `make` includes legacy SCUBA generation and needs
+Diamond; plain `make test` includes original and preserved `j11` tests, but
+not the specialized `ucode`/SD suites.
+
 * [Registers](#registers)
 * [Address modes](#address-modes)
 * [Instructions](#instructions)
@@ -26,12 +61,6 @@
 * [Microcontroller with Lattice MachXO2-1200 microboard](docs/hc1200-mcu.md)
 * [Microcomputer with Lattice MachXO2-1200](docs/hc1200-microcomp.md)
 * [FPGA J-11 microengine](docs/fpga-j11.md)
-
-The default HC1200 microcomputer project now boots the microcoded J-11 from
-SPI SD (FIS, 50-Hz timer). Prepare it with
-`make -C boards/hc1200-microcomp`, then open that directory's `microcomp.ldf`.
-The original RISC project is retained as `microcomp-original.ldf`.
-See [board setup and UART pins](docs/hc1200-microcomp.md).
 
 ## Registers
 
@@ -169,8 +198,8 @@ Instruction | | Description
 ------------|-|------------
 `SWS`|`UPC = PC; PC = VEC_SUPER`|Switch to superuser mode
 `SWU`|`PC = UPC`|Return to user mode
-`GETS <dst>`|`<dst> = <User PC>`|Get user programm counter
-`SETS <src>`|`<User PC> = <src>`|Set user programm counter
+`GETP <dst>`|`<dst> = <User PC>`|Get user program counter
+`SETP <src>`|`<User PC> = <src>`|Set user program counter
 
 Examples:
 ```
@@ -180,9 +209,9 @@ Examples:
     ...
 su  SUB SP, SP, 2
     PUSH V0
-    GETS V0
+    GETP V0
     ...
-    PUTS V0
+    SETP V0
     POP  V0
     ADD SP, SP, 2
     SWU
@@ -195,7 +224,7 @@ ini SWS
 
 ## Interrupts
 
-The system supports two interrupts - the CPU command to switch to superuser mode (SWS command) and peripheral interrupt (external signal). Both interrupts cause a jump to address $0002 while saving the interrupted address in a special register, which is available for modification using the GETS and PUTS commands. Exit from the interrupt mode is performed using the SWU command. Until the end of the execution of the mode, other interrupts are prohibited.
+The system supports two interrupts - the CPU command to switch to superuser mode (SWS command) and peripheral interrupt (external signal). Both interrupts cause a jump to address $0002 while saving the interrupted address in a special register, which is available for modification using the GETP and SETP commands. Exit from the interrupt mode is performed using the SWU command. Until the end of the execution of the mode, other interrupts are prohibited.
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
@@ -227,6 +256,7 @@ Directive | Description
 `EXTERN <symbol>[,<symbol>...]`|Declare symbols resolved from another object module
 `PUBLIC <symbol>[,<symbol>...]`|Export symbols from the current object module
 `ENTRY <exp>`|Set object entry point
+`CPU <profile>`|Assert the CLI-selected native profile (`original`, `j11` or `ucode`); does not switch ISA
 
 Examples:
 ```
@@ -337,6 +367,8 @@ directive; use `PUBLIC` to export symbols from an object file.
 * -verilog - create verilog ram file
 * -binary  - create binary file
 * -object, -obj - create object file
+* --cpu original\|j11\|ucode - select the native ISA; default `original`
+* --list-cpus - list the supported native profiles
 * --list <file|-> - write the assembly listing to a file, or to stdout with `-`
 * -D, --define - define a global constant before pass 1. If value is omitted,
   it defaults to 1. The expression may reference earlier command-line defines.
@@ -376,7 +408,11 @@ files; `microlink` links one or more object files into a final image.
 
 ### Disassembler
 
-`microdis [-binary|-object] [-org address] <input.bin|input.obj>`
+`microdis [--cpu original|j11|ucode] [-binary|-object] [-org address] <input.bin|input.obj>`
+
+Objects carry a CPU tag; raw binaries require the matching `--cpu` and
+default to `original`. `microlink` rejects objects from different profiles.
+See [object compatibility](docs/cpu-profiles.md#object-files-and-disassembly).
 
 `microdis` disassembles raw binary files and object files. Input mode is
 auto-detected by default; `-binary` and `-object` force a mode. `-org` sets the
@@ -387,7 +423,8 @@ external declarations, entry point information, and relocation comments.
 
 ## Bootloader
 
-The bootloader is using to load code and data into RAM, save memory from RAM and run the code .
+The original RISC UART bootloader loads, saves and executes native programs.
+It is not the J-11 SD bootstrap or a PDP-11 ODT console.
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
 
@@ -407,16 +444,9 @@ The bootloader is using to load code and data into RAM, save memory from RAM and
 
 ## Lattice Diamond programmer and ftdi jtag dual channel board
 
-To work correctly with ftdi jtag, remove the ftdi_sio module:
-
-`sudo rmmod  ftdi_sio`
-
-Open the Programmer, reconnect the FTDI board and disconnect the JTAG port:
-
-`./ft2232d-util/ft2232d-ctl`
+See the [Diamond/FTDI guide](docs/diamond.md#programming-with-ft2232).
+USB access permissions, the JTAG channel and the UART channel are separate.
+Do not unload `ftdi_sio` globally: that also disconnects the UART. If the
+kernel owns JTAG channel A, release only that verified interface; preserve B.
 
 [Top](#microcpu---16-bit-risc-cpu-version-2)
-
-Native processor selection and the independent specialized engine are documented
-in [CPU profiles](docs/cpu-profiles.md). The default remains `original`;
-use `--cpu j11` for the reference firmware or `--cpu ucode` for `ucode/v2/`.

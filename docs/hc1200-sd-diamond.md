@@ -1,5 +1,65 @@
 # HC1200 SD autoboot: Diamond acceptance
 
+## Stable J11 / RT-11 SD boot: `a985039` (2026-08-28)
+
+This is the stable configuration actually programmed into the HC1200:
+`microcomp.ldf`, implementation `impl1` in directory `impl1-sdboot`.
+
+Source **`a985039cbc407746ed2ad38eb44c76b28821eb7c`**, including KDJ11-A
+module identification, passed the complete Diamond **3.14.0.75.2** build
+from a fresh archive in `/tmp/microcpu-kdj11a-a985039.nlh9z9` on Ubuntu.
+It uses the main `microcomp.ldf`, top `ucode_sd_microcomp`, device
+LCMXO2-1200HC-4SG32C: SD autoboot, EIS, FIS and a 50-Hz clock.
+
+Synthesis, Translate, MAP, PAR, setup/hold TRACE and JED export exited zero:
+
+| Metric | Result |
+|---|---|
+| LUT4 / slices / registers | 1095/1280, 548/640, 431/1346 |
+| EBR | 7/7 |
+| Pins | 17 PIO + JTAGENB / 22 |
+| uROM | 3501 code + 64 context + 19 free = 3584 words |
+| Internal clock | 26.6-MHz constraint; TRACE estimate 37.627 MHz |
+| Timing / routing | 0 setup errors, 0 hold errors, 0 cumulative negative slack, 0 unrouted |
+| JED checksum | `5C98` |
+
+The generated ROM and EBR Verilog match the Mac images byte-for-byte; the
+ROM also matches the full RT-11 testbench's autoboot image.
+
+| Artifact | SHA-256 |
+|---|---|
+| `j11_sd.mem` | `486059bae5ee65f89711de00d553445f555c0a310c3c72682eec0ea9da2abc60` |
+| `sd_urom_ebr.v` | `5ce3af688c1bd734fdf08d5ef50cf120b7d31913778888fbfdf79fe34e4c62d5` |
+| `microcomp_impl1.jed` | `9fe90319139a8e91b6fa19f7bc55d98b8ad327bd3af56c076815ea41b58593d3` |
+
+Artifacts were saved separately on Mac and Ubuntu under
+`boards/hc1200-microcomp/impl1-sdboot/kdj11a-a985039/`: the JED, ROM/EBR files,
+MAP/PAR/TRACE/PAD/PRF/Synplify/BITGEN reports and `diamond-build.log`. Generated
+artifacts are ignored, not committed. The Ubuntu checkout's unrelated
+strategy edit and older firmware artifacts were not overwritten.
+
+Programming was then performed **separately from the build**. `verify-id.xcf`
+passed FLASH Verify ID (`0x012BA043`); `program.xcf` selected the exact new
+JED and FLASH Erase,Program,Verify. FT2232 A, FTUSB-0, TCK delay 30 produced
+200-kHz TCK. `pgrcmd` exited zero in 19 seconds (930-ms erase), reporting
+`Operation Done. No errors.` and `Operation: successful.`. The UART channel
+B and the user's terminal were left connected. XCFs and both programming
+logs are in the same artifact directory.
+
+The user subsequently confirmed physical RT-11 boot and SHOW CONFIGURATION
+with **PDP 11/73A**, 56 KiB, EIS, FIS and the 50-cycle clock, returning to KMON.
+This is functional hardware acceptance, not characterized external timing
+or an overclock test. Known unused-keyboard/configuration/EBR warnings remain.
+See [RT-11 interpretation and limits](rt11-boot.md),
+[build/programming instructions](diamond.md), and
+[specialized board setup](hc1200-microcomp-ucode.md).
+
+## Historical build: `6668a85`
+
+The remaining sections record the earlier zero-MAINT image, its hashes and
+the warning/pin analysis at that checkpoint. Its "not programmed" statements
+apply to that build, not the accepted `a985039` image above.
+
 On 2026-08-28, source commit **`6668a85f85fa63a42b2aa4ec53533c83a83f5ecc`**
 passed Synplify, Translate, MAP, PAR, setup/hold TRACE and JED export in
 **Diamond 3.14.0.75.2** on Ubuntu. This is the main `microcomp.ldf` project,
@@ -102,5 +162,5 @@ matches the image used by the Mac SD cold-boot/UART testbench.
 | `microcomp_impl1.jed` | `ed022204133c244ed86e3a889d166f8a580b2a8193727abd3b51f79b79d54c7f` |
 
 Generated artifacts are not committed; this report records the exact tested
-source commit. See [board instructions](hc1200-microcomp.md) and the separate
+source commit. See [SD board instructions](hc1200-microcomp-ucode.md) and the separate
 [RT-11 simulation acceptance](rt11-boot.md).

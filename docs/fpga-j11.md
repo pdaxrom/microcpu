@@ -1,4 +1,18 @@
-# FPGA J-11 microengine
+# FPGA J-11 microengine (`--cpu j11`, preserved reference)
+
+[Legacy CPU / main README](../README.md) · [Reference hardware](hc1200-microcomp-j11.md) ·
+[Specialized engine](ucode-cpu.md) · [Simulator guide](../testbench/README.md)
+
+This file documents the second native CPU profile: `rtl/j11_microengine.v`
+and `ucode/j11.asm`. It is preserved for comparison; its RTL and firmware
+remain byte-identical to `d4dabf1`. New SD boot and KDJ11-A identification
+work belongs to the independent `ucode` profile, not this reference.
+
+```sh
+# Run from the repository root; image generation needs no Diamond.
+make -C boards j11-ucode
+make -C testbench j11-test j11-core-banks-test j11-nofis-test
+```
 
 This branch develops a J-11-compatible CPU as firmware running on a small
 16-bit RISC microengine. The guest architecture is intentionally kept out of
@@ -431,8 +445,8 @@ Words are stored little-endian.
 - `boards/hc1200-microcomp/j11_guest_bus.v`: 56 KiB FRAM window and raw UART,
   elapsed-time counter, and native event notification; no guest CSR semantics
 - `boards/hc1200-microcomp/microcomp-j11.ldf`: separate Diamond project; the
-  original `microcomp.ldf` and its firmware-controlled GPIO design remain
-  available
+  original firmware-controlled GPIO design remains available as
+  `microcomp-original.ldf`; `microcomp.ldf` now selects specialized SD boot
 - `testbench/spi_fram_model.v`: behavioral 128 KiB FRAM model
 - `testbench/tb_spi_fram_guest_ram.v`: byte, word, bank, endian, and odd-address
   checks
@@ -587,7 +601,12 @@ port/reset and native boundary tests, guest/CPU/FIS/RS/HALT suites, and the
 same **209/209** core snapshots. No production microcode or ordinary `cpu.v`
 changes were needed for the storage migration.
 
-### SD-backed disk: feasibility, not an implemented device
+### SD-backed disk: historical feasibility checkpoint
+
+This subsection records the preserved engine's pre-SD design discussion.
+The disk was subsequently implemented in the separate `ucode` firmware;
+see [the active controller](rk611-sd-prototype.md) and
+[specialized hardware](hc1200-microcomp-ucode.md). It was not backported here.
 
 The user selected an RK611/RH11-compatible controller at octal 0177440, backed
 by SD, with `k1801vm1/lsi11/dev_rh11.c` as reference. SD wiring still needs

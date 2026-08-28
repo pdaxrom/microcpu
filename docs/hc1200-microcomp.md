@@ -1,126 +1,64 @@
 # Microcomputer with Lattice MachXO2-1200
 
-* [J-11 / SD boot (default project)](#j-11--sd-boot-default-project)
+This is the **legacy/original RISC microcomp** hardware documentation.
+The derived implementations use the same PCB but different FPGA top levels,
+memory organization and firmware. Their setup is documented separately:
+
+| Version | Documentation | Diamond project |
+|---|---|---|
+| Legacy `original` | This page | `microcomp-original.ldf` |
+| Preserved `j11` | [Reference J-11 hardware](hc1200-microcomp-j11.md) | `microcomp-j11.ldf` |
+| Specialized `ucode` | [No-disk and SD-boot hardware](hc1200-microcomp-ucode.md) | `microcomp-ucode.ldf` / `microcomp.ldf` |
+
+The main README and this page keep legacy as the primary reference. The
+existing build defaults are unchanged: **`microcomp.ldf` boots J-11 from SD**,
+not this legacy system. Select the explicit original project below.
+
+* [Build the legacy board](#build-the-legacy-board)
 * [Board](#board)
   * [UART](#uart)
   * [GPIO](#gpio)
-  * [TIMER](#timer)
+  * [Timer](#timer)
   * [Memory mapping](#memory-mapping)
 * [Bootloader](#bootloader)
 * [Examples](#examples)
   * [UART I/O](#uart-io)
   * [LED Matrix](#led-matrix)
   * [LED Display](#led-display)
-  
-[Back to main page](..)
 
-## J-11 / SD boot (default project)
+[Back to main page](../README.md)
 
-`boards/hc1200-microcomp/microcomp.ldf` now selects **J-11 without MMU,
-EIS + FIS, a 50-Hz clock, and RK611-compatible SD boot**. Its top is
-`ucode_sd_microcomp`, with the generated `sd_urom_ebr.v` and `sd.lpf`.
-The original RISC hardware is preserved as `microcomp-original.ldf`;
-`microcomp-j11.ldf` and the no-disk `microcomp-ucode.ldf` remain separate.
+## Build the legacy board
 
-From the repository root, prepare the firmware before opening Diamond:
+Run from the repository root on Ubuntu with Diamond 3.14 installed:
 
 ```sh
-make -C boards/hc1200-microcomp
-# Equivalent: make -C boards hc1200-microcomp
-```
-
-This builds `microasm` if necessary, assembles the SD-autoboot microcode and
-generates `j11_sd.mem` / `sd_urom_ebr.v`. It works on the Mac without Diamond
-or SCUBA. The repository-wide `make -C boards all` also includes these images,
-but still generates the other/legacy boards' SCUBA RAMs and needs Diamond.
-Generated files are not committed.
-
-The diagnostic sources and their Diamond projects are committed separately;
-they regenerate their own BIN/MEM/EBR/JED artifacts and never replace the
-default project. Run each target with `make -C boards/hc1200-microcomp TARGET`:
-
-| Image | Portable uROM target | Diamond/JED target | Project / output |
-|---|---|---|---|
-| J-11 + FIS + SD autoboot | `all` (default) | `diamond` | `microcomp.ldf` / `impl1-sdboot/microcomp_impl1.jed` |
-| Native SD/FRAM transport diagnostic | `diag` | `diag-diamond` | `microcomp-diag.ldf` / `impl1-diag/microcomp-diag_impl1.jed` |
-| J-11 SD boot trace, temporarily no FIS | `boot-trace` | `boot-trace-diamond` | `microcomp-boot-trace.ldf` / `impl1-boot-trace/microcomp-boot-trace_impl1.jed` |
-
-The source entry points are `ucode/diagnostics/sd_fram.asm` and
-`ucode/diagnostics/boot_trace.asm`; shared rules are in
-`boards/diagnostics.mk` and `boards/sd.mk`. See the
-[transport diagnostic](hc1200-diagnostics.md) and
-[boot-trace diagnostic](hc1200-boot-trace.md) instructions before programming.
-
-All three uROM targets were rebuilt from a clean `git archive 4007f49` on
-2026-08-28 without untracked workspace files. Their MEM/EBR hashes matched
-the accepted images; seven diagnostic and six current-board project checks
-passed. This check generates uROM only; Diamond results are recorded separately.
-
-Open **`microcomp.ldf`** in Diamond and run through **JEDEC File**. To build
-from the Ubuntu command line instead (build/export only, never program):
-
-```sh
-make -C boards/hc1200-microcomp diamond \
+make -C boards/hc1200-microcomp original \
   DIAMOND_HOME=/home/sash/.local/lscc/diamond/3.14
 ```
 
-The output is `impl1-sdboot/microcomp_impl1.jed`. This separate implementation
-directory avoids reusing the old RISC results or its stale `impl1.xcf`.
-Select this JED explicitly when later configuring Programmer. The script
-exports only after TRACE reports zero cumulative negative slack. Commit
-`6668a85` passed the full Diamond build through JED: 1095 LUT4, 548 slices,
-7 EBRs, zero setup/hold errors at 26.6 MHz (TRACE maximum 37.627 MHz).
-See [the build report, implemented pins and warnings](hc1200-sd-diamond.md).
-Subsequent physical-board runs passed the native SD/FRAM diagnostic, the
-NOFIS boot trace, and the default FIS-enabled RT-11 boot. External SPI timing
-margins are still not characterized; see the linked diagnostic reports.
+The target builds the UART bootloader and generates `sram.v` / `srampages.v`
+with Diamond's SCUBA. Open
+`boards/hc1200-microcomp/microcomp-original.ldf`; its top is **`demo`** in
+`microcomp.v`, CPU is `rtl/cpu.v`, constraints are `microcomp.lpf`.
+Run the GUI through JEDEC File to produce
+`impl1-original/microcomp-original_impl1.jed`. There is no dedicated
+original-board CLI JED target; `diamond` in this directory builds the
+specialized SD project. See [Diamond and programming](diamond.md).
 
-UART and SD locations come from the board's existing `microcomp.lpf`:
-
-| Signal (FPGA perspective) | Site | Connection |
-|---|---|---|
-| `rx` | **PT15D** | UART adapter TX |
-| `tx` | **PT17D** | UART adapter RX |
-| `sd_cs_n` | PL9B | SD CS |
-| `sd_mosi` | PR5C | SD MOSI |
-| `sd_sck` | PT12D | SD clock |
-| `sd_miso` | PT12C | SD MISO |
-
-Console settings: **115200, 8N1, no flow control**, 3.3-V UART levels and a
-common ground. RX and TX have not been swapped. The four former GPIO sites
-are now assigned to SD, not simultaneously to two ports. Guest console
-registers are the microcoded DL11 at octal `177560..177566`.
-
-`sd.lpf` preserves the **entire original `microcomp.lpf`**, changing only
-`gpio[0..3]` to `sd_cs_n`, `sd_mosi`, `sd_sck`, `sd_miso` in the IOBUF and
-LOCATE entries. UART RX/TX, all four SD signals, FRAM and display signals
-retain `PULLMODE=NONE`; reset retains `UP`, and keyboard rows retain `DOWN`.
-All other locations, I/O types and SYSCONFIG settings are unchanged. The SD
-top has no leftover generic `gpio[0..3]` ports. This preserves the board's
-existing electrical configuration; simulation does not verify physical pulls.
-
-After FPGA configuration or board reset, uROM reads sectors 0 and 1 from
-SD into FRAM and enters guest address 0. FRAM needs no preinstalled bootstrap.
-Use an **SDHC/SDXC card with a raw RK disk image at LBA 0**, not a file in FAT.
-Guest `RESET` does not restart the boot. ODT remains deferred.
-See [boot tests and limits](rt11-boot.md) for details and the verified RT-11 image.
-
-Mac verification of the selected project, both UART pins and SD cold boot:
+Portable simulation needs no Diamond:
 
 ```sh
-make -C testbench -f Makefile.disk hc1200-sd-test
+make -C testbench board-microcomp-memmap
+make -C testbench run-smoke_pass
 ```
 
-The program is assembled by `microasm11`, loaded only into the simulated SD,
-and checks a TX `'U'` / RX `'Z'` exchange through the actual board ports.
-Project/ROM/pin consistency, exact LPF preservation (including pull modes),
-top-level port coverage and build-script error gates are checked as well;
-the latter uses mocked Diamond commands and is not a synthesis result.
-
-For the old RISC project, run `make -C boards/hc1200-microcomp original`
-(requires Diamond's SCUBA) and open `microcomp-original.ldf`. The addresses,
-UART bootloader and examples in the remaining sections describe that
-**original RISC configuration**, not the J-11 guest.
+See [Icarus/Verilator instructions](../testbench/README.md) for dependencies.
+The memory map, original UART bootloader and examples below are not the
+J-11 guest's DL11 registers or SD bootstrap. Legacy uses the four GPIO pins
+as GPIO; SD wiring repurposes them only in the specialized SD configuration.
+UART RX is PT15D, TX is PT17D; use 115200 8N1, no flow control, 3.3-V levels
+and common ground.
 
 ## Board
 

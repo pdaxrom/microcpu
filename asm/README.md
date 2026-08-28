@@ -1,14 +1,17 @@
 Documentation
 
-Full assembler and ISA reference (including RTL semantics): docs/isa.md
+Full [assembler and original ISA reference](docs/isa.md), including RTL semantics.
 
 CPU profiles
 
 `--cpu original|j11|ucode` selects the native processor ISA. The default is
-`original` (`rtl/cpu.v`). `j11` preserves the current microengine and firmware;
+`original` (`rtl/cpu.v`). `j11` preserves the reference microengine and firmware;
 `ucode` selects the independent specialized engine and `ucode/v2/` firmware.
 Unsupported opcodes are errors. See [CPU profiles](../docs/cpu-profiles.md)
 for source assertions, encodings, object tags and separate build targets.
+The CPU manuals are [legacy](../README.md), [j11](../docs/fpga-j11.md) and
+[ucode](../docs/ucode-cpu.md). These native profiles are not guest PDP-11
+models; guest J-11 tests use the separate `microasm11 --cpu dcj-11` assembler.
 
 Usage
 

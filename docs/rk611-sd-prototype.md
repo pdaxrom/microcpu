@@ -1,11 +1,12 @@
 # Experimental microcoded RK611/RH11 → SPI SD
 
-This is a **simulation/resource prototype, not a production disk controller**.
+This is a **working bring-up prototype, not a production disk controller**.
 The original `j11` and no-disk `ucode` images remain separate. The main
 `hc1200-microcomp/microcomp.ldf` now selects SD + FIS + power-on boot.
 The supplied SD pins are recorded in `sd.lpf` and confirmed by the final
-Diamond PAD report. External I/O timing and physical-board operation remain
-unverified. No board/card programming is performed. The experimental
+Diamond PAD report. SD reads and RT-11 boot have passed on the physical board;
+external I/O timing margins remain uncharacterized. The build commands do
+not program a board or card. The experimental
 `build-sd.tcl` does not export JED; the main project's `build-microcomp.tcl`
 passed timing checks and exported JED in the [current build](hc1200-sd-diamond.md).
 
@@ -16,14 +17,16 @@ context RAM. The code limit is therefore **3520 words**.
 
 | Configuration | Code | Context | Free code words | EBR required |
 |---|---:|---:|---:|---:|
-| Normal ucode + FIS, no disk | 2822 | 64 | 698 | 7 allocated |
-| Explicit disk + FIS + power-on bootstrap | 3497 | 64 | **23** | **7; fits** |
-| Explicit disk/no-FIS + power-on bootstrap | 3177 | 64 | 343 | 7 |
+| Normal ucode + FIS, no disk | 2826 | 64 | 694 | 7 allocated |
+| Explicit disk + FIS + power-on bootstrap | 3501 | 64 | **19** | **7; fits** |
+| Explicit disk/no-FIS + power-on bootstrap | 3181 | 64 | 339 | 7 |
 
 The RT-11 follow-up removes 30 words of misleading MMU stubs, then adds
 26 words for the power-on bootstrap; see [cold boot and tests](rt11-boot.md).
-The latest Diamond check (`6668a85`, 2026-08-28) includes these changes, the
-50-Hz divisor, reset synchronizer and corrected board pin/pull constraints.
+The latest Diamond check (`a985039`, 2026-08-28) includes these changes, the
+50-Hz divisor, reset synchronizer, corrected board pin/pull constraints and
+the four-word KDJ11-A identification handler. The figures above are for that
+revision. See [the specialized engine](ucode-cpu.md) for CPU scope.
 
 The complete disk+FIS board, not just the SPI block, uses **1095/1280 LUT4,
 548/640 slices, 431 registers, 7/7 EBRs and 17 PIO + JTAGENB**. TRACE reports
@@ -169,8 +172,10 @@ omit that definition to execute preloaded guest assembly; their generated
 EBR files are separate from the board's autoboot EBR. RT-11 and cold-boot
 tests use `j11_sd_boot.words`, byte-for-byte equal to the board `j11_sd.mem`.
 
-Remaining work before hardware use: make long transfers cooperative;
-extend controller/card compatibility as needed; add
-data CRC checks; confirm electrical connections, pin constraints and I/O
-timing. Selecting the SD build as the main board project is not physical
-hardware acceptance. See [board preparation and UART pins](hc1200-microcomp.md).
+Remaining work before production use: make long transfers cooperative,
+extend controller/card compatibility as needed, add data CRC checking to the
+normal firmware, and characterize external I/O timing margins. Diagnostics
+already check CRC, but they are separate images. Physical transport checks
+and RT-11 boot are recorded in [RT-11 acceptance](rt11-boot.md); they do not
+prove compatibility with every card or all controller commands. See
+[specialized board preparation and UART pins](hc1200-microcomp-ucode.md).
