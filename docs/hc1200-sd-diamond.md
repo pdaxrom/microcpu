@@ -47,9 +47,11 @@ The exact JED, ROM/EBR, reports, `diamond-build.log`, `verify-id.xcf/.log` and
 `program.xcf/.log` are archived on Mac and Ubuntu under
 `boards/hc1200-microcomp/impl1-sdboot/native-isolation-45a1b68/`.
 The previous `kdj11a-a985039/` recovery copy retains its original hash.
-**Physical UART boot confirmation for 45a1b68 is still pending**: full RT-11
-boot is verified in simulation, while FLASH verification is hardware evidence.
-Do not substitute the older hardware transcript below for a new one.
+The user subsequently captured a physical UART boot of **45a1b68**,
+`SHOW CONFIGURATION` and `.DIR *.OBJ`: RT-11FB V05.03 booted from DM0 and
+reported PDP 11/73A, 56KB, Floating Point Microcode, EIS, FIS, Cache Memory
+and the 50 Cycle System Clock. The directory reported four files, 78 blocks
+and 51455 free blocks. Detailed sector statistics remain simulation evidence.
 
 ## Stable J11 / RT-11 SD boot: `a985039` (2026-08-28)
 

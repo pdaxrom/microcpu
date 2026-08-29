@@ -14,9 +14,12 @@ programmed successfully (FLASH erase/program/verify). Exact new JED:
 `impl1-sdboot/native-isolation-45a1b68/microcomp_impl1.jed`, checksum **60FA**.
 It retains FIS/SD autoboot and fixes guest access to raw SD services in ASM;
 uROM is now **3504 code + 64 context + 16 free**. Full RT-11 simulation and
-regressions passed. Physical UART boot confirmation for this update is still
-pending. The hardware-confirmed `a985039` baseline below is preserved as a
-separate recovery image, not the currently programmed JED. See
+regressions passed. The user then confirmed a physical UART boot from DM0,
+`SHOW CONFIGURATION` (PDP 11/73A, 56KB, EIS, FIS, 50-cycle clock) and
+`.DIR *.OBJ` (four files, 78 blocks, 51455 free). Thus `45a1b68` / JED `60FA`
+is the current programmed and physically boot-confirmed update. The
+hardware-confirmed `a985039` baseline below is preserved as a separate
+recovery image. See
 [new build/programming evidence](hc1200-sd-diamond.md) and
 [isolation regression](native-service-isolation.md).
 

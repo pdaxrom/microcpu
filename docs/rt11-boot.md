@@ -15,9 +15,12 @@ complete RT-11 scenario again: **8/8 checks**, 1,614,712,535 clocks,
 599.582 host seconds, 232 reads, 6 overlay writes, 43/43 RX bytes and fresh
 prompts after SHOW/DIRECTORY. FIS and 50 Hz remain enabled; the disk hash is
 unchanged. Logs: `testbench/build/rt11-native-isolation/`. New JED **60FA**
-has passed Diamond and physical FLASH program/verify; its physical UART boot
-confirmation is still pending. See [isolation acceptance](native-service-isolation.md)
-and [exact JED/toolchain](hc1200-sd-diamond.md).
+has passed Diamond and physical FLASH program/verify. The user also captured
+its physical UART boot from DM0, `SHOW CONFIGURATION` (PDP 11/73A, 56KB,
+Floating Point Microcode, EIS, FIS, Cache Memory and the 50 Cycle System
+Clock) and `.DIR *.OBJ` (four files, 78 blocks, 51455 free). See
+[isolation acceptance](native-service-isolation.md) and
+[exact JED/toolchain](hc1200-sd-diamond.md).
 
 CPU and hardware setup: [specialized engine](ucode-cpu.md),
 [specialized microcomp](hc1200-microcomp-ucode.md),

@@ -110,9 +110,13 @@ exited zero in 20 seconds with 940-ms erase, using FT2232 A / FTUSB-0 at
 Artifacts and actual XCF/logs are on both hosts under
 `boards/hc1200-microcomp/impl1-sdboot/native-isolation-45a1b68/`.
 
-Physical UART boot confirmation for this new JED is still pending; do not
-equate FLASH verify with a captured hardware RT-11 boot. The complete RT-11
-console transcript above is from simulation.
+After programming, the user confirmed the RT-11 boot over the physical UART
+and captured `SHOW CONFIGURATION` plus `.DIR *.OBJ`. The new JED boots from DM0 as RT-11FB
+V05.03 and reports PDP 11/73A, 56KB, Floating Point Microcode, EIS, FIS,
+Cache Memory and the 50 Cycle System Clock. This is hardware boot evidence
+for source 45a1b68 / JED 60FA. The physical directory lists four OBJ files,
+78 blocks total and 51455 free blocks. Detailed sector statistics remain
+simulation evidence.
 The exact previous programmed JED remains archived under
 `impl1-sdboot/kdj11a-a985039/`; do not overwrite that recovery copy.
 
